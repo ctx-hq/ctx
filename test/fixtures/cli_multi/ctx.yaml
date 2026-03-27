@@ -1,0 +1,23 @@
+name: "@community/ripgrep"
+version: "14.1.0"
+type: cli
+description: "Fast regex-based search tool, better alternative to grep"
+keywords: [search, grep, regex, cli]
+license: MIT
+repository: "https://github.com/BurntSushi/ripgrep"
+cli:
+  binary: rg
+  verify: "rg --version"
+install:
+  source: "github:BurntSushi/ripgrep"
+  brew: "ripgrep"
+  cargo: "ripgrep"
+  platforms:
+    darwin-arm64:
+      binary: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-aarch64-apple-darwin.tar.gz"
+    darwin-amd64:
+      binary: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-apple-darwin.tar.gz"
+    linux-amd64:
+      binary: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-unknown-linux-musl.tar.gz"
+    linux-arm64:
+      binary: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-aarch64-unknown-linux-gnu.tar.gz"

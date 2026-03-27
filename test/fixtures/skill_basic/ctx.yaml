@@ -1,0 +1,9 @@
+name: "@test/basic-skill"
+version: "1.0.0"
+type: skill
+description: "A basic test skill for code review"
+keywords: [test, code-review]
+skill:
+  entry: SKILL.md
+  tags: [test, demo]
+  compatibility: "claude-code, cursor"
