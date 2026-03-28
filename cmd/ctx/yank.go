@@ -11,7 +11,7 @@ var yankCmd = &cobra.Command{
 	Use:   "yank <package@version>",
 	Short: "Yank (retract) a published version",
 	Long: `Mark a published version as yanked. Yanked versions are hidden from
-resolution but remain downloadable for existing lockfiles.
+resolution but remain downloadable for existing installations.
 
 Examples:
   ctx yank @hong/my-skill@1.0.0`,
@@ -35,7 +35,7 @@ Examples:
 		}
 
 		if !flagYes {
-			output.Warn("This will yank %s@%s. Existing lockfiles can still resolve it.", fullName, version)
+			output.Warn("This will yank %s@%s. Existing installations are not affected.", fullName, version)
 			return output.ErrUsageHint(
 				"confirmation required",
 				"Run with --yes to confirm",

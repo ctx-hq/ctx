@@ -209,7 +209,7 @@ install:
 |------|---------|
 | `~/.ctx/config.yaml` | Registry URL, auth token |
 | `~/.ctx/packages/` | Installed packages |
-| `ctx.lock` | Lockfile (project-level) |
+| `~/.ctx/links.json` | Agent link registry |
 
 Environment variables:
 

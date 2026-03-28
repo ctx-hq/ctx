@@ -209,7 +209,7 @@ install:
 |------|------|
 | `~/.ctx/config.yaml` | 注册表地址、认证令牌 |
 | `~/.ctx/packages/` | 已安装的包 |
-| `ctx.lock` | 锁定文件（项目级别） |
+| `~/.ctx/links.json` | Agent 链接记录 |
 
 环境变量：
 
