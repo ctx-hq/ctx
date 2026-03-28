@@ -18,14 +18,16 @@ type LockFile struct {
 
 // LockEntry tracks one installed package.
 type LockEntry struct {
-	FullName    string    `json:"full_name"`
-	Version     string    `json:"version"`
-	Type        string    `json:"type"`
-	Source      string    `json:"source"`       // "registry", "github"
-	SHA256      string    `json:"sha256,omitempty"`
-	InstallPath string    `json:"install_path"`
-	InstalledAt time.Time `json:"installed_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	FullName          string    `json:"full_name"`
+	Version           string    `json:"version"`
+	Type              string    `json:"type"`
+	Source            string    `json:"source"`                          // "registry", "github"
+	SHA256            string    `json:"sha256,omitempty"`
+	InstallPath       string    `json:"install_path"`
+	InstalledVersions []string  `json:"installed_versions,omitempty"`    // all locally available versions
+	CurrentVersion    string    `json:"current_version,omitempty"`       // active version (current symlink target)
+	InstalledAt       time.Time `json:"installed_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // LoadLockFile reads ctx.lock from the given path.

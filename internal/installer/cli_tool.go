@@ -54,5 +54,19 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) error {
 	}
 
 	output.Success("Verified: %s is available", m.CLI.Binary)
+
+	// Register in links registry
+	links, linkErr := LoadLinks()
+	if linkErr != nil {
+		links = &LinkRegistry{Version: linksFileVersion, Links: make(map[string][]LinkEntry)}
+	}
+	links.Add(m.Name, LinkEntry{
+		Agent:  a.Name(),
+		Type:   LinkBinary,
+		Source: pkg,
+		Target: m.CLI.Binary,
+	})
+	links.Save() // best effort
+
 	return nil
 }

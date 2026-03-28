@@ -1,69 +1,121 @@
 #!/bin/sh
 # ctx installer — installs the latest ctx binary
-# Usage: curl -fsSL https://getctx.org/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
+#
+# Environment variables:
+#   CTX_INSTALL_DIR  — installation directory (default: /usr/local/bin)
+#   CTX_VERSION      — specific version to install (default: latest)
 
 set -e
 
-REPO="getctx/ctx"
+REPO="ctx-hq/ctx"
 INSTALL_DIR="${CTX_INSTALL_DIR:-/usr/local/bin}"
 BINARY="ctx"
 
-# Detect OS and arch
+# --- Helpers ----------------------------------------------------------------
+
+die() { echo "Error: $1" >&2; exit 1; }
+
+fetch() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$1"
+  else
+    die "curl or wget required"
+  fi
+}
+
+download() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1" -o "$2"
+  else
+    wget -q "$1" -O "$2"
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "sha256sum or shasum required for checksum verification"
+  fi
+}
+
+# --- Detect platform --------------------------------------------------------
+
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
 case "$ARCH" in
   x86_64|amd64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+  *) die "Unsupported architecture: $ARCH" ;;
 esac
 
 case "$OS" in
   linux|darwin) ;;
-  *) echo "Unsupported OS: $OS"; exit 1 ;;
+  *) die "Unsupported OS: $OS" ;;
 esac
 
 PLATFORM="${OS}-${ARCH}"
 
-# Get latest release
-echo "→ Detecting latest version..."
-if command -v curl >/dev/null 2>&1; then
-  LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
-elif command -v wget >/dev/null 2>&1; then
-  LATEST=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+# --- Resolve version --------------------------------------------------------
+
+if [ -n "$CTX_VERSION" ]; then
+  VERSION="${CTX_VERSION#v}"
+  echo "-> Installing ctx v${VERSION} for ${PLATFORM}..."
 else
-  echo "Error: curl or wget required"
-  exit 1
+  echo "-> Detecting latest version..."
+  VERSION=$(fetch "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+  [ -n "$VERSION" ] || die "Could not determine latest version"
+  echo "-> Installing ctx v${VERSION} for ${PLATFORM}..."
 fi
 
-if [ -z "$LATEST" ]; then
-  echo "Error: could not determine latest version"
-  exit 1
-fi
-
-URL="https://github.com/${REPO}/releases/download/v${LATEST}/${BINARY}-${PLATFORM}"
-echo "→ Downloading ctx v${LATEST} for ${PLATFORM}..."
+# --- Download and verify ----------------------------------------------------
 
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR"' EXIT
 
-if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$URL" -o "$TMPDIR/$BINARY"
-else
-  wget -q "$URL" -O "$TMPDIR/$BINARY"
+ARCHIVE_NAME="${BINARY}-${PLATFORM}.tar.gz"
+ARCHIVE_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
+CHECKSUM_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
+
+echo "-> Downloading archive..."
+download "$ARCHIVE_URL" "$TMPDIR/${ARCHIVE_NAME}"
+
+echo "-> Downloading checksums..."
+download "$CHECKSUM_URL" "$TMPDIR/checksums.txt"
+
+echo "-> Verifying SHA256 checksum..."
+EXPECTED=$(grep "${ARCHIVE_NAME}" "$TMPDIR/checksums.txt" | awk '{print $1}')
+[ -n "$EXPECTED" ] || die "Checksum not found for ${ARCHIVE_NAME} in checksums.txt"
+
+ACTUAL=$(sha256 "$TMPDIR/${ARCHIVE_NAME}")
+
+if [ "$EXPECTED" != "$ACTUAL" ]; then
+  die "Checksum mismatch!\n  Expected: ${EXPECTED}\n  Actual:   ${ACTUAL}"
 fi
+echo "-> Checksum verified"
+
+# --- Extract and install ----------------------------------------------------
+
+echo "-> Extracting..."
+tar -xzf "$TMPDIR/${ARCHIVE_NAME}" -C "$TMPDIR"
 
 chmod +x "$TMPDIR/$BINARY"
 
-# Install
 if [ -w "$INSTALL_DIR" ]; then
   mv "$TMPDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 else
-  echo "→ Installing to $INSTALL_DIR (requires sudo)..."
+  echo "-> Installing to $INSTALL_DIR (requires sudo)..."
   sudo mv "$TMPDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 fi
 
-echo "✓ ctx v${LATEST} installed to ${INSTALL_DIR}/${BINARY}"
+echo ""
+echo "ctx v${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
 echo ""
 echo "  Get started:"
 echo "    ctx search \"code review\""

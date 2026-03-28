@@ -1,8 +1,8 @@
 BINARY := ctx
-VERSION ?= 0.1.0
-LDFLAGS := -ldflags "-s -w -X github.com/getctx/ctx/cmd/ctx.Version=$(VERSION)"
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
 
-.PHONY: build test lint clean install
+.PHONY: build test lint clean install fmt-check vet check release-check
 
 build:
 	go build $(LDFLAGS) -o $(BINARY) ./cmd/ctx
@@ -13,12 +13,27 @@ install: build
 test:
 	go test ./... -v -count=1
 
+test-race:
+	go test ./... -v -count=1 -race
+
 test-coverage:
 	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
+fmt-check:
+	@test -z "$$(gofmt -l .)" || (echo "Files need gofmt:"; gofmt -l .; exit 1)
+
+vet:
+	go vet ./...
+
 lint:
 	golangci-lint run ./...
+
+check: vet lint test
+
+release-check: check
+	@grep -q '^replace' go.mod 2>/dev/null && { echo "Error: go.mod contains replace directives"; exit 1; } || true
+	@echo "All release checks passed"
 
 clean:
 	rm -f $(BINARY) coverage.out

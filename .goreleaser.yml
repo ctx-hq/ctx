@@ -2,6 +2,11 @@ version: 2
 
 project_name: ctx
 
+before:
+  hooks:
+    - go mod tidy
+    - sh -c "mkdir -p completions && go run ./cmd/ctx completion bash > completions/ctx.bash && go run ./cmd/ctx completion zsh > completions/_ctx && go run ./cmd/ctx completion fish > completions/ctx.fish"
+
 builds:
   - main: ./cmd/ctx
     binary: ctx
@@ -20,23 +25,102 @@ builds:
 archives:
   - format: tar.gz
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - completions/*
+      - LICENSE*
+      - README*
     format_overrides:
       - goos: windows
         format: zip
 
 checksum:
   name_template: "checksums.txt"
+  algorithm: sha256
 
 changelog:
   sort: asc
+  groups:
+    - title: "Breaking Changes"
+      regexp: '^.*?feat(\(.+\))?!:.*$'
+      order: 0
+    - title: "Features"
+      regexp: '^.*?feat(\(.+\))?:.*$'
+      order: 1
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\(.+\))?:.*$'
+      order: 2
+    - title: "Performance"
+      regexp: '^.*?perf(\(.+\))?:.*$'
+      order: 3
+    - title: "Other"
+      order: 999
   filters:
     exclude:
       - "^docs:"
       - "^test:"
       - "^ci:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: ctx-hq
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://getctx.org"
+    description: "The universal context package manager for LLM agents"
+    license: "MIT"
+    install: |
+      bin.install "ctx"
+      bash_completion.install "completions/ctx.bash" => "ctx"
+      zsh_completion.install "completions/_ctx"
+      fish_completion.install "completions/ctx.fish"
+    test: |
+      system "#{bin}/ctx", "version"
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
+sboms:
+  - artifacts: archive
+
+nfpms:
+  - id: ctx
+    package_name: ctx
+    vendor: ctx-hq
+    homepage: "https://getctx.org"
+    maintainer: "ctx-hq <hi@ctx.st>"
+    description: "The universal context package manager for LLM agents"
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: completions/ctx.bash
+        dst: /usr/share/bash-completion/completions/ctx
+      - src: completions/_ctx
+        dst: /usr/share/zsh/vendor-completions/_ctx
+      - src: completions/ctx.fish
+        dst: /usr/share/fish/vendor_completions.d/ctx.fish
+
+scoops:
+  - repository:
+      owner: ctx-hq
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://getctx.org"
+    description: "The universal context package manager for LLM agents"
+    license: "MIT"
 
 release:
   github:
-    owner: getctx
+    owner: ctx-hq
     name: ctx
   prerelease: auto
