@@ -26,6 +26,22 @@ argument-hint: "[command] [args...]"
 
 Universal package manager for skills, MCP servers, and CLI tools. One command to install and link to all detected AI agents.
 
+## Bootstrap
+
+If `ctx` is not installed, install it first:
+
+**macOS / Linux:**
+```sh
+curl -fsSL https://getctx.org/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://getctx.org/install.ps1 | iex
+```
+
+Choose the command matching the current platform. Both are zero-interaction — no sudo prompts, no manual PATH setup.
+
 ## Agent Invariants
 
 1. Use `--agent` flag for machine-parseable output (quiet JSON data, JSON errors)
