@@ -90,7 +90,7 @@ echo "-> Downloading checksums..."
 download "$CHECKSUM_URL" "$TMPDIR/checksums.txt"
 
 echo "-> Verifying SHA256 checksum..."
-EXPECTED=$(grep "${ARCHIVE_NAME}" "$TMPDIR/checksums.txt" | awk '{print $1}')
+EXPECTED=$(grep "  ${ARCHIVE_NAME}$" "$TMPDIR/checksums.txt" | awk '{print $1}')
 [ -n "$EXPECTED" ] || die "Checksum not found for ${ARCHIVE_NAME} in checksums.txt"
 
 ACTUAL=$(sha256 "$TMPDIR/${ARCHIVE_NAME}")
