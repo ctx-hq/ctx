@@ -40,17 +40,72 @@ type MCPConfig struct {
 	URL     string            `json:"url,omitempty"`
 }
 
+// simpleAgent covers all agents whose behaviour differs only in name and paths.
+type simpleAgent struct {
+	name         string
+	home         string
+	configDir    string // relative to home, e.g. ".claude" or ".config/zed"
+	skillsSubdir string // subdirectory under configDir for skills; defaults to "skills"
+}
+
+func newSimpleAgent(name, configDir string) Agent {
+	return &simpleAgent{name: name, home: mustHomeDir(), configDir: configDir, skillsSubdir: "skills"}
+}
+
+func newSimpleAgentWithSkillsDir(name, configDir, skillsSubdir string) Agent {
+	return &simpleAgent{name: name, home: mustHomeDir(), configDir: configDir, skillsSubdir: skillsSubdir}
+}
+
+func (a *simpleAgent) Name() string { return a.name }
+
+func (a *simpleAgent) Detected() bool {
+	_, err := os.Stat(filepath.Join(a.home, a.configDir))
+	return err == nil
+}
+
+func (a *simpleAgent) SkillsDir() string {
+	return filepath.Join(a.home, a.configDir, a.skillsSubdir)
+}
+
+func (a *simpleAgent) InstallSkill(srcDir, skillName string) error {
+	return installSkillBySymlink(a.SkillsDir(), srcDir, skillName)
+}
+
+func (a *simpleAgent) RemoveSkill(skillName string) error {
+	return removeSkillDir(a.SkillsDir(), skillName)
+}
+
+func (a *simpleAgent) AddMCP(name string, config MCPConfig) error {
+	return writeMCPConfig(filepath.Join(a.home, a.configDir, "mcp.json"), name, config)
+}
+
+func (a *simpleAgent) RemoveMCP(name string) error {
+	return removeMCPFromConfig(filepath.Join(a.home, a.configDir, "mcp.json"), name)
+}
+
 // agentConstructors is the single source of truth for all known agents.
 // Order matters: more specific agents should come before generic.
 var agentConstructors = []struct {
 	name string
 	new  func() Agent
 }{
-	{"claude", NewClaudeAgent},
-	{"cursor", NewCursorAgent},
-	{"windsurf", NewWindsurfAgent},
-	{"opencode", NewOpenCodeAgent},
+	{"claude", func() Agent { return newSimpleAgent("claude", ".claude") }},
+	{"cursor", func() Agent { return newSimpleAgent("cursor", ".cursor") }},
+	{"windsurf", func() Agent { return newSimpleAgent("windsurf", ".windsurf") }},
+	{"opencode", func() Agent { return newSimpleAgentWithSkillsDir("opencode", ".config/opencode", "skill") }},
 	{"codex", NewCodexAgent},
+	{"copilot", func() Agent { return newSimpleAgent("copilot", ".config/github-copilot") }},
+	{"cline", func() Agent { return newSimpleAgent("cline", ".cline") }},
+	{"continue", func() Agent { return newSimpleAgent("continue", ".continue") }},
+	{"zed", func() Agent { return newSimpleAgent("zed", ".config/zed") }},
+	{"roo", func() Agent { return newSimpleAgent("roo", ".roo-code") }},
+	{"goose", func() Agent { return newSimpleAgent("goose", ".config/goose") }},
+	{"amp", func() Agent { return newSimpleAgent("amp", ".amp") }},
+	{"trae", func() Agent { return newSimpleAgent("trae", ".trae") }},
+	{"kilo", func() Agent { return newSimpleAgent("kilo", ".kilo-code") }},
+	{"pear", func() Agent { return newSimpleAgent("pear", ".pear-ai") }},
+	{"junie", func() Agent { return newSimpleAgent("junie", ".junie") }},
+	{"aider", func() Agent { return newSimpleAgent("aider", ".aider") }},
 	{"generic", NewGenericAgent},
 }
 
