@@ -8,7 +8,8 @@ import (
 	"github.com/getctx/ctx/internal/output"
 )
 
-// LinkMCPToAgents configures an MCP server in all detected agents.
+// LinkMCPToAgents configures an MCP server in all detected agents and records
+// the config entries in the LinkRegistry for later cleanup.
 func LinkMCPToAgents(m *manifest.Manifest) error {
 	if m.MCP == nil {
 		return fmt.Errorf("package is not an MCP server")
@@ -32,6 +33,11 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 		return nil
 	}
 
+	links, linkErr := LoadLinks()
+	if linkErr != nil {
+		links = &LinkRegistry{Version: linksFileVersion, Links: make(map[string][]LinkEntry)}
+	}
+
 	name := m.ShortName()
 	for _, a := range agents {
 		if err := a.AddMCP(name, cfg); err != nil {
@@ -39,7 +45,16 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 			continue
 		}
 		output.PrintDim("  Configured in: %s", a.Name())
+
+		links.Add(m.Name, LinkEntry{
+			Agent:     a.Name(),
+			Type:      LinkConfig,
+			Source:    m.Name,
+			ConfigKey: name,
+		})
 	}
+
+	links.Save() // best effort
 	return nil
 }
 

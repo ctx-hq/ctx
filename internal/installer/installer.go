@@ -70,10 +70,18 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 		return nil, fmt.Errorf("invalid package name: %w", err)
 	}
 
-	installDir := filepath.Join(i.DataDir, resolution.FullName)
+	// Versioned storage: ~/.ctx/packages/@scope/name/{version}/
+	versionDir := i.VersionDir(resolution.FullName, resolution.Version)
+	pkgDir := i.PackageDir(resolution.FullName)
 
-	// Download and extract
-	if resolution.DownloadURL != "" {
+	// Check if this exact version is already installed
+	versionExists := false
+	if _, err := os.Stat(versionDir); err == nil {
+		versionExists = true
+	}
+
+	// Download and extract to versioned directory (skip if version already exists)
+	if !versionExists && resolution.DownloadURL != "" {
 		var body io.ReadCloser
 		switch resolution.Source {
 		case "registry":
@@ -90,13 +98,11 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 		if body != nil {
 			defer body.Close()
 
-			// Extract to a temp dir first, then atomically swap into place
-			// to avoid leaving a dirty state on partial update
-			parentDir := filepath.Dir(installDir)
-			if err := os.MkdirAll(parentDir, 0o755); err != nil {
-				return nil, fmt.Errorf("create parent dir: %w", err)
+			// Extract to a temp dir first, then atomically move to version dir
+			if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+				return nil, fmt.Errorf("create package dir: %w", err)
 			}
-			tmpDir, err := os.MkdirTemp(parentDir, ".ctx-install-*")
+			tmpDir, err := os.MkdirTemp(pkgDir, ".ctx-install-*")
 			if err != nil {
 				return nil, fmt.Errorf("create temp dir: %w", err)
 			}
@@ -115,22 +121,29 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 				return nil, fmt.Errorf("write manifest: %w", err)
 			}
 
-			// Atomic swap: remove old, rename temp to final
-			if err := os.RemoveAll(installDir); err != nil {
-				return nil, fmt.Errorf("remove old install dir: %w", err)
-			}
-			if err := os.Rename(tmpDir, installDir); err != nil {
-				return nil, fmt.Errorf("rename temp dir: %w", err)
+			// Atomic move: rename temp to version dir
+			if err := os.Rename(tmpDir, versionDir); err != nil {
+				return nil, fmt.Errorf("rename to version dir: %w", err)
 			}
 		}
-	} else {
-		// No download URL — just ensure the directory exists
-		if err := os.MkdirAll(installDir, 0o755); err != nil {
-			return nil, fmt.Errorf("create install dir: %w", err)
+	} else if !versionExists {
+		// No download URL — just ensure the version directory exists
+		if err := os.MkdirAll(versionDir, 0o755); err != nil {
+			return nil, fmt.Errorf("create version dir: %w", err)
 		}
 	}
 
-	// Update lockfile
+	// Switch current symlink to new version
+	if err := SwitchCurrent(pkgDir, resolution.Version); err != nil {
+		return nil, fmt.Errorf("switch current: %w", err)
+	}
+
+	// Update lockfile — InstallPath points to current/ (follows symlink)
+	return i.updateLockAndResult(resolution, &m)
+}
+
+// updateLockAndResult updates the lockfile and returns the install result.
+func (i *Installer) updateLockAndResult(resolution *resolver.Resolution, m *manifest.Manifest) (*InstallResult, error) {
 	lockPath := config.LockFilePath()
 	lf, err := LoadLockFile(lockPath)
 	if err != nil {
@@ -138,13 +151,14 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 	}
 
 	isNew := !lf.Has(resolution.FullName)
+	currentPath := i.CurrentLink(resolution.FullName)
 	lf.Add(LockEntry{
 		FullName:    resolution.FullName,
 		Version:     resolution.Version,
 		Type:        string(m.Type),
 		Source:      resolution.Source,
 		SHA256:      resolution.SHA256,
-		InstallPath: installDir,
+		InstallPath: currentPath,
 	})
 
 	if err := lf.Save(lockPath); err != nil {
@@ -155,13 +169,13 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 		FullName:    resolution.FullName,
 		Version:     resolution.Version,
 		Type:        string(m.Type),
-		InstallPath: installDir,
+		InstallPath: currentPath,
 		Source:      resolution.Source,
 		IsNew:       isNew,
 	}, nil
 }
 
-// Remove uninstalls a package.
+// Remove uninstalls a package, cleaning up links, lockfile, and all version directories.
 func (i *Installer) Remove(ctx context.Context, fullName string) error {
 	// Load lockfile
 	lockPath := config.LockFilePath()
@@ -170,23 +184,32 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		return fmt.Errorf("load lockfile: %w", err)
 	}
 
-	entry, ok := lf.Get(fullName)
-	if !ok {
+	if !lf.Has(fullName) {
 		return fmt.Errorf("package %s is not installed", fullName)
 	}
 
-	// Update lockfile first to avoid dangling references on partial failure
+	// 1. Clean up links first (symlinks, MCP configs)
+	links, linkErr := LoadLinks()
+	if linkErr == nil {
+		entries := links.Remove(fullName)
+		CleanupLinks(entries)
+		links.Save() // best effort
+	}
+
+	// 2. Update lockfile
 	lf.Remove(fullName)
 	if err := lf.Save(lockPath); err != nil {
 		return fmt.Errorf("save lockfile: %w", err)
 	}
 
-	// Then remove install directory
-	if entry.InstallPath != "" {
-		if err := os.RemoveAll(entry.InstallPath); err != nil {
-			return fmt.Errorf("remove install dir: %w", err)
-		}
+	// 3. Remove entire package directory (all versions + current symlink)
+	pkgDir := i.PackageDir(fullName)
+	if err := os.RemoveAll(pkgDir); err != nil {
+		return fmt.Errorf("remove package dir: %w", err)
 	}
+
+	// Clean up empty parent directories (scope dir)
+	cleanEmptyParents(filepath.Dir(pkgDir))
 
 	return nil
 }

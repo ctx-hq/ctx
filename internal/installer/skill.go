@@ -2,17 +2,24 @@ package installer
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/getctx/ctx/internal/agent"
 	"github.com/getctx/ctx/internal/output"
 )
 
-// LinkSkillToAgents links an installed skill to all detected agents.
-func LinkSkillToAgents(installDir, skillName string) error {
+// LinkSkillToAgents links an installed skill to all detected agents and records
+// the links in the LinkRegistry for later cleanup.
+func LinkSkillToAgents(installDir, skillName, fullName string) error {
 	agents := agent.DetectAll()
 	if len(agents) == 0 {
 		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
 		return nil
+	}
+
+	links, linkErr := LoadLinks()
+	if linkErr != nil {
+		links = &LinkRegistry{Version: linksFileVersion, Links: make(map[string][]LinkEntry)}
 	}
 
 	for _, a := range agents {
@@ -21,7 +28,16 @@ func LinkSkillToAgents(installDir, skillName string) error {
 			continue
 		}
 		output.PrintDim("  Linked to: %s", a.Name())
+
+		links.Add(fullName, LinkEntry{
+			Agent:  a.Name(),
+			Type:   LinkSymlink,
+			Source: installDir,
+			Target: filepath.Join(a.SkillsDir(), skillName),
+		})
 	}
+
+	links.Save() // best effort
 	return nil
 }
 

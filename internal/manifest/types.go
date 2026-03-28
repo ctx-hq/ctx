@@ -31,8 +31,16 @@ type Manifest struct {
 	MCP   *MCPSpec   `yaml:"mcp,omitempty" json:"mcp,omitempty"`
 	CLI   *CLISpec   `yaml:"cli,omitempty" json:"cli,omitempty"`
 
+	Source       *SourceSpec        `yaml:"source,omitempty" json:"source,omitempty"`
 	Install      *InstallSpec      `yaml:"install,omitempty" json:"install,omitempty"`
 	Dependencies map[string]string `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
+}
+
+// SourceSpec describes an external source for adapter packages (Homebrew formula pattern).
+type SourceSpec struct {
+	GitHub string `yaml:"github,omitempty" json:"github,omitempty"` // owner/repo
+	Path   string `yaml:"path,omitempty" json:"path,omitempty"`     // path within repo
+	Ref    string `yaml:"ref,omitempty" json:"ref,omitempty"`       // tag, branch, or commit
 }
 
 // Scope returns the @scope part of the name.
@@ -76,9 +84,10 @@ type EnvVar struct {
 
 // CLISpec contains CLI tool configuration.
 type CLISpec struct {
-	Binary  string       `yaml:"binary" json:"binary"`
-	Verify  string       `yaml:"verify,omitempty" json:"verify,omitempty"`
-	Require *RequireSpec `yaml:"require,omitempty" json:"require,omitempty"`
+	Binary     string       `yaml:"binary" json:"binary"`
+	Verify     string       `yaml:"verify,omitempty" json:"verify,omitempty"`
+	Compatible string       `yaml:"compatible,omitempty" json:"compatible,omitempty"` // semver range for CLI version
+	Require    *RequireSpec `yaml:"require,omitempty" json:"require,omitempty"`
 }
 
 // RequireSpec declares runtime prerequisites.

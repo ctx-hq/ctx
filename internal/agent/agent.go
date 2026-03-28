@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // mustHomeDir returns the user home directory or panics if unavailable.
@@ -39,16 +40,25 @@ type MCPConfig struct {
 	URL     string            `json:"url,omitempty"`
 }
 
+// agentConstructors is the single source of truth for all known agents.
+// Order matters: more specific agents should come before generic.
+var agentConstructors = []struct {
+	name string
+	new  func() Agent
+}{
+	{"claude", NewClaudeAgent},
+	{"cursor", NewCursorAgent},
+	{"windsurf", NewWindsurfAgent},
+	{"opencode", NewOpenCodeAgent},
+	{"codex", NewCodexAgent},
+	{"generic", NewGenericAgent},
+}
+
 // DetectAll finds all installed agents on the system.
 func DetectAll() []Agent {
-	all := []Agent{
-		NewClaudeAgent(),
-		NewCursorAgent(),
-		NewWindsurfAgent(),
-		NewGenericAgent(),
-	}
 	var detected []Agent
-	for _, a := range all {
+	for _, ac := range agentConstructors {
+		a := ac.new()
 		if a.Detected() {
 			detected = append(detected, a)
 		}
@@ -58,25 +68,21 @@ func DetectAll() []Agent {
 
 // FindByName returns a specific agent by name.
 func FindByName(name string) (Agent, error) {
-	for _, a := range DetectAll() {
-		if a.Name() == name {
-			return a, nil
+	for _, ac := range agentConstructors {
+		if ac.name == name {
+			return ac.new(), nil
 		}
 	}
-	// Also check non-detected agents
-	all := map[string]Agent{
-		"claude":   NewClaudeAgent(),
-		"cursor":   NewCursorAgent(),
-		"windsurf": NewWindsurfAgent(),
-		"generic":  NewGenericAgent(),
+	names := make([]string, len(agentConstructors))
+	for i, ac := range agentConstructors {
+		names[i] = ac.name
 	}
-	if a, ok := all[name]; ok {
-		return a, nil
-	}
-	return nil, fmt.Errorf("unknown agent: %s (available: claude, cursor, windsurf, generic)", name)
+	return nil, fmt.Errorf("unknown agent: %s (available: %s)", name, strings.Join(names, ", "))
 }
 
 // installSkillBySymlink creates a symlink from the agent's skills dir to the source.
+// Falls back to copying with a .ctx-managed marker if symlink creation fails
+// (e.g., on Windows without developer mode, or cross-filesystem).
 func installSkillBySymlink(skillsDir, srcDir, skillName string) error {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		return fmt.Errorf("create skills dir: %w", err)
@@ -86,7 +92,53 @@ func installSkillBySymlink(skillsDir, srcDir, skillName string) error {
 	if err := os.RemoveAll(target); err != nil {
 		return fmt.Errorf("remove existing skill: %w", err)
 	}
-	return os.Symlink(srcDir, target)
+
+	// Try symlink first
+	if err := os.Symlink(srcDir, target); err == nil {
+		return nil
+	}
+
+	// Fallback: copy directory with .ctx-managed marker
+	return copyDirWithMarker(srcDir, target)
+}
+
+// copyDirWithMarker copies a directory and writes a .ctx-managed marker.
+func copyDirWithMarker(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDirWithMarker(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Write marker to indicate ctx manages this copy
+	return os.WriteFile(filepath.Join(dst, ".ctx-managed"),
+		[]byte("managed by ctx - do not edit manually\n"), 0o644)
 }
 
 // removeSkillDir removes a skill from the skills directory.

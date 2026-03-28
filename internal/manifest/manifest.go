@@ -14,8 +14,9 @@ import (
 const FileName = "ctx.yaml"
 
 var (
-	nameRegex    = regexp.MustCompile(`^@[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
-	semverRegex  = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$`)
+	nameRegex      = regexp.MustCompile(`^@[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+	semverRegex    = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$`)
+	githubRepoRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
 )
 
 // LoadFromDir reads and parses ctx.yaml from a directory.
@@ -101,6 +102,22 @@ func Validate(m *Manifest) []string {
 			errs = append(errs, "cli section is required for type=cli")
 		} else if m.CLI.Binary == "" {
 			errs = append(errs, "cli.binary is required")
+		}
+	}
+
+	// Validate source spec (adapter packages)
+	if m.Source != nil {
+		if m.Source.GitHub != "" && !githubRepoRegex.MatchString(m.Source.GitHub) {
+			errs = append(errs, fmt.Sprintf("source.github %q must be owner/repo format", m.Source.GitHub))
+		}
+	}
+
+	// Validate cli.compatible constraint (if present)
+	if m.CLI != nil && m.CLI.Compatible != "" {
+		// Basic check: should look like a semver constraint
+		c := m.CLI.Compatible
+		if !strings.ContainsAny(c, ">=<^~*") && !semverRegex.MatchString(c) {
+			errs = append(errs, fmt.Sprintf("cli.compatible %q must be a valid semver constraint", c))
 		}
 	}
 
