@@ -104,7 +104,9 @@ ctx validate                        # Validate your manifest
 ctx publish                         # Publish to the registry
 ```
 
-### Organization
+### Organization (coming soon)
+
+Organization commands are planned but not yet implemented:
 
 ```bash
 ctx org create <name>               # Create an organization

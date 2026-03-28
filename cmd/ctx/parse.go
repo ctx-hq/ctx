@@ -26,5 +26,11 @@ func parsePackageRef(ref string) (fullName, version string, err error) {
 		return "", "", fmt.Errorf("version is required")
 	}
 
+	// Validate @scope/name structure: must contain "/" with non-empty scope and name
+	slashIdx := strings.Index(fullName[1:], "/")
+	if slashIdx == -1 || slashIdx == 0 || slashIdx == len(fullName[1:])-1 {
+		return "", "", fmt.Errorf("invalid package reference: expected @scope/name@version, got %s", ref)
+	}
+
 	return fullName, version, nil
 }

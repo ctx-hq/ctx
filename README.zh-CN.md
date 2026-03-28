@@ -104,7 +104,9 @@ ctx validate                        # 验证清单文件
 ctx publish                         # 发布到注册表
 ```
 
-### 组织管理
+### 组织管理（即将推出）
+
+组织管理命令已规划但尚未实现：
 
 ```bash
 ctx org create <name>               # 创建组织

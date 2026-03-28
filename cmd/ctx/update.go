@@ -6,6 +6,7 @@ import (
 
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/installer"
+	"github.com/getctx/ctx/internal/manifest"
 	"github.com/getctx/ctx/internal/output"
 	"github.com/getctx/ctx/internal/registry"
 	"github.com/getctx/ctx/internal/resolver"
@@ -120,7 +121,11 @@ Examples:
 		results := make([]updateResult, len(needsUpdate))
 		sem := make(chan struct{}, maxParallelDownloads)
 		var wg sync.WaitGroup
-		var mu sync.Mutex // serialize Install calls to protect shared lockfile
+		type installIntermediate struct {
+			resolution *resolver.Resolution
+			manifest   *manifest.Manifest
+		}
+		intermediates := make([]installIntermediate, len(needsUpdate))
 
 		for idx, target := range needsUpdate {
 			wg.Add(1)
@@ -129,9 +134,7 @@ Examples:
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
-				mu.Lock()
-				result, err := inst.Install(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
-				mu.Unlock()
+				res, m, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
 				if err != nil {
 					results[i] = updateResult{
 						FullName:   t.entry.FullName,
@@ -142,15 +145,30 @@ Examples:
 					}
 					return
 				}
+				intermediates[i] = installIntermediate{resolution: res, manifest: m}
 				results[i] = updateResult{
 					FullName:   t.entry.FullName,
 					OldVersion: t.entry.Version,
-					NewVersion: result.Version,
-					Updated:    result.Version != t.entry.Version,
+					NewVersion: res.Version,
+					Updated:    res.Version != t.entry.Version,
 				}
 			}(idx, target)
 		}
 		wg.Wait()
+
+		// Phase 3b: Sequentially update lockfile for successful installs
+		for i, im := range intermediates {
+			if im.resolution == nil {
+				continue // failed during InstallFiles
+			}
+			lockResult, err := inst.UpdateLock(im.resolution, im.manifest)
+			if err != nil {
+				results[i].Error = err.Error()
+				results[i].Updated = false
+				continue
+			}
+			results[i].NewVersion = lockResult.Version
+		}
 
 		// Phase 4: Report results
 		updatedCount := 0

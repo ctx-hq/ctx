@@ -44,12 +44,14 @@ type InstallResult struct {
 	IsNew       bool   `json:"is_new"`
 }
 
-// Install installs a package from a reference like "@scope/name@^1.0".
-func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, error) {
+// InstallFiles resolves, downloads, extracts, and symlinks a package without
+// updating the lockfile. It is safe to call concurrently for different packages.
+// Use UpdateLock afterwards to persist the result to the lockfile.
+func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Resolution, *manifest.Manifest, error) {
 	// Resolve version
 	resolution, err := i.Resolver.Resolve(ctx, ref)
 	if err != nil {
-		return nil, fmt.Errorf("resolve: %w", err)
+		return nil, nil, fmt.Errorf("resolve: %w", err)
 	}
 
 	// Parse manifest from resolution
@@ -67,7 +69,7 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 
 	// Validate full name to prevent path traversal
 	if err := validatePackageName(resolution.FullName); err != nil {
-		return nil, fmt.Errorf("invalid package name: %w", err)
+		return nil, nil, fmt.Errorf("invalid package name: %w", err)
 	}
 
 	// Versioned storage: ~/.ctx/packages/@scope/name/{version}/
@@ -87,12 +89,12 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 		case "registry":
 			body, err = i.Registry.Download(ctx, resolution.FullName, resolution.Version)
 			if err != nil {
-				return nil, fmt.Errorf("download: %w", err)
+				return nil, nil, fmt.Errorf("download: %w", err)
 			}
 		case "github":
 			body, err = downloadURL(ctx, resolution.DownloadURL)
 			if err != nil {
-				return nil, fmt.Errorf("download from github: %w", err)
+				return nil, nil, fmt.Errorf("download from github: %w", err)
 			}
 		}
 		if body != nil {
@@ -100,46 +102,60 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 
 			// Extract to a temp dir first, then atomically move to version dir
 			if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-				return nil, fmt.Errorf("create package dir: %w", err)
+				return nil, nil, fmt.Errorf("create package dir: %w", err)
 			}
 			tmpDir, err := os.MkdirTemp(pkgDir, ".ctx-install-*")
 			if err != nil {
-				return nil, fmt.Errorf("create temp dir: %w", err)
+				return nil, nil, fmt.Errorf("create temp dir: %w", err)
 			}
 			defer os.RemoveAll(tmpDir) // clean up on failure
 
 			if err := extractArchive(body, tmpDir); err != nil {
-				return nil, fmt.Errorf("extract package: %w", err)
+				return nil, nil, fmt.Errorf("extract package: %w", err)
 			}
 
 			// Write manifest into the temp dir
 			manifestData, err := json.MarshalIndent(m, "", "  ")
 			if err != nil {
-				return nil, fmt.Errorf("marshal manifest: %w", err)
+				return nil, nil, fmt.Errorf("marshal manifest: %w", err)
 			}
 			if err := os.WriteFile(filepath.Join(tmpDir, "manifest.json"), manifestData, 0o644); err != nil {
-				return nil, fmt.Errorf("write manifest: %w", err)
+				return nil, nil, fmt.Errorf("write manifest: %w", err)
 			}
 
 			// Atomic move: rename temp to version dir
 			if err := os.Rename(tmpDir, versionDir); err != nil {
-				return nil, fmt.Errorf("rename to version dir: %w", err)
+				return nil, nil, fmt.Errorf("rename to version dir: %w", err)
 			}
 		}
 	} else if !versionExists {
 		// No download URL — just ensure the version directory exists
 		if err := os.MkdirAll(versionDir, 0o755); err != nil {
-			return nil, fmt.Errorf("create version dir: %w", err)
+			return nil, nil, fmt.Errorf("create version dir: %w", err)
 		}
 	}
 
 	// Switch current symlink to new version
 	if err := SwitchCurrent(pkgDir, resolution.Version); err != nil {
-		return nil, fmt.Errorf("switch current: %w", err)
+		return nil, nil, fmt.Errorf("switch current: %w", err)
 	}
 
-	// Update lockfile — InstallPath points to current/ (follows symlink)
-	return i.updateLockAndResult(resolution, &m)
+	return resolution, &m, nil
+}
+
+// UpdateLock persists an install result to the lockfile. Not safe for concurrent
+// use — callers must serialize access when updating in parallel.
+func (i *Installer) UpdateLock(resolution *resolver.Resolution, m *manifest.Manifest) (*InstallResult, error) {
+	return i.updateLockAndResult(resolution, m)
+}
+
+// Install installs a package from a reference like "@scope/name@^1.0".
+func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, error) {
+	resolution, m, err := i.InstallFiles(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return i.updateLockAndResult(resolution, m)
 }
 
 // updateLockAndResult updates the lockfile and returns the install result.
