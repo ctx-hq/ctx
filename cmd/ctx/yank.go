@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/output"
 	"github.com/getctx/ctx/internal/registry"
@@ -23,24 +21,9 @@ Examples:
 		ref := args[0]
 
 		// Parse @scope/name@version
-		var fullName, version string
-		if strings.HasPrefix(ref, "@") {
-			rest := ref[1:]
-			atIdx := strings.LastIndex(rest, "@")
-			if atIdx == -1 {
-				return output.ErrUsageHint(
-					"must specify version: "+ref+"@<version>",
-					"Example: ctx yank @scope/name@1.0.0",
-				)
-			}
-			fullName = ref[:atIdx+1]
-			version = rest[atIdx+1:]
-		} else {
-			return output.ErrUsage("invalid package reference: " + ref)
-		}
-
-		if version == "" {
-			return output.ErrUsage("version is required")
+		fullName, version, err := parsePackageRef(ref)
+		if err != nil {
+			return output.ErrUsageHint(err.Error(), "Example: ctx yank @scope/name@1.0.0")
 		}
 
 		cfg, err := config.Load()

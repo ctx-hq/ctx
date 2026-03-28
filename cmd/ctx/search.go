@@ -28,6 +28,14 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
+
+		if searchType != "" && searchType != "skill" && searchType != "mcp" && searchType != "cli" {
+			return output.ErrUsage("--type must be skill, mcp, or cli")
+		}
+		if searchLimit < 1 || searchLimit > 100 {
+			return output.ErrUsage("--limit must be between 1 and 100")
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err

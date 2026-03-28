@@ -30,6 +30,10 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
 
+		if pruneKeep < 1 {
+			return output.ErrUsage("--keep must be at least 1")
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err

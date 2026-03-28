@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/getctx/ctx/internal/agent"
@@ -151,7 +152,7 @@ configuration, network connectivity, and detected agents.`,
 		} {
 			if _, err := exec.LookPath(pm.cmd); err == nil {
 				out, _ := exec.Command(pm.cmd, "--version").Output()
-				ver := string(out)
+				ver := strings.TrimSpace(string(out))
 				if len(ver) > 40 {
 					ver = ver[:40]
 				}

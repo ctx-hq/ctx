@@ -38,7 +38,10 @@ Examples:
 		}
 
 		// Derive name from current directory
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get working directory: %w", err)
+		}
 		dirName := filepath.Base(cwd)
 		scope := "your-scope" // placeholder
 

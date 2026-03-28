@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/manifest"
@@ -61,7 +62,7 @@ validates it, and uploads to the registry.`,
 
 		// Open archive file if it exists
 		var archive *os.File
-		archivePath := dir + "/package.tar.gz"
+		archivePath := filepath.Join(dir, "package.tar.gz")
 		if f, err := os.Open(archivePath); err == nil {
 			archive = f
 			defer archive.Close()

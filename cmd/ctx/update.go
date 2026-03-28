@@ -120,6 +120,7 @@ Examples:
 		results := make([]updateResult, len(needsUpdate))
 		sem := make(chan struct{}, maxParallelDownloads)
 		var wg sync.WaitGroup
+		var mu sync.Mutex // serialize Install calls to protect shared lockfile
 
 		for idx, target := range needsUpdate {
 			wg.Add(1)
@@ -128,7 +129,9 @@ Examples:
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
+				mu.Lock()
 				result, err := inst.Install(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
+				mu.Unlock()
 				if err != nil {
 					results[i] = updateResult{
 						FullName:   t.entry.FullName,

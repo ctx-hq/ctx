@@ -19,6 +19,11 @@ var listCmd = &cobra.Command{
 	Short:   "List installed packages",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
+
+		if listType != "" && listType != "skill" && listType != "mcp" && listType != "cli" {
+			return output.ErrUsage("--type must be skill, mcp, or cli")
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err

@@ -6,7 +6,6 @@ import (
 
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -32,17 +31,11 @@ var orgCreateCmd = &cobra.Command{
 			return err
 		}
 		if !cfg.IsLoggedIn() {
-			output.Error("Not logged in. Run: ctx login")
-			return nil
+			return output.ErrAuth("not logged in")
 		}
 
-		_ = registry.New(cfg.RegistryURL(), cfg.Token)
 		// TODO: POST /v1/orgs with body {name: args[0]}
-		output.Info("Creating organization @%s...", args[0])
-		// In production this calls POST /v1/orgs
-		output.Success("Organization @%s created", args[0])
-		output.PrintDim("  Publish packages with: ctx publish (scope set to @%s)", args[0])
-		return nil
+		return fmt.Errorf("org create is not yet implemented")
 	},
 }
 
@@ -51,17 +44,13 @@ var orgInfoCmd = &cobra.Command{
 	Short: "Show organization details",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		_, err := config.Load()
 		if err != nil {
 			return err
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
-		_ = reg
-
-		// Would call GET /v1/orgs/:name
-		output.Header(fmt.Sprintf("@%s", args[0]))
-		return nil
+		// TODO: GET /v1/orgs/:name
+		return fmt.Errorf("org info is not yet implemented")
 	},
 }
 
@@ -77,23 +66,16 @@ var orgAddCmd = &cobra.Command{
 			return err
 		}
 		if !cfg.IsLoggedIn() {
-			output.Error("Not logged in. Run: ctx login")
-			return nil
+			return output.ErrAuth("not logged in")
 		}
 
-		orgName := args[0]
-		username := args[1]
 		role := strings.ToLower(orgAddMemberRole)
-
 		if role != "owner" && role != "admin" && role != "member" {
 			return fmt.Errorf("role must be owner, admin, or member")
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
-		_ = reg
-
-		output.Success("Added %s to @%s as %s", username, orgName, role)
-		return nil
+		// TODO: POST /v1/orgs/:name/members with body {username, role}
+		return fmt.Errorf("org add is not yet implemented")
 	},
 }
 
@@ -107,15 +89,11 @@ var orgRemoveCmd = &cobra.Command{
 			return err
 		}
 		if !cfg.IsLoggedIn() {
-			output.Error("Not logged in. Run: ctx login")
-			return nil
+			return output.ErrAuth("not logged in")
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
-		_ = reg
-
-		output.Success("Removed %s from @%s", args[1], args[0])
-		return nil
+		// TODO: DELETE /v1/orgs/:name/members/:username
+		return fmt.Errorf("org remove is not yet implemented")
 	},
 }
 

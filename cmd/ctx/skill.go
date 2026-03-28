@@ -103,7 +103,9 @@ var skillInstallCmd = &cobra.Command{
 			linked++
 		}
 
-		links.Save()
+		if err := links.Save(); err != nil {
+			return err
+		}
 
 		return w.OK(
 			map[string]any{"installed": true, "linked_agents": linked},
@@ -126,10 +128,15 @@ var skillUninstallCmd = &cobra.Command{
 
 		entries := links.Remove(selfLinkKey)
 		cleaned := installer.CleanupLinks(entries)
-		links.Save()
+		if err := links.Save(); err != nil {
+			return err
+		}
 
 		// Also clean canonical dir
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("get home directory: %w", err)
+		}
 		canonicalDir := filepath.Join(home, ".agents", "skills", "ctx")
 		os.RemoveAll(canonicalDir)
 
