@@ -4,6 +4,7 @@ import (
 	encJSON "encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -290,6 +291,124 @@ func TestLinkRegistry_EmptyRegistry(t *testing.T) {
 	issues := reg.Verify()
 	if len(issues) != 0 {
 		t.Error("Verify on empty registry should return no issues")
+	}
+}
+
+func TestLinkRegistry_PathCompression(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CTX_HOME", dir)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home dir")
+	}
+
+	reg := &LinkRegistry{
+		Version: 1,
+		Links:   make(map[string][]LinkEntry),
+	}
+	reg.Add("@test/pkg", LinkEntry{
+		Agent:  "claude",
+		Type:   LinkSymlink,
+		Source: filepath.Join(home, ".ctx", "packages", "@test", "pkg"),
+		Target: filepath.Join(home, ".claude", "skills", "pkg"),
+	})
+
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Read raw JSON and verify paths use ~
+	raw, err := os.ReadFile(filepath.Join(dir, "links.json"))
+	if err != nil {
+		t.Fatalf("read links.json: %v", err)
+	}
+	content := string(raw)
+
+	if strings.Contains(content, home) {
+		t.Errorf("links.json should not contain home dir %q, got:\n%s", home, content)
+	}
+	if !strings.Contains(content, "~/") && !strings.Contains(content, "~\\") {
+		t.Errorf("links.json should contain ~/relative paths, got:\n%s", content)
+	}
+}
+
+func TestLinkRegistry_PathExpansion(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CTX_HOME", dir)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home dir")
+	}
+
+	// Write links.json with ~ paths directly
+	data := []byte(`{
+  "version": 1,
+  "links": {
+    "@test/pkg": [
+      {
+        "agent": "claude",
+        "type": "symlink",
+        "source": "~/.ctx/packages/@test/pkg",
+        "target": "~/.claude/skills/pkg",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  }
+}`)
+	if err := os.WriteFile(filepath.Join(dir, "links.json"), data, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	reg, err := LoadLinks()
+	if err != nil {
+		t.Fatalf("LoadLinks: %v", err)
+	}
+
+	entries := reg.ForPackage("@test/pkg")
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+
+	expectedSource := filepath.Join(home, ".ctx", "packages", "@test", "pkg")
+	if entries[0].Source != expectedSource {
+		t.Errorf("Source = %q, want %q", entries[0].Source, expectedSource)
+	}
+
+	expectedTarget := filepath.Join(home, ".claude", "skills", "pkg")
+	if entries[0].Target != expectedTarget {
+		t.Errorf("Target = %q, want %q", entries[0].Target, expectedTarget)
+	}
+}
+
+func TestLinkRegistry_NonHomePaths(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CTX_HOME", dir)
+
+	reg := &LinkRegistry{
+		Version: 1,
+		Links:   make(map[string][]LinkEntry),
+	}
+	reg.Add("@test/pkg", LinkEntry{
+		Agent:  "claude",
+		Type:   LinkSymlink,
+		Source: "/opt/ctx/packages/test",
+		Target: "/opt/agents/skills/test",
+	})
+
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Non-home paths should be unchanged
+	raw, err := os.ReadFile(filepath.Join(dir, "links.json"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	content := string(raw)
+	if !strings.Contains(content, "/opt/ctx/packages/test") {
+		t.Errorf("non-home path should be preserved, got:\n%s", content)
 	}
 }
 

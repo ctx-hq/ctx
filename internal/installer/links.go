@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/config"
 )
 
 // LinkType represents the type of external link ctx manages.
@@ -64,6 +65,7 @@ func LoadLinks() (*LinkRegistry, error) {
 	if reg.Links == nil {
 		reg.Links = make(map[string][]LinkEntry)
 	}
+	reg.expandPaths()
 	return &reg, nil
 }
 
@@ -73,11 +75,12 @@ func (r *LinkRegistry) Save() error {
 	path := LinksFilePath()
 	dir := filepath.Dir(path)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create links dir: %w", err)
 	}
 
-	data, err := json.MarshalIndent(r, "", "  ")
+	compressed := r.compressedCopy()
+	data, err := json.MarshalIndent(compressed, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal links.json: %w", err)
 	}
@@ -261,6 +264,65 @@ func CleanupLinks(entries []LinkEntry) int {
 		}
 	}
 	return cleaned
+}
+
+// compressedCopy returns a copy with home directory paths replaced by "~".
+func (r *LinkRegistry) compressedCopy() *LinkRegistry {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return r
+	}
+	homePrefix := home + string(filepath.Separator)
+
+	clone := &LinkRegistry{
+		Version: r.Version,
+		Links:   make(map[string][]LinkEntry, len(r.Links)),
+	}
+	for k, entries := range r.Links {
+		compressed := make([]LinkEntry, len(entries))
+		for i, e := range entries {
+			e.Source = compressPath(e.Source, home, homePrefix)
+			e.Target = compressPath(e.Target, home, homePrefix)
+			compressed[i] = e
+		}
+		clone.Links[k] = compressed
+	}
+	return clone
+}
+
+func compressPath(p, home, homePrefix string) string {
+	if p == home {
+		return "~"
+	}
+	if strings.HasPrefix(p, homePrefix) {
+		return filepath.Join("~", strings.TrimPrefix(p, homePrefix))
+	}
+	return p
+}
+
+// expandPaths replaces "~" prefixed paths with the actual home directory.
+func (r *LinkRegistry) expandPaths() {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	for k, entries := range r.Links {
+		for i, e := range entries {
+			entries[i].Source = expandPath(e.Source, home)
+			entries[i].Target = expandPath(e.Target, home)
+		}
+		r.Links[k] = entries
+	}
+}
+
+func expandPath(p, home string) string {
+	if p == "~" {
+		return home
+	}
+	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+		return filepath.Join(home, strings.TrimPrefix(p, "~"+string(filepath.Separator)))
+	}
+	return p
 }
 
 // cleanEmptyParents removes empty parent directories up to a reasonable depth.

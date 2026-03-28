@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -26,11 +26,7 @@ var orgCreateCmd = &cobra.Command{
 	Short: "Create a new organization",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		if !cfg.IsLoggedIn() {
+		if getToken() == "" {
 			return output.ErrAuth("not logged in")
 		}
 
@@ -61,11 +57,7 @@ var orgAddCmd = &cobra.Command{
 	Short: "Add a member to an organization",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		if !cfg.IsLoggedIn() {
+		if getToken() == "" {
 			return output.ErrAuth("not logged in")
 		}
 
@@ -84,11 +76,7 @@ var orgRemoveCmd = &cobra.Command{
 	Short: "Remove a member from an organization",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		if !cfg.IsLoggedIn() {
+		if getToken() == "" {
 			return output.ErrAuth("not logged in")
 		}
 

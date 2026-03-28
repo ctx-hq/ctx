@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -12,13 +12,16 @@ var infoCmd = &cobra.Command{
 	Short: "Show package details",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 		pkg, err := reg.GetPackage(cmd.Context(), args[0])
 		if err != nil {
 			return err

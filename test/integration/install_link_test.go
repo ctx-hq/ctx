@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
 // TestInstallRemoveRoundtrip verifies that install → remove leaves no traces.

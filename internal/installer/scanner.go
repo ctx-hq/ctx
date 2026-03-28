@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/getctx/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
 // InstalledPackage represents a package found on the filesystem.

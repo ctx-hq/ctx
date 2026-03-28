@@ -3,9 +3,9 @@ package installer
 import (
 	"fmt"
 
-	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/manifest"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // LinkMCPToAgents configures an MCP server in all detected agents and records

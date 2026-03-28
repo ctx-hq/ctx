@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/getctx/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/installer"
 )
 
 // TestVersionLifecycle tests: install v1 → install v2 → use v1 → prune

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -50,7 +50,7 @@ configuration, network connectivity, and detected agents.`,
 		}
 
 		// 3. Auth
-		if cfg != nil && cfg.IsLoggedIn() {
+		if cfg != nil && getToken() != "" {
 			add("auth", "pass", fmt.Sprintf("logged in as %s", cfg.Username))
 		} else {
 			addHint("auth", "warn", "not logged in", "Run 'ctx login' to authenticate")

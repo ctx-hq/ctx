@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/manifest"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/resolver"
 )
 
 // Installer handles downloading and placing packages.
@@ -108,7 +108,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			defer body.Close()
 
 			// Extract to a temp dir first, then atomically move to version dir
-			if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
 				return nil, nil, fmt.Errorf("create package dir: %w", err)
 			}
 			tmpDir, err := os.MkdirTemp(pkgDir, ".ctx-install-*")
@@ -137,7 +137,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		}
 	} else if !versionExists {
 		// No download URL — create version dir with manifest and content
-		if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		if err := os.MkdirAll(versionDir, 0o700); err != nil {
 			return nil, nil, fmt.Errorf("create version dir: %w", err)
 		}
 		// Always write manifest so post-install linking can find it
@@ -226,6 +226,7 @@ func downloadURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", config.UserAgent())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -285,7 +286,7 @@ func extractArchive(r io.Reader, destDir string) error {
 		}
 
 		// Create parent directories
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 			return err
 		}
 

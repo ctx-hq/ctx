@@ -3,7 +3,7 @@ package main
 import (
 	"runtime"
 
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 

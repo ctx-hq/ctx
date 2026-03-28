@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/getctx/ctx/internal/manifest"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 

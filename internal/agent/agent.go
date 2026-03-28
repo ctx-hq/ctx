@@ -139,7 +139,7 @@ func FindByName(name string) (Agent, error) {
 // Falls back to copying with a .ctx-managed marker if symlink creation fails
 // (e.g., on Windows without developer mode, or cross-filesystem).
 func installSkillBySymlink(skillsDir, srcDir, skillName string) error {
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
 		return fmt.Errorf("create skills dir: %w", err)
 	}
 	target := filepath.Join(skillsDir, skillName)
@@ -159,7 +159,7 @@ func installSkillBySymlink(skillsDir, srcDir, skillName string) error {
 
 // copyDirWithMarker copies a directory and writes a .ctx-managed marker.
 func copyDirWithMarker(src, dst string) error {
-	if err := os.MkdirAll(dst, 0o755); err != nil {
+	if err := os.MkdirAll(dst, 0o700); err != nil {
 		return err
 	}
 
@@ -204,7 +204,7 @@ func removeSkillDir(skillsDir, skillName string) error {
 
 // writeMCPConfig reads an MCP config JSON, adds an entry, and writes it back.
 func writeMCPConfig(configPath, name string, mcpCfg MCPConfig) error {
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return err
 	}
 
@@ -243,7 +243,7 @@ func writeMCPConfig(configPath, name string, mcpCfg MCPConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configPath, out, 0o644)
+	return os.WriteFile(configPath, out, 0o600)
 }
 
 // removeMCPFromConfig removes an MCP entry from a config file.
@@ -271,5 +271,5 @@ func removeMCPFromConfig(configPath, name string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configPath, out, 0o644)
+	return os.WriteFile(configPath, out, 0o600)
 }

@@ -13,10 +13,24 @@ const (
 )
 
 // Config represents the CLI configuration stored at ~/.ctx/config.yaml.
+// Secrets (tokens) are stored in the system keychain, not here.
 type Config struct {
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	Token    string `yaml:"token,omitempty" json:"token,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+
+	// Privacy settings
+	UpdateCheck *bool  `yaml:"update_check,omitempty" json:"update_check,omitempty"`
+	NetworkMode string `yaml:"network_mode,omitempty" json:"network_mode,omitempty"`
+}
+
+// IsUpdateCheckEnabled returns true if update checking is enabled (default: true).
+func (c *Config) IsUpdateCheckEnabled() bool {
+	return c.UpdateCheck == nil || *c.UpdateCheck
+}
+
+// IsOffline returns true if network mode is set to offline.
+func (c *Config) IsOffline() bool {
+	return c.NetworkMode == "offline"
 }
 
 // Load reads the config from disk. Returns default config if file doesn't exist.
@@ -55,11 +69,6 @@ func (c *Config) Save() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
-}
-
-// IsLoggedIn returns true if the user has a token.
-func (c *Config) IsLoggedIn() bool {
-	return c.Token != ""
 }
 
 // RegistryURL returns the configured registry URL.

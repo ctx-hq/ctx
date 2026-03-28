@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // LinkSkillToAgents links an installed skill to all detected agents and records

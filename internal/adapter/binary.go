@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/getctx/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/config"
 )
 
 // maxFileSize limits individual file extraction to 500MB.
@@ -34,6 +34,7 @@ func (a *BinaryAdapter) Install(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("User-Agent", config.UserAgent())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", rawURL, err)

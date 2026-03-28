@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getctx/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/config"
 )
 
 const (
@@ -70,7 +70,12 @@ func FetchLatestVersion() string {
 
 func fetchLatestVersion() string {
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo))
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo), nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", config.UserAgent())
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -166,10 +171,10 @@ func loadCache(path string) (*UpdateCache, error) {
 
 func saveCache(path string, cache *UpdateCache) {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0o755)
+	os.MkdirAll(dir, 0o700)
 	data, err := json.Marshal(cache)
 	if err != nil {
 		return
 	}
-	os.WriteFile(path, data, 0o644)
+	os.WriteFile(path, data, 0o600)
 }

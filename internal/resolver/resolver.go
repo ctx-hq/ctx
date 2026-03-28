@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/getctx/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/registry"
 )
 
 // Resolution holds the result of resolving a package reference.

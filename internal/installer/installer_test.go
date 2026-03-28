@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/getctx/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
 // --- Tests for the no-download manifest fix ---

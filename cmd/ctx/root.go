@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/selfupdate"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,7 @@ var (
 	flagCount   bool
 	flagAgent   bool
 	flagYes     bool
+	flagOffline bool
 )
 
 // writerKey is the context key for the output Writer.
@@ -53,6 +55,9 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Set version for User-Agent in HTTP requests
+		config.Version = Version
+
 		// Resolve output format from flags
 		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagStyled, flagMD, flagIDsOnly, flagCount, flagAgent)
 		if err != nil {
@@ -68,7 +73,10 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 		// Show update notice after every command (at most once per 24h).
 		// Skip for machine-readable output, CI environments, or the upgrade command itself.
-		if !flagAgent && !flagQuiet && !flagJSON && os.Getenv("CI") == "" && cmd.Name() != "upgrade" {
+		cfg, _ := config.Load()
+		offline := flagOffline || (cfg != nil && cfg.IsOffline())
+		updateEnabled := cfg == nil || cfg.IsUpdateCheckEnabled()
+		if !flagAgent && !flagQuiet && !flagJSON && !offline && updateEnabled && os.Getenv("CI") == "" && cmd.Name() != "upgrade" {
 			if latest := selfupdate.CheckForUpdate(Version); latest != "" {
 				fmt.Fprintf(os.Stderr, "\n\033[0;33mnotice:\033[0m ctx %s available (current: %s)\n", latest, Version)
 				fmt.Fprintf(os.Stderr, "  run \033[1mctx upgrade\033[0m to update\n")
@@ -90,6 +98,7 @@ func init() {
 
 	// Behavior flags
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Skip confirmation prompts")
+	rootCmd.PersistentFlags().BoolVar(&flagOffline, "offline", false, "Disable all network access")
 
 	rootCmd.AddCommand(
 		installCmd,

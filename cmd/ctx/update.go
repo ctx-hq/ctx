@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +31,9 @@ Examples:
   ctx update @hong/my-skill     Update specific package`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 
 		cfg, err := config.Load()
@@ -38,7 +41,7 @@ Examples:
 			return err
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 

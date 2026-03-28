@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/manifest"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 

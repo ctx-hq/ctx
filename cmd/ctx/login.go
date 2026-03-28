@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/getctx/ctx/internal/auth"
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/auth"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -15,12 +15,15 @@ var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Authenticate with getctx.org via GitHub",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
 
-		if cfg.IsLoggedIn() {
+		if getToken() != "" {
 			output.Info("Already logged in as %s", cfg.Username)
 			output.PrintDim("  Run 'ctx logout' to sign out")
 			return nil

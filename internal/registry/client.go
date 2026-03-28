@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/ctx-hq/ctx/internal/config"
 )
 
 // Client communicates with the getctx.org API.
@@ -108,6 +110,7 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 		return nil, err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", config.UserAgent())
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -151,6 +154,7 @@ func (c *Client) Download(ctx context.Context, fullName, version string) (io.Rea
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", config.UserAgent())
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -171,6 +175,7 @@ func (c *Client) get(ctx context.Context, path string, result any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", config.UserAgent())
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -205,6 +210,7 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", config.UserAgent())
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

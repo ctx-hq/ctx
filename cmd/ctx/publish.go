@@ -4,10 +4,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/manifest"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +20,9 @@ Reads ctx.yaml from the current directory (or specified path),
 validates it, and uploads to the registry.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 		dir := "."
 		if len(args) > 0 {
@@ -45,7 +48,7 @@ validates it, and uploads to the registry.`,
 		if err != nil {
 			return err
 		}
-		if !cfg.IsLoggedIn() {
+		if getToken() == "" {
 			return output.ErrAuth("not logged in")
 		}
 
@@ -56,7 +59,7 @@ validates it, and uploads to the registry.`,
 		}
 
 		// Publish
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 
 		output.Info("Publishing %s@%s...", m.Name, m.Version)
 

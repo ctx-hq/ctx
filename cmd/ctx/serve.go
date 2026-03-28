@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/getctx/ctx/internal/mcpserver"
+	"github.com/ctx-hq/ctx/internal/mcpserver"
 	"github.com/spf13/cobra"
 )
 

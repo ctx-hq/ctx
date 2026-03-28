@@ -7,25 +7,55 @@
 
 [中文](README.zh-CN.md) | English
 
-The universal package manager for LLM agent skills, MCP servers, and CLI tools.
+The universal package manager for AI coding agents.
 
-**ctx** makes it easy to discover, install, and manage packages that extend AI coding agents like Claude Code, Cursor, and Windsurf.
+```
+ctx install @openelf/code-review   # install a skill
+ctx link claude                     # link to your agent — done
+```
+
+## Why ctx?
+
+AI coding agents (Claude Code, Cursor, Windsurf, etc.) lack a shared way to discover and install extensions. Each agent has its own format, its own config directory, its own linking mechanism.
+
+**ctx solves this.** One command to install. One command to link. Works across 18 agents.
+
+```
+                 ┌─────────────────────────────┐
+                 │        ctx registry          │
+                 │  skills · MCP · CLI tools    │
+                 └──────────┬──────────────────┘
+                            │
+                      ctx install
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+   ┌──────────┐      ┌──────────┐      ┌──────────┐
+   │  Claude   │      │  Cursor  │      │ Windsurf │  ...
+   │  Code     │      │          │      │          │
+   └──────────┘      └──────────┘      └──────────┘
+```
 
 ## Install
 
 ```bash
-# macOS / Linux (one-line install with SHA256 verification)
+# macOS / Linux
 curl -fsSL https://getctx.org/install.sh | sh
 
-# Windows (PowerShell)
-irm https://getctx.org/install.ps1 | iex
-
-# macOS / Linux (Homebrew)
+# Homebrew
 brew install ctx-hq/tap/ctx
 
-# Go users
-go install github.com/getctx/ctx/cmd/ctx@latest
+# Go
+go install github.com/ctx-hq/ctx/cmd/ctx@latest
 
+# Windows
+irm https://getctx.org/install.ps1 | iex
+```
+
+<details>
+<summary>More options (Scoop, deb, rpm)</summary>
+
+```bash
 # Debian / Ubuntu
 dpkg -i ctx_*.deb
 
@@ -34,103 +64,95 @@ scoop bucket add ctx https://github.com/ctx-hq/homebrew-tap
 scoop install ctx
 ```
 
+</details>
+
 ## Quick Start
 
 ```bash
 # Search for packages
 ctx search "code review"
 
-# Install a skill
-ctx install @hong/my-skill
+# Install a skill — auto-detects your agents and links it
+ctx install @openelf/code-review
 
-# Install an MCP server
+# Install an MCP server with a specific version
 ctx install @mcp/github@2.1.0
 
-# Install a CLI tool
+# Install a CLI tool (delegates to brew/cargo/binary as appropriate)
 ctx install @community/ripgrep
 
-# Link all packages to your agent
-ctx link claude
+# See what's installed
+ctx list
+
+# Check environment health
+ctx doctor
 ```
 
 ## Package Types
 
-ctx manages three types of packages:
-
-| Type | Description | Example |
-|------|-------------|---------|
-| **skill** | Agent skills and commands | Code review prompts, refactoring workflows |
-| **mcp** | MCP (Model Context Protocol) servers | GitHub, database, file system servers |
+| Type | What it is | Example |
+|------|------------|---------|
+| **skill** | Prompt files and workflows for agents | Code review, refactoring, test generation |
+| **mcp** | Model Context Protocol servers | GitHub, database, filesystem access |
 | **cli** | Command-line tools | ripgrep, jq, fzf |
+
+## Supported Agents
+
+ctx detects and links packages to **18 agents**:
+
+`claude` · `cursor` · `windsurf` · `opencode` · `codex` · `copilot` · `cline` · `continue` · `zed` · `roo` · `goose` · `amp` · `trae` · `kilo` · `pear` · `junie` · `aider` · `generic`
+
+```bash
+ctx link                  # list detected agents on your system
+ctx link claude           # link all packages to Claude Code
+ctx link cursor           # link all packages to Cursor
+```
 
 ## Commands
 
-### Discovery & Installation
-
 ```bash
-ctx search <query>                  # Search the registry
-ctx search "git" --type mcp         # Filter by type
-ctx install <package[@version]>     # Install a package
-ctx install github:user/repo        # Install from GitHub directly
-ctx info <package>                  # Show package details
-ctx list                            # List installed packages
-ctx remove <package>                # Uninstall a package
-```
+# Discovery
+ctx search <query>                  # search the registry
+ctx search "git" --type mcp        # filter by type
+ctx info <package>                  # show package details
 
-### Updates
+# Install / Remove
+ctx install <package[@version]>     # install a package
+ctx install github:user/repo       # install from GitHub directly
+ctx remove <package>                # uninstall
+ctx list                            # list installed packages
 
-```bash
-ctx update                          # Update all packages
-ctx update @hong/my-skill           # Update a specific package
-ctx outdated                        # Check for available updates
-```
+# Update
+ctx update                          # update all packages
+ctx update @scope/name              # update one package
+ctx outdated                        # check for updates
+ctx prune                           # remove old versions
 
-### Agent Linking
+# Agent Linking
+ctx link                            # list detected agents
+ctx link <agent>                    # link packages to an agent
 
-```bash
-ctx link                            # List detected agents
-ctx link claude                     # Link packages to Claude Code
-ctx link cursor                     # Link packages to Cursor
-```
+# Publishing
+ctx login                           # authenticate via GitHub
+ctx init --type skill               # scaffold a ctx.yaml
+ctx validate                        # validate your manifest
+ctx publish                         # publish to the registry
 
-Supported agents: `claude`, `cursor`, `windsurf`, `generic`
+# Configuration
+ctx config list                     # show all settings
+ctx config set <key> <value>        # change a setting
+ctx config get <key>                # read a setting
 
-### Publishing
-
-```bash
-ctx login                           # Authenticate via GitHub
-ctx init --type skill               # Scaffold a new ctx.yaml
-ctx validate                        # Validate your manifest
-ctx publish                         # Publish to the registry
-```
-
-### Organization (coming soon)
-
-Organization commands are planned but not yet implemented:
-
-```bash
-ctx org create <name>               # Create an organization
-ctx org info <name>                 # Show organization details
-ctx org add <org> <user>            # Add a member
-ctx org remove <org> <user>         # Remove a member
-```
-
-### Diagnostics
-
-```bash
-ctx version                         # Print version info
-ctx doctor                          # Diagnose environment & connectivity
+# System
+ctx version                         # print version
+ctx doctor                          # diagnose environment
+ctx upgrade                         # self-update ctx
+ctx serve                           # run as MCP server
 ```
 
 ## MCP Server Mode
 
 ctx can run as an MCP server, letting AI agents manage packages directly:
-
-```bash
-ctx serve
-```
-
-Add to your agent's MCP configuration:
 
 ```json
 {
@@ -143,13 +165,14 @@ Add to your agent's MCP configuration:
 }
 ```
 
-Exposed tools: `ctx_search`, `ctx_install`, `ctx_info`, `ctx_list`
+Available tools: `ctx_search`, `ctx_install`, `ctx_info`, `ctx_list`
 
 ## Package Manifest
 
-Packages are defined by a `ctx.yaml` file:
+Packages are defined by a `ctx.yaml` file. Run `ctx init` to scaffold one.
 
-### Skill
+<details>
+<summary>Skill example</summary>
 
 ```yaml
 name: "@scope/my-skill"
@@ -163,7 +186,10 @@ skill:
   compatibility: "claude-code, cursor"
 ```
 
-### MCP Server
+</details>
+
+<details>
+<summary>MCP server example</summary>
 
 ```yaml
 name: "@scope/github-mcp"
@@ -181,7 +207,10 @@ mcp:
       description: "GitHub personal access token"
 ```
 
-### CLI Tool
+</details>
+
+<details>
+<summary>CLI tool example</summary>
 
 ```yaml
 name: "@community/ripgrep"
@@ -203,15 +232,28 @@ install:
       binary: "https://github.com/.../ripgrep-14.1.0-x86_64-unknown-linux-musl.tar.gz"
 ```
 
+</details>
+
 ## Configuration
+
+### Files
 
 | Path | Purpose |
 |------|---------|
-| `~/.ctx/config.yaml` | Registry URL, auth token |
+| `~/.ctx/config.yaml` | Registry URL, username, privacy settings |
 | `~/.ctx/packages/` | Installed packages |
 | `~/.ctx/links.json` | Agent link registry |
+| System keychain | Auth token (macOS Keychain / Linux secret-tool) |
 
-Environment variables:
+### Settings
+
+```bash
+ctx config set update_check false      # disable update checks
+ctx config set network_mode offline    # disable all network access
+ctx config set registry https://...    # use a custom registry
+```
+
+### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
@@ -220,38 +262,55 @@ Environment variables:
 | `CTX_CACHE_HOME` | Override cache directory |
 | `CTX_REGISTRY` | Override registry URL |
 
-## Development
+### Flags
 
-```bash
-make build          # Build binary (version from git describe)
-make test           # Run tests
-make test-race      # Run tests with race detector
-make lint           # Run linter
-make vet            # Run go vet
-make check          # Run vet + lint + test
-make build-all      # Cross-compile for all platforms
+| Flag | Description |
+|------|-------------|
+| `--offline` | Disable all network access for this command |
+| `--json` | JSON output |
+| `--quiet` / `-q` | Minimal output |
+| `--yes` / `-y` | Skip confirmation prompts |
+
+## Privacy
+
+- **No telemetry.** ctx does not collect analytics or usage data.
+- **Tokens in system keychain.** Auth tokens are stored in macOS Keychain or Linux `secret-tool`, not in config files.
+- **Update checks are optional.** Disable with `ctx config set update_check false` or `--offline`.
+- **All files 0600/0700.** Sensitive files are owner-readable only.
+- **No data leaves your machine** unless you explicitly search, install, publish, or login.
+
+## Architecture
+
+```
+cmd/ctx/              CLI commands (Cobra)
+internal/
+  ├── config/         Configuration + file permissions
+  ├── auth/           GitHub OAuth + system keychain
+  ├── registry/       HTTP client for getctx.org API
+  ├── resolver/       Version + source resolution
+  ├── installer/      Download, extract, link packages
+  ├── adapter/        Bridge to native pkg managers (brew, npm, pip, cargo)
+  ├── agent/          Agent detection + config linking (18 agents)
+  ├── mcpserver/      MCP server mode (ctx serve)
+  └── output/         Human + JSON output formatting
 ```
 
-## Releasing
+## Contributing
+
+```bash
+git clone https://github.com/ctx-hq/ctx.git
+cd ctx
+make build      # build binary
+make test       # run tests
+make lint       # run linter
+make check      # vet + lint + test
+```
+
+### Release Process
 
 Releases are automated via [release-please](https://github.com/googleapis/release-please). Push conventional commits to `main` and a release PR is created automatically.
 
-For manual releases:
-
-```bash
-# Dry-run (checks only, no tag)
-scripts/release.sh v0.2.0 --dry-run
-
-# Create release (7 preflight checks → tag → push)
-scripts/release.sh v0.2.0
-```
-
-The release pipeline (GoReleaser + GitHub Actions) handles:
-- Cross-compilation (Linux/macOS/Windows × AMD64/ARM64)
-- Shell completions (bash/zsh/fish)
-- Cosign signing + SBOM generation
-- Homebrew formula, Scoop manifest, deb/rpm packages
-- Build provenance attestation
+The pipeline (GoReleaser + GitHub Actions) handles cross-compilation (Linux/macOS/Windows x AMD64/ARM64), shell completions, cosign signing, SBOM, Homebrew/Scoop/deb/rpm packages, and build provenance attestation.
 
 ## License
 

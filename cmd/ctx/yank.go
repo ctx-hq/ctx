@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +17,9 @@ Examples:
   ctx yank @hong/my-skill@1.0.0`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 		ref := args[0]
 
@@ -30,7 +33,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		if !cfg.IsLoggedIn() {
+		if getToken() == "" {
 			return output.ErrAuth("not logged in")
 		}
 
@@ -42,7 +45,7 @@ Examples:
 			)
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 		if err := reg.Yank(cmd.Context(), fullName, version); err != nil {
 			return err
 		}

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/getctx/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
 func TestScanInstalled(t *testing.T) {

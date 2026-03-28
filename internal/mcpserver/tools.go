@@ -3,11 +3,14 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/auth"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/resolver"
 )
 
 // Tool definitions for MCP tool discovery.
@@ -67,12 +70,21 @@ func RegisterDefaultTools(s *Server) {
 	s.RegisterTool("ctx_list", handleList)
 }
 
+func getToken() string {
+	token, err := auth.GetToken()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		return ""
+	}
+	return token
+}
+
 func getClient() (*registry.Client, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	return registry.New(cfg.RegistryURL(), cfg.Token), nil
+	return registry.New(cfg.RegistryURL(), getToken()), nil
 }
 
 func handleSearch(args json.RawMessage) (any, error) {
@@ -139,7 +151,7 @@ func handleList(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 
-	client := registry.New(cfg.RegistryURL(), cfg.Token)
+	client := registry.New(cfg.RegistryURL(), getToken())
 	res := resolver.New(client)
 	inst := installer.New(client, res)
 

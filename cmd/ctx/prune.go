@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +39,7 @@ Examples:
 			return err
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 

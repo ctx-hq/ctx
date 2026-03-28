@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/selfupdate"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +14,9 @@ var upgradeCmd = &cobra.Command{
 	Long:  "Download and install the latest version of ctx.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 
 		output.Info("Checking for updates...")

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/getctx/ctx/internal/config"
-	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +27,9 @@ Examples:
   ctx search "file search" --type cli --platform darwin`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
 		w := getWriter(cmd)
 
 		if searchType != "" && searchType != "skill" && searchType != "mcp" && searchType != "cli" {
@@ -41,7 +44,7 @@ Examples:
 			return err
 		}
 
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		reg := registry.New(cfg.RegistryURL(), getToken())
 		result, err := reg.Search(cmd.Context(), args[0], searchType, searchPlatform, searchLimit)
 		if err != nil {
 			return err

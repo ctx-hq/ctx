@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +77,25 @@ func TestClientAuthHeader(t *testing.T) {
 
 	if gotAuth != "Bearer test-token-123" {
 		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer test-token-123")
+	}
+}
+
+func TestClientUserAgent(t *testing.T) {
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		json.NewEncoder(w).Encode(SearchResult{})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "")
+	_, _ = c.Search(context.Background(), "test", "", "", 10)
+
+	if !strings.HasPrefix(gotUA, "ctx/") {
+		t.Errorf("User-Agent = %q, should start with ctx/", gotUA)
+	}
+	if !strings.Contains(gotUA, runtime.GOOS+"/"+runtime.GOARCH) {
+		t.Errorf("User-Agent = %q, should contain %s/%s", gotUA, runtime.GOOS, runtime.GOARCH)
 	}
 }
 

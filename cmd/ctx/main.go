@@ -4,7 +4,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/getctx/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/output"
 )
 
 func init() {
@@ -13,7 +13,7 @@ func init() {
 
 // resolveVersionFromBuildInfo sets Version from Go module build info
 // when it has not been injected via ldflags (i.e., still "dev").
-// This enables `go install github.com/getctx/ctx/cmd/ctx@latest`
+// This enables `go install github.com/ctx-hq/ctx/cmd/ctx@latest`
 // to report the correct module version.
 func resolveVersionFromBuildInfo() {
 	if Version == "dev" {
