@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/getctx/ctx/internal/output"
+	"github.com/getctx/ctx/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -62,6 +65,17 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 		cmd.SetContext(ctx)
 		return nil
 	},
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Show update notice after every command (at most once per 24h).
+		// Skip for machine-readable output, CI environments, or the upgrade command itself.
+		if !flagAgent && !flagQuiet && !flagJSON && os.Getenv("CI") == "" {
+			if latest := selfupdate.CheckForUpdate(Version); latest != "" {
+				fmt.Fprintf(os.Stderr, "\n\033[0;33mnotice:\033[0m ctx %s available (current: %s)\n", latest, Version)
+				fmt.Fprintf(os.Stderr, "  run \033[1mctx upgrade\033[0m to update\n")
+			}
+		}
+		return nil
+	},
 }
 
 func init() {
@@ -88,5 +102,6 @@ func init() {
 		initCmd,
 		validateCmd,
 		versionCmd,
+		upgradeCmd,
 	)
 }
