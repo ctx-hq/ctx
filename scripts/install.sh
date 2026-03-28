@@ -1,6 +1,6 @@
 #!/bin/sh
 # ctx installer — installs the latest ctx binary
-# Usage: curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
+# Usage: curl -fsSL https://getctx.org/install.sh | sh
 #
 # Environment variables:
 #   CTX_INSTALL_DIR  — installation directory (default: /usr/local/bin)

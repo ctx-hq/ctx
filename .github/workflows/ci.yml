@@ -19,6 +19,10 @@ jobs:
       - run: go build -o ctx ./cmd/ctx
       - run: ./ctx version
       - run: ./ctx doctor --json
+      - name: Validate install scripts
+        run: |
+          bash scripts/install_test.sh
+          bash scripts/install_ps1_test.sh
 
   lint:
     runs-on: ubuntu-latest

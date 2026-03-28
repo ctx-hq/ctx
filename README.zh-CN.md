@@ -14,11 +14,14 @@ LLM 智能体技能、MCP 服务器和 CLI 工具的通用包管理器。
 ## 安装
 
 ```bash
+# macOS / Linux（一键安装，带 SHA256 校验）
+curl -fsSL https://getctx.org/install.sh | sh
+
+# Windows (PowerShell)
+irm https://getctx.org/install.ps1 | iex
+
 # macOS / Linux (Homebrew)
 brew install ctx-hq/tap/ctx
-
-# 一键安装脚本（带 SHA256 校验）
-curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
 
 # Go 用户
 go install github.com/getctx/ctx/cmd/ctx@latest

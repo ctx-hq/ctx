@@ -14,11 +14,14 @@ The universal package manager for LLM agent skills, MCP servers, and CLI tools.
 ## Install
 
 ```bash
+# macOS / Linux (one-line install with SHA256 verification)
+curl -fsSL https://getctx.org/install.sh | sh
+
+# Windows (PowerShell)
+irm https://getctx.org/install.ps1 | iex
+
 # macOS / Linux (Homebrew)
 brew install ctx-hq/tap/ctx
-
-# One-line install script (with SHA256 verification)
-curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
 
 # Go users
 go install github.com/getctx/ctx/cmd/ctx@latest
