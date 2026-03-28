@@ -114,6 +114,8 @@ Examples:
 			NewVersion string `json:"new_version"`
 			Updated    bool   `json:"updated"`
 			Error      string `json:"error,omitempty"`
+			// unexported fields for post-install (not serialized)
+			postInstall *installer.InstallResult
 		}
 
 		results := make([]updateResult, len(needsUpdate))
@@ -127,7 +129,7 @@ Examples:
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
-				res, _, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
+				res, m, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
 				if err != nil {
 					results[i] = updateResult{
 						FullName:   t.entry.FullName,
@@ -138,15 +140,35 @@ Examples:
 					}
 					return
 				}
-				results[i] = updateResult{
+
+				r := updateResult{
 					FullName:   t.entry.FullName,
 					OldVersion: t.entry.Version,
 					NewVersion: res.Version,
 					Updated:    res.Version != t.entry.Version,
 				}
+				if m != nil {
+					r.postInstall = &installer.InstallResult{
+						FullName:    res.FullName,
+						Version:     res.Version,
+						Type:        string(m.Type),
+						InstallPath: inst.CurrentLink(res.FullName),
+						Source:      res.Source,
+					}
+				}
+				results[i] = r
 			}(idx, target)
 		}
 		wg.Wait()
+
+		// Phase 3.5: Sequential post-install linking (avoids concurrent writes to links.json / agent configs)
+		for _, r := range results {
+			if r.postInstall != nil {
+				if err := runPostInstall(cmd, r.postInstall, ""); err != nil {
+					output.Warn("Post-install link for %s: %v", r.FullName, err)
+				}
+			}
+		}
 
 		// Phase 4: Report results
 		updatedCount := 0

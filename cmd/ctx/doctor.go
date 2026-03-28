@@ -12,8 +12,6 @@ import (
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/installer"
 	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -78,16 +76,7 @@ configuration, network connectivity, and detected agents.`,
 		}
 
 		// 5. Installed packages
-		var reg2 *registry.Client
-		var res2 *resolver.Resolver
-		if cfg != nil {
-			reg2 = registry.New(cfg.RegistryURL(), cfg.Token)
-			res2 = resolver.New(reg2)
-		}
-		inst := &installer.Installer{DataDir: config.DataDir()}
-		if reg2 != nil {
-			inst = installer.New(reg2, res2)
-		}
+		inst := installer.NewScanner()
 		installed, scanErr := inst.ScanInstalled()
 		if scanErr != nil {
 			addHint("installed packages", "fail", scanErr.Error(), "Check ~/.ctx/packages/ directory")

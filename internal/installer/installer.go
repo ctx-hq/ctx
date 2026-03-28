@@ -25,12 +25,20 @@ type Installer struct {
 	DataDir  string
 }
 
-// New creates a new installer.
+// New creates a new installer with registry and resolver for full install operations.
 func New(reg *registry.Client, res *resolver.Resolver) *Installer {
 	return &Installer{
 		Registry: reg,
 		Resolver: res,
 		DataDir:  config.DataDir(),
+	}
+}
+
+// NewScanner creates a lightweight installer that can only scan installed packages.
+// Use this when you don't need to download or resolve packages.
+func NewScanner() *Installer {
+	return &Installer{
+		DataDir: config.DataDir(),
 	}
 }
 
@@ -302,9 +310,9 @@ func extractArchive(r io.Reader, destDir string) error {
 func generateSkillMD(m *manifest.Manifest) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	b.WriteString("name: " + m.ShortName() + "\n")
+	b.WriteString("name: " + yamlQuote(m.ShortName()) + "\n")
 	if m.Description != "" {
-		b.WriteString("description: |\n  " + m.Description + "\n")
+		b.WriteString("description: " + yamlQuote(m.Description) + "\n")
 	}
 	b.WriteString("---\n\n")
 	b.WriteString("# " + m.Name + "\n\n")
@@ -312,4 +320,31 @@ func generateSkillMD(m *manifest.Manifest) string {
 		b.WriteString(m.Description + "\n")
 	}
 	return b.String()
+}
+
+// yamlQuote wraps a string in double quotes if it contains YAML-significant
+// characters (colons, newlines, quotes, leading/trailing whitespace, etc.).
+func yamlQuote(s string) string {
+	if s == "" {
+		return `""`
+	}
+	needsQuote := false
+	for _, c := range s {
+		if c == ':' || c == '#' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == '&' || c == '*' || c == '!' || c == '|' || c == '>' || c == '%' || c == '@' || c == '`' {
+			needsQuote = true
+			break
+		}
+	}
+	if s[0] == ' ' || s[len(s)-1] == ' ' {
+		needsQuote = true
+	}
+	if !needsQuote {
+		return s
+	}
+	// Escape backslashes and double quotes, then wrap in double quotes
+	escaped := strings.ReplaceAll(s, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+	escaped = strings.ReplaceAll(escaped, "\r", `\r`)
+	return `"` + escaped + `"`
 }

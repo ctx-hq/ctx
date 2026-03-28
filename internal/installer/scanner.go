@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/getctx/ctx/internal/manifest"
 )
@@ -39,7 +40,7 @@ func (i *Installer) ScanInstalled() ([]InstalledPackage, error) {
 			continue
 		}
 		scopeName := scopeEntry.Name()
-		if scopeName[0] != '@' {
+		if !strings.HasPrefix(scopeName, "@") {
 			continue // skip non-scope directories
 		}
 

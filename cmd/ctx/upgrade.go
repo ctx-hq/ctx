@@ -23,7 +23,7 @@ var upgradeCmd = &cobra.Command{
 		}
 
 		current := Version
-		if current == latest || current == "v"+latest {
+		if selfupdate.IsUpToDate(latest, current) {
 			output.Success("ctx %s is already the latest version", current)
 			return w.OK(map[string]string{
 				"version": current,

@@ -26,9 +26,32 @@ func TestIsNewer(t *testing.T) {
 		{"dev", "0.3.0", false},
 	}
 	for _, tt := range tests {
-		got := isNewer(tt.latest, tt.current)
+		got := IsNewer(tt.latest, tt.current)
 		if got != tt.want {
-			t.Errorf("isNewer(%q, %q) = %v, want %v", tt.latest, tt.current, got, tt.want)
+			t.Errorf("IsNewer(%q, %q) = %v, want %v", tt.latest, tt.current, got, tt.want)
+		}
+	}
+}
+
+func TestIsUpToDate(t *testing.T) {
+	tests := []struct {
+		latest, current string
+		want            bool
+	}{
+		{"0.4.0", "0.4.0", true},   // same version
+		{"0.3.0", "0.4.0", true},   // current is newer
+		{"0.4.0", "0.3.0", false},  // current is older
+		{"0.4.0", "dev", false},    // dev → not up to date, should upgrade
+		{"0.4.0", "", false},       // empty current → not up to date
+		{"", "0.4.0", false},       // empty latest → not up to date
+		{"0.4.0", "0.4.0-beta", true}, // prerelease suffix is stripped by parseSemver, so 0.4.0 == 0.4.0
+		{"1.0.0", "0.9.9", false},  // current is older
+		{"0.3.0", "1.0.0", true},   // current is newer
+	}
+	for _, tt := range tests {
+		got := IsUpToDate(tt.latest, tt.current)
+		if got != tt.want {
+			t.Errorf("IsUpToDate(%q, %q) = %v, want %v", tt.latest, tt.current, got, tt.want)
 		}
 	}
 }

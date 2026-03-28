@@ -7,12 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/getctx/ctx/internal/agent"
-	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/installer"
 	"github.com/getctx/ctx/internal/manifest"
 	"github.com/getctx/ctx/internal/output"
-	"github.com/getctx/ctx/internal/registry"
-	"github.com/getctx/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -61,13 +58,7 @@ Examples:
 		output.Info("Linking packages to %s...", a.Name())
 
 		// Load all installed packages and link them
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		reg := registry.New(cfg.RegistryURL(), cfg.Token)
-		res := resolver.New(reg)
-		inst := installer.New(reg, res)
+		inst := installer.NewScanner()
 
 		entries, err := inst.ScanInstalled()
 		if err != nil {

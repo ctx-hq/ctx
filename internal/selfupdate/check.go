@@ -38,7 +38,7 @@ func CheckForUpdate(currentVersion string) string {
 	// Check cache first
 	cache, _ := loadCache(cachePath)
 	if cache != nil && time.Since(cache.LastCheck) < checkInterval {
-		if isNewer(cache.LatestVersion, currentVersion) {
+		if IsNewer(cache.LatestVersion, currentVersion) {
 			return cache.LatestVersion
 		}
 		return ""
@@ -56,7 +56,7 @@ func CheckForUpdate(currentVersion string) string {
 		LatestVersion: latest,
 	})
 
-	if isNewer(latest, currentVersion) {
+	if IsNewer(latest, currentVersion) {
 		return latest
 	}
 	return ""
@@ -87,9 +87,10 @@ func fetchLatestVersion() string {
 	return strings.TrimPrefix(release.TagName, "v")
 }
 
-// isNewer returns true if latest is a higher semver than current.
+// IsNewer returns true if latest is a higher semver than current.
 // Returns false if either version cannot be parsed as semver.
-func isNewer(latest, current string) bool {
+// Handles "v" prefixes transparently.
+func IsNewer(latest, current string) bool {
 	if latest == "" || current == "" {
 		return false
 	}
@@ -105,6 +106,28 @@ func isNewer(latest, current string) bool {
 		return lp[1] > cp[1]
 	}
 	return lp[2] > cp[2]
+}
+
+// IsUpToDate returns true only when both versions are valid semver and
+// current >= latest. Returns false if either version cannot be parsed
+// (e.g. "dev", empty), meaning the caller should NOT skip the upgrade.
+func IsUpToDate(latest, current string) bool {
+	if latest == "" || current == "" {
+		return false
+	}
+	lp := parseSemver(latest)
+	cp := parseSemver(current)
+	if lp == nil || cp == nil {
+		return false // unparseable → not confidently up to date
+	}
+	// current >= latest
+	if cp[0] != lp[0] {
+		return cp[0] > lp[0]
+	}
+	if cp[1] != lp[1] {
+		return cp[1] > lp[1]
+	}
+	return cp[2] >= lp[2]
 }
 
 func parseSemver(v string) []int {
