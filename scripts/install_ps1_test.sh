@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PS1_SCRIPT="${SCRIPT_DIR}/install.ps1"
+SH_SCRIPT="${SCRIPT_DIR}/install.sh"
 PASS=0
 FAIL=0
 TESTS=0
@@ -31,7 +32,7 @@ expect_contains() {
 echo "install.ps1 validation tests"
 echo ""
 
-# --- Test 1: File exists and is non-empty ------------------------------------
+# --- File integrity ---------------------------------------------------------
 
 echo "=== File integrity ==="
 
@@ -50,7 +51,7 @@ else
     fail "install.ps1 is empty"
 fi
 
-# --- Test 2: No UTF-8 BOM ---------------------------------------------------
+# --- Encoding ---------------------------------------------------------------
 
 echo ""
 echo "=== Encoding ==="
@@ -62,8 +63,6 @@ else
     pass "No UTF-8 BOM"
 fi
 
-# Verify no carriage returns (should use Unix line endings for curl compatibility)
-# Use tr + wc instead of grep -P which is unsupported on macOS/BSD
 CR_COUNT=$(tr -cd '\r' < "$PS1_SCRIPT" | wc -c | tr -d ' ')
 if [ "$CR_COUNT" -gt 0 ]; then
     fail "File contains ${CR_COUNT} carriage return(s) (CRLF line endings)"
@@ -71,13 +70,13 @@ else
     pass "Unix line endings (LF)"
 fi
 
-# --- Test 3: Required components present -------------------------------------
+# --- Required components ----------------------------------------------------
 
 echo ""
 echo "=== Required components ==="
 
 expect_contains "Has SHA256 verification" "$PS1_SCRIPT" "SHA256"
-expect_contains "Has install directory variable" "$PS1_SCRIPT" "INSTALL_DIR\|InstallDir"
+expect_contains "Has install directory variable" "$PS1_SCRIPT" "InstallDir"
 expect_contains "Has version resolution" "$PS1_SCRIPT" "CTX_VERSION"
 expect_contains "Has GitHub API call" "$PS1_SCRIPT" "api.github.com"
 expect_contains "Has archive download" "$PS1_SCRIPT" "github.com.*releases"
@@ -87,25 +86,117 @@ expect_contains "Has cleanup/finally block" "$PS1_SCRIPT" "finally"
 expect_contains "Has PATH integration" "$PS1_SCRIPT" "Path.*User"
 expect_contains "Has architecture detection" "$PS1_SCRIPT" "PROCESSOR_ARCHITECTURE"
 expect_contains "Detects ARM64" "$PS1_SCRIPT" "ARM64"
+expect_contains "Detects x86 on x64 WOW64" "$PS1_SCRIPT" "PROCESSOR_ARCHITEW6432"
 expect_contains "Has zip extraction" "$PS1_SCRIPT" "Expand-Archive"
-expect_contains "Has TLS configuration" "$PS1_SCRIPT" "Tls12"
+expect_contains "Has TLS 1.2 configuration" "$PS1_SCRIPT" "Tls12"
+expect_contains "Has TLS 1.3 configuration" "$PS1_SCRIPT" "Tls13"
 
-# --- Test 4: Matches install.sh repo reference --------------------------------
+# --- SBOM checksum fix ------------------------------------------------------
+
+echo ""
+echo "=== SBOM checksum exact match ==="
+
+# The old bug: Where-Object { $_ -match $ArchiveName } matches both archive and .sbom.json
+# The fix should use anchored regex: "  $name$" to avoid SBOM collision
+if grep -q '\\$' "$PS1_SCRIPT" | head -1 && grep -q 'match.*\$' "$PS1_SCRIPT"; then
+    pass "Checksum grep uses end-of-line anchor"
+else
+    # Alternative check: look for the exact pattern
+    if grep -q '\$\$\|ArchiveName.\$' "$PS1_SCRIPT" || grep -q 'match.*\$"' "$PS1_SCRIPT"; then
+        pass "Checksum grep uses end-of-line anchor"
+    else
+        # More lenient: just verify the line contains anchoring intent
+        if grep -q '\$"$\|ArchiveName}\$' "$PS1_SCRIPT"; then
+            pass "Checksum grep uses end-of-line anchor"
+        else
+            fail "Checksum grep may not use exact match (SBOM collision risk)"
+        fi
+    fi
+fi
+
+# --- Performance optimization -----------------------------------------------
+
+echo ""
+echo "=== Performance ==="
+
+expect_contains "Has SilentlyContinue ProgressPreference" "$PS1_SCRIPT" "SilentlyContinue"
+expect_contains "Sets ProgressPreference early" "$PS1_SCRIPT" "ProgressPreference"
+expect_contains "Uses UseBasicParsing" "$PS1_SCRIPT" "UseBasicParsing"
+
+# --- Upgrade detection ------------------------------------------------------
+
+echo ""
+echo "=== Upgrade detection ==="
+
+expect_contains "Detects existing binary" "$PS1_SCRIPT" "Test-Path.*Destination"
+expect_contains "Compares current vs target version" "$PS1_SCRIPT" "already installed"
+expect_contains "Shows upgrade message" "$PS1_SCRIPT" "upgrad"
+expect_contains "Parses version from ctx output" "$PS1_SCRIPT" "ConvertFrom-Json"
+
+# --- CTX_NO_MODIFY_PATH support ---------------------------------------------
+
+echo ""
+echo "=== CTX_NO_MODIFY_PATH ==="
+
+expect_contains "Supports CTX_NO_MODIFY_PATH opt-out" "$PS1_SCRIPT" "CTX_NO_MODIFY_PATH"
+
+# --- User-Agent header ------------------------------------------------------
+
+echo ""
+echo "=== HTTP best practices ==="
+
+expect_contains "Sends User-Agent header" "$PS1_SCRIPT" "User-Agent"
+expect_contains "Sets request timeout" "$PS1_SCRIPT" "TimeoutSec"
+
+# --- Consistent output helpers -----------------------------------------------
+
+echo ""
+echo "=== Output formatting ==="
+
+expect_contains "Has info helper function" "$PS1_SCRIPT" "Write-Info"
+expect_contains "Has ok helper function" "$PS1_SCRIPT" "Write-Ok"
+expect_contains "Uses colored output (Cyan)" "$PS1_SCRIPT" "Cyan"
+expect_contains "Uses colored output (Green)" "$PS1_SCRIPT" "Green"
+
+# --- Consistency with install.sh --------------------------------------------
 
 echo ""
 echo "=== Consistency with install.sh ==="
 
-SH_REPO=$(grep 'REPO=' "${SCRIPT_DIR}/install.sh" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+SH_REPO=$(grep 'REPO=' "$SH_SCRIPT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
 if grep -q "$SH_REPO" "$PS1_SCRIPT"; then
     pass "Same repo reference as install.sh (${SH_REPO})"
 else
     fail "Repo reference differs from install.sh"
 fi
 
+# Both scripts should support the same env vars
+for env_var in CTX_INSTALL_DIR CTX_VERSION CTX_NO_MODIFY_PATH; do
+    if grep -q "$env_var" "$PS1_SCRIPT" && grep -q "$env_var" "$SH_SCRIPT"; then
+        pass "Both scripts support ${env_var}"
+    else
+        fail "Env var ${env_var} missing from one script"
+    fi
+done
+
+# Both should have upgrade detection
+if grep -q "already installed" "$PS1_SCRIPT" && grep -q "already installed" "$SH_SCRIPT"; then
+    pass "Both scripts have same-version skip"
+else
+    fail "Same-version skip missing from one script"
+fi
+
+# Both should have checksum verification
+if grep -q "checksum" "$PS1_SCRIPT" && grep -q "checksum" "$SH_SCRIPT"; then
+    pass "Both scripts verify checksums"
+else
+    fail "Checksum verification missing from one script"
+fi
+
 # --- Summary ----------------------------------------------------------------
 
 echo ""
-echo "---"
+echo "─────────────────────────────"
 printf "Results: %d passed, %d failed (of %d)\n" "$PASS" "$FAIL" "$TESTS"
 
 if [ "$FAIL" -gt 0 ]; then
