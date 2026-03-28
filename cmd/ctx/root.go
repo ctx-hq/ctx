@@ -1,0 +1,92 @@
+package main
+
+import (
+	"context"
+
+	"github.com/getctx/ctx/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var (
+	Version = "dev"
+
+	// Global flags
+	flagJSON    bool
+	flagQuiet   bool
+	flagStyled  bool
+	flagMD      bool
+	flagIDsOnly bool
+	flagCount   bool
+	flagAgent   bool
+	flagYes     bool
+)
+
+// writerKey is the context key for the output Writer.
+type writerKeyType struct{}
+
+var writerKey = writerKeyType{}
+
+// getWriter retrieves the Writer from the command context.
+func getWriter(cmd *cobra.Command) *output.Writer {
+	if w, ok := cmd.Context().Value(writerKey).(*output.Writer); ok {
+		return w
+	}
+	// Fallback: create a default writer
+	return output.NewWriter()
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "ctx",
+	Short: "The universal context package manager for LLM agents",
+	Long: `ctx manages skills, MCP servers, and CLI tools for AI agents.
+
+It's a bridge layer — ctx knows where to find packages and how to install them,
+delegating to native package managers (brew, npm, pip, cargo) when appropriate.
+
+  ctx install @scope/name     Install a package
+  ctx search "query"          Search for packages
+  ctx publish                 Publish a package
+  ctx serve                   Run as MCP server (for agent use)`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Resolve output format from flags
+		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagStyled, flagMD, flagIDsOnly, flagCount, flagAgent)
+		if err != nil {
+			return err
+		}
+
+		// Create Writer and attach to context
+		w := output.NewWriter(output.WithFormat(format))
+		ctx := context.WithValue(cmd.Context(), writerKey, w)
+		cmd.SetContext(ctx)
+		return nil
+	},
+}
+
+func init() {
+	// Output format flags (mutually exclusive)
+	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON envelope")
+	rootCmd.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "Output data only, no envelope")
+	rootCmd.PersistentFlags().BoolVar(&flagStyled, "styled", false, "Force styled output (ANSI colors)")
+	rootCmd.PersistentFlags().BoolVar(&flagMD, "md", false, "Output as Markdown")
+	rootCmd.PersistentFlags().BoolVar(&flagIDsOnly, "ids-only", false, "Output one ID per line")
+	rootCmd.PersistentFlags().BoolVar(&flagCount, "count", false, "Output count only")
+	rootCmd.PersistentFlags().BoolVar(&flagAgent, "agent", false, "Agent mode (quiet output, JSON errors)")
+
+	// Behavior flags
+	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Skip confirmation prompts")
+
+	rootCmd.AddCommand(
+		installCmd,
+		removeCmd,
+		searchCmd,
+		infoCmd,
+		listCmd,
+		publishCmd,
+		loginCmd,
+		initCmd,
+		validateCmd,
+		versionCmd,
+	)
+}
