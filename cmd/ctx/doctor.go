@@ -12,6 +12,8 @@ import (
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/installer"
 	"github.com/getctx/ctx/internal/output"
+	"github.com/getctx/ctx/internal/registry"
+	"github.com/getctx/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -76,11 +78,21 @@ configuration, network connectivity, and detected agents.`,
 		}
 
 		// 5. Installed packages
-		lf, err := installer.LoadLockFile(config.LockFilePath())
-		if err != nil {
-			addHint("lockfile", "fail", err.Error(), "Run 'ctx i <package>' to create a lockfile")
+		var reg2 *registry.Client
+		var res2 *resolver.Resolver
+		if cfg != nil {
+			reg2 = registry.New(cfg.RegistryURL(), cfg.Token)
+			res2 = resolver.New(reg2)
+		}
+		inst := &installer.Installer{DataDir: config.DataDir()}
+		if reg2 != nil {
+			inst = installer.New(reg2, res2)
+		}
+		installed, scanErr := inst.ScanInstalled()
+		if scanErr != nil {
+			addHint("installed packages", "fail", scanErr.Error(), "Check ~/.ctx/packages/ directory")
 		} else {
-			add("installed packages", "pass", fmt.Sprintf("%d packages", len(lf.Packages)))
+			add("installed packages", "pass", fmt.Sprintf("%d packages", len(installed)))
 		}
 
 		// 6. Detected agents
@@ -124,11 +136,11 @@ configuration, network connectivity, and detected agents.`,
 		}
 
 		// 8. Version store consistency (current symlinks)
-		if lf != nil {
+		if scanErr == nil {
 			brokenCurrent := 0
-			for _, entry := range lf.List() {
-				reg2 := installer.Installer{DataDir: config.DataDir()}
-				cur := reg2.CurrentVersion(entry.FullName)
+			checker := &installer.Installer{DataDir: config.DataDir()}
+			for _, entry := range installed {
+				cur := checker.CurrentVersion(entry.FullName)
 				if cur == "" {
 					brokenCurrent++
 				}

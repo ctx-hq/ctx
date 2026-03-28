@@ -6,7 +6,6 @@ import (
 
 	"github.com/getctx/ctx/internal/config"
 	"github.com/getctx/ctx/internal/installer"
-	"github.com/getctx/ctx/internal/manifest"
 	"github.com/getctx/ctx/internal/output"
 	"github.com/getctx/ctx/internal/registry"
 	"github.com/getctx/ctx/internal/resolver"
@@ -33,11 +32,6 @@ Examples:
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
-		lockPath := config.LockFilePath()
-		lf, err := installer.LoadLockFile(lockPath)
-		if err != nil {
-			return err
-		}
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -48,15 +42,19 @@ Examples:
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 
-		var toCheck []installer.LockEntry
+		var toCheck []installer.InstalledPackage
 		if len(args) > 0 {
-			entry, ok := lf.Get(args[0])
-			if !ok {
+			pkg, err := inst.GetInstalled(args[0])
+			if err != nil {
 				return output.ErrNotFound("package", args[0])
 			}
-			toCheck = []installer.LockEntry{entry}
+			toCheck = []installer.InstalledPackage{*pkg}
 		} else {
-			toCheck = lf.List()
+			all, err := inst.ScanInstalled()
+			if err != nil {
+				return err
+			}
+			toCheck = all
 		}
 
 		if len(toCheck) == 0 {
@@ -78,7 +76,7 @@ Examples:
 
 		// Phase 2: Determine which packages need updating
 		type updateTarget struct {
-			entry      installer.LockEntry
+			entry      installer.InstalledPackage
 			newVersion string
 		}
 		var needsUpdate []updateTarget
@@ -121,11 +119,6 @@ Examples:
 		results := make([]updateResult, len(needsUpdate))
 		sem := make(chan struct{}, maxParallelDownloads)
 		var wg sync.WaitGroup
-		type installIntermediate struct {
-			resolution *resolver.Resolution
-			manifest   *manifest.Manifest
-		}
-		intermediates := make([]installIntermediate, len(needsUpdate))
 
 		for idx, target := range needsUpdate {
 			wg.Add(1)
@@ -134,7 +127,7 @@ Examples:
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
-				res, m, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
+				res, _, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
 				if err != nil {
 					results[i] = updateResult{
 						FullName:   t.entry.FullName,
@@ -145,7 +138,6 @@ Examples:
 					}
 					return
 				}
-				intermediates[i] = installIntermediate{resolution: res, manifest: m}
 				results[i] = updateResult{
 					FullName:   t.entry.FullName,
 					OldVersion: t.entry.Version,
@@ -155,20 +147,6 @@ Examples:
 			}(idx, target)
 		}
 		wg.Wait()
-
-		// Phase 3b: Sequentially update lockfile for successful installs
-		for i, im := range intermediates {
-			if im.resolution == nil {
-				continue // failed during InstallFiles
-			}
-			lockResult, err := inst.UpdateLock(im.resolution, im.manifest)
-			if err != nil {
-				results[i].Error = err.Error()
-				results[i].Updated = false
-				continue
-			}
-			results[i].NewVersion = lockResult.Version
-		}
 
 		// Phase 4: Report results
 		updatedCount := 0

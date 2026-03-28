@@ -55,11 +55,6 @@ func ConfigFilePath() string {
 	return filepath.Join(Dir(), "config.yaml")
 }
 
-// LockFilePath returns the path to ctx.lock in the current directory.
-func LockFilePath() string {
-	return "ctx.lock"
-}
-
 func homeDir() string {
 	h, err := os.UserHomeDir()
 	if err != nil {

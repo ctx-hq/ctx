@@ -33,14 +33,14 @@ var listCmd = &cobra.Command{
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 
-		entries, err := inst.List()
+		entries, err := inst.ScanInstalled()
 		if err != nil {
 			return err
 		}
 
 		// Filter by type
 		if listType != "" {
-			filtered := make([]installer.LockEntry, 0)
+			filtered := make([]installer.InstalledPackage, 0)
 			for _, e := range entries {
 				if e.Type == listType {
 					filtered = append(filtered, e)

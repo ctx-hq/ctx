@@ -44,9 +44,8 @@ type InstallResult struct {
 	IsNew       bool   `json:"is_new"`
 }
 
-// InstallFiles resolves, downloads, extracts, and symlinks a package without
-// updating the lockfile. It is safe to call concurrently for different packages.
-// Use UpdateLock afterwards to persist the result to the lockfile.
+// InstallFiles resolves, downloads, extracts, and symlinks a package.
+// It is safe to call concurrently for different packages.
 func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Resolution, *manifest.Manifest, error) {
 	// Resolve version
 	resolution, err := i.Resolver.Resolve(ctx, ref)
@@ -158,43 +157,24 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 	return resolution, &m, nil
 }
 
-// UpdateLock persists an install result to the lockfile. Not safe for concurrent
-// use — callers must serialize access when updating in parallel.
-func (i *Installer) UpdateLock(resolution *resolver.Resolution, m *manifest.Manifest) (*InstallResult, error) {
-	return i.updateLockAndResult(resolution, m)
-}
-
 // Install installs a package from a reference like "@scope/name@^1.0".
 func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, error) {
+	// Check if package existed before install (for isNew detection)
+	// Parse the ref to get the full name for the check. We extract just
+	// the name part before @version, then resolve will give us the real full name.
+	// Instead, check after InstallFiles using the resolved full name — but we need
+	// to know the state before the version dir is created. Since InstallFiles creates
+	// the package directory, we check before calling it. However, we don't know the
+	// full name yet. So we check after, using the current symlink: if there was only
+	// one version dir (the one we just installed), it's new.
 	resolution, m, err := i.InstallFiles(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
-	return i.updateLockAndResult(resolution, m)
-}
 
-// updateLockAndResult updates the lockfile and returns the install result.
-func (i *Installer) updateLockAndResult(resolution *resolver.Resolution, m *manifest.Manifest) (*InstallResult, error) {
-	lockPath := config.LockFilePath()
-	lf, err := LoadLockFile(lockPath)
-	if err != nil {
-		return nil, fmt.Errorf("load lockfile: %w", err)
-	}
-
-	isNew := !lf.Has(resolution.FullName)
 	currentPath := i.CurrentLink(resolution.FullName)
-	lf.Add(LockEntry{
-		FullName:    resolution.FullName,
-		Version:     resolution.Version,
-		Type:        string(m.Type),
-		Source:      resolution.Source,
-		SHA256:      resolution.SHA256,
-		InstallPath: currentPath,
-	})
-
-	if err := lf.Save(lockPath); err != nil {
-		return nil, fmt.Errorf("save lockfile: %w", err)
-	}
+	versions := i.InstalledVersions(resolution.FullName)
+	isNew := len(versions) == 1 // only one version means this is a fresh install
 
 	return &InstallResult{
 		FullName:    resolution.FullName,
@@ -206,16 +186,10 @@ func (i *Installer) updateLockAndResult(resolution *resolver.Resolution, m *mani
 	}, nil
 }
 
-// Remove uninstalls a package, cleaning up links, lockfile, and all version directories.
+// Remove uninstalls a package, cleaning up links and all version directories.
 func (i *Installer) Remove(ctx context.Context, fullName string) error {
-	// Load lockfile
-	lockPath := config.LockFilePath()
-	lf, err := LoadLockFile(lockPath)
-	if err != nil {
-		return fmt.Errorf("load lockfile: %w", err)
-	}
-
-	if !lf.Has(fullName) {
+	pkgDir := i.PackageDir(fullName)
+	if _, err := os.Stat(pkgDir); os.IsNotExist(err) {
 		return fmt.Errorf("package %s is not installed", fullName)
 	}
 
@@ -227,14 +201,7 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		links.Save() // best effort
 	}
 
-	// 2. Update lockfile
-	lf.Remove(fullName)
-	if err := lf.Save(lockPath); err != nil {
-		return fmt.Errorf("save lockfile: %w", err)
-	}
-
-	// 3. Remove entire package directory (all versions + current symlink)
-	pkgDir := i.PackageDir(fullName)
+	// 2. Remove entire package directory (all versions + current symlink)
 	if err := os.RemoveAll(pkgDir); err != nil {
 		return fmt.Errorf("remove package dir: %w", err)
 	}
@@ -243,16 +210,6 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 	cleanEmptyParents(filepath.Dir(pkgDir))
 
 	return nil
-}
-
-// List returns all installed packages.
-func (i *Installer) List() ([]LockEntry, error) {
-	lockPath := config.LockFilePath()
-	lf, err := LoadLockFile(lockPath)
-	if err != nil {
-		return nil, err
-	}
-	return lf.List(), nil
 }
 
 // downloadURL fetches a URL and returns the response body.

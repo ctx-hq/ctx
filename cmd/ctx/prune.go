@@ -43,20 +43,18 @@ Examples:
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 
-		lockPath := config.LockFilePath()
-		lf, err := installer.LoadLockFile(lockPath)
-		if err != nil {
-			return err
-		}
-
 		var packages []string
 		if len(args) > 0 {
-			if !lf.Has(args[0]) {
+			if !inst.IsInstalled(args[0]) {
 				return output.ErrNotFound("package", args[0])
 			}
 			packages = []string{args[0]}
 		} else {
-			for _, e := range lf.List() {
+			entries, err := inst.ScanInstalled()
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
 				packages = append(packages, e.FullName)
 			}
 		}

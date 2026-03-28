@@ -143,13 +143,13 @@ func handleList(args json.RawMessage) (any, error) {
 	res := resolver.New(client)
 	inst := installer.New(client, res)
 
-	entries, err := inst.List()
+	entries, err := inst.ScanInstalled()
 	if err != nil {
 		return nil, err
 	}
 
 	if params.Type != "" {
-		filtered := make([]installer.LockEntry, 0)
+		filtered := make([]installer.InstalledPackage, 0)
 		for _, e := range entries {
 			if e.Type == params.Type {
 				filtered = append(filtered, e)

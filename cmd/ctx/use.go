@@ -6,6 +6,7 @@ import (
 	"github.com/getctx/ctx/internal/output"
 	"github.com/getctx/ctx/internal/registry"
 	"github.com/getctx/ctx/internal/resolver"
+
 	"github.com/spf13/cobra"
 )
 
@@ -61,21 +62,6 @@ Examples:
 		pkgDir := inst.PackageDir(fullName)
 		if err := installer.SwitchCurrent(pkgDir, version); err != nil {
 			return err
-		}
-
-		// Update lockfile
-		lockPath := config.LockFilePath()
-		lf, err := installer.LoadLockFile(lockPath)
-		if err != nil {
-			return err
-		}
-		if entry, ok := lf.Get(fullName); ok {
-			entry.Version = version
-			entry.InstallPath = inst.CurrentLink(fullName)
-			lf.Add(entry)
-			if err := lf.Save(lockPath); err != nil {
-				return err
-			}
 		}
 
 		result := map[string]string{

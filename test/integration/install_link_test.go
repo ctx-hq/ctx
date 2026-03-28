@@ -1,53 +1,45 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/getctx/ctx/internal/installer"
+	"github.com/getctx/ctx/internal/manifest"
 )
 
 // TestInstallRemoveRoundtrip verifies that install → remove leaves no traces.
 func TestInstallRemoveRoundtrip(t *testing.T) {
 	dataDir := t.TempDir()
-	lockDir := t.TempDir()
-	lockPath := filepath.Join(lockDir, "ctx.lock")
 
 	fullName := "@test/roundtrip"
 	version := "1.0.0"
 
-	// Simulate install: create version dir + current + lockfile
+	// Simulate install: create version dir + current symlink
 	vDir := filepath.Join(dataDir, fullName, version)
 	os.MkdirAll(vDir, 0o755)
 	os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("# skill"), 0o644)
-	os.WriteFile(filepath.Join(vDir, "manifest.json"), []byte(`{"name":"@test/roundtrip","version":"1.0.0","type":"skill"}`), 0o644)
+
+	m := manifest.Manifest{Name: fullName, Version: version, Type: manifest.TypeSkill}
+	data, _ := json.MarshalIndent(m, "", "  ")
+	os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644)
 
 	pkgDir := filepath.Join(dataDir, fullName)
 	installer.SwitchCurrent(pkgDir, version)
 
-	// Write lockfile
-	lf := &installer.LockFile{
-		Version:  1,
-		Packages: map[string]installer.LockEntry{},
-	}
-	lf.Add(installer.LockEntry{
-		FullName:    fullName,
-		Version:     version,
-		Type:        "skill",
-		Source:      "registry",
-		InstallPath: filepath.Join(pkgDir, "current"),
-	})
-	lf.Save(lockPath)
-
 	// Verify install state
+	inst := &installer.Installer{DataDir: dataDir}
+	if !inst.IsInstalled(fullName) {
+		t.Fatal("package should be installed")
+	}
+
 	if _, err := os.Stat(filepath.Join(pkgDir, "current")); err != nil {
 		t.Fatal("current symlink should exist")
 	}
 
 	// Now simulate remove
-	lf.Remove(fullName)
-	lf.Save(lockPath)
 	os.RemoveAll(pkgDir)
 
 	// Verify clean state
@@ -55,10 +47,8 @@ func TestInstallRemoveRoundtrip(t *testing.T) {
 		t.Error("package dir should be gone after remove")
 	}
 
-	// Lockfile should have no entries
-	lf2, _ := installer.LoadLockFile(lockPath)
-	if lf2.Has(fullName) {
-		t.Error("lockfile should not have entry after remove")
+	if inst.IsInstalled(fullName) {
+		t.Error("package should not be installed after remove")
 	}
 }
 

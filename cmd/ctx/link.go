@@ -11,6 +11,8 @@ import (
 	"github.com/getctx/ctx/internal/installer"
 	"github.com/getctx/ctx/internal/manifest"
 	"github.com/getctx/ctx/internal/output"
+	"github.com/getctx/ctx/internal/registry"
+	"github.com/getctx/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -59,14 +61,21 @@ Examples:
 		output.Info("Linking packages to %s...", a.Name())
 
 		// Load all installed packages and link them
-		lockPath := config.LockFilePath()
-		lf, err := installer.LoadLockFile(lockPath)
+		cfg, err := config.Load()
 		if err != nil {
-			return fmt.Errorf("load lockfile: %w", err)
+			return err
+		}
+		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		res := resolver.New(reg)
+		inst := installer.New(reg, res)
+
+		entries, err := inst.ScanInstalled()
+		if err != nil {
+			return fmt.Errorf("scan installed: %w", err)
 		}
 
 		linked := 0
-		for _, entry := range lf.List() {
+		for _, entry := range entries {
 			manifestPath := filepath.Join(entry.InstallPath, "manifest.json")
 			data, err := os.ReadFile(manifestPath)
 			if err != nil {

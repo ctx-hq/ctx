@@ -101,13 +101,31 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 	switch manifest.PackageType(result.Type) {
 	case manifest.TypeCLI:
-		return installer.InstallCLI(cmd.Context(), &m)
+		if err := installer.InstallCLI(cmd.Context(), &m); err != nil {
+			output.Warn("CLI install: %v", err)
+		}
+		// CLI packages may bundle a SKILL.md — link it to agents
+		if hasSkillMD(result.InstallPath) {
+			return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+		}
 	case manifest.TypeSkill:
 		return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
 	case manifest.TypeMCP:
-		return installer.LinkMCPToAgents(&m)
+		if err := installer.LinkMCPToAgents(&m); err != nil {
+			output.Warn("MCP config: %v", err)
+		}
+		// MCP packages may bundle a SKILL.md — link it to agents
+		if hasSkillMD(result.InstallPath) {
+			return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+		}
 	}
 	return nil
+}
+
+// hasSkillMD checks if a package directory contains a SKILL.md file.
+func hasSkillMD(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
+	return err == nil
 }
 
 // loadDescription reads the package description from the installed manifest.

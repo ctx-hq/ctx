@@ -7,6 +7,7 @@ import (
 	"github.com/getctx/ctx/internal/installer"
 	"github.com/getctx/ctx/internal/output"
 	"github.com/getctx/ctx/internal/registry"
+	"github.com/getctx/ctx/internal/resolver"
 	"github.com/spf13/cobra"
 )
 
@@ -19,22 +20,22 @@ var outdatedCmd = &cobra.Command{
 Shows packages that have newer versions available in the registry.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
-		lockPath := config.LockFilePath()
-		lf, err := installer.LoadLockFile(lockPath)
-		if err != nil {
-			return err
-		}
-
-		entries := lf.List()
-		if len(entries) == 0 {
-			return w.OK([]any{}, output.WithSummary("no packages installed"))
-		}
 
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
 		reg := registry.New(cfg.RegistryURL(), cfg.Token)
+		res := resolver.New(reg)
+		inst := installer.New(reg, res)
+
+		entries, err := inst.ScanInstalled()
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			return w.OK([]any{}, output.WithSummary("no packages installed"))
+		}
 
 		type OutdatedEntry struct {
 			FullName string `json:"full_name"`
