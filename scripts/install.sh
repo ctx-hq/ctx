@@ -5,17 +5,24 @@
 # Environment variables:
 #   CTX_INSTALL_DIR  — override installation directory
 #   CTX_VERSION      — specific version to install (default: latest)
+#   CTX_QUIET        — suppress output (set to 1)
 
 set -e
 
 REPO="ctx-hq/ctx"
 BINARY="ctx"
 
+# --- Logging ----------------------------------------------------------------
+
+if [ "${CTX_QUIET:-0}" = "1" ]; then
+  info() { :; }
+else
+  info() { printf "\033[0;36m>\033[0m %s\n" "$1" >&2; }
+fi
+die() { printf "\033[0;31merror:\033[0m %s\n" "$1" >&2; exit 1; }
+ok()  { printf "\033[0;32m>\033[0m %s\n" "$1" >&2; }
+
 # --- Helpers ----------------------------------------------------------------
-
-die() { echo "Error: $1" >&2; exit 1; }
-
-info() { printf "\033[0;36m>\033[0m %s\n" "$1"; }
 
 fetch() {
   if command -v curl >/dev/null 2>&1; then
@@ -41,21 +48,21 @@ sha256() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$1" | awk '{print $1}'
   else
-    die "sha256sum or shasum required for checksum verification"
+    die "sha256sum or shasum required"
   fi
 }
 
 # --- Resolve install directory ----------------------------------------------
 
 resolve_install_dir() {
-  # User explicitly set — use as-is
-  if [ -n "$CTX_INSTALL_DIR" ]; then
+  # User explicitly set
+  if [ -n "${CTX_INSTALL_DIR:-}" ]; then
     echo "$CTX_INSTALL_DIR"
     return
   fi
 
-  # Prefer ~/.local/bin (XDG standard, widely supported)
-  if [ -d "$HOME/.local/bin" ] && echo "$PATH" | grep -q "$HOME/.local/bin"; then
+  # ~/.local/bin already in PATH — use it
+  if echo ":$PATH:" | grep -q ":$HOME/.local/bin:"; then
     echo "$HOME/.local/bin"
     return
   fi
@@ -66,7 +73,7 @@ resolve_install_dir() {
     return
   fi
 
-  # Fall back to ~/.local/bin (create it)
+  # Default: ~/.local/bin (will auto-configure PATH)
   echo "$HOME/.local/bin"
 }
 
@@ -80,27 +87,27 @@ ARCH=$(uname -m)
 case "$ARCH" in
   x86_64|amd64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  *) die "Unsupported architecture: $ARCH" ;;
+  *) die "unsupported architecture: $ARCH" ;;
 esac
 
 case "$OS" in
   linux|darwin) ;;
-  *) die "Unsupported OS: $OS (use install.ps1 for Windows)" ;;
+  *) die "unsupported OS: $OS (use install.ps1 for Windows)" ;;
 esac
 
 PLATFORM="${OS}-${ARCH}"
 
 # --- Resolve version --------------------------------------------------------
 
-if [ -n "$CTX_VERSION" ]; then
+if [ -n "${CTX_VERSION:-}" ]; then
   VERSION="${CTX_VERSION#v}"
 else
-  info "Detecting latest version..."
+  info "detecting latest version..."
   VERSION=$(fetch "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
-  [ -n "$VERSION" ] || die "Could not determine latest version. Set CTX_VERSION=0.1.0 to install manually."
+  [ -n "$VERSION" ] || die "could not detect latest version — set CTX_VERSION=0.1.0 to install manually"
 fi
 
-info "Installing ctx v${VERSION} (${PLATFORM})..."
+info "installing ctx v${VERSION} (${PLATFORM})"
 
 # --- Download and verify ----------------------------------------------------
 
@@ -111,17 +118,15 @@ ARCHIVE_NAME="${BINARY}-${PLATFORM}.tar.gz"
 ARCHIVE_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
 CHECKSUM_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
 
-info "Downloading..."
 download "$ARCHIVE_URL" "$TMPDIR/${ARCHIVE_NAME}"
 download "$CHECKSUM_URL" "$TMPDIR/checksums.txt"
 
-info "Verifying checksum..."
 EXPECTED=$(grep "  ${ARCHIVE_NAME}$" "$TMPDIR/checksums.txt" | awk '{print $1}')
-[ -n "$EXPECTED" ] || die "Checksum not found for ${ARCHIVE_NAME}"
+[ -n "$EXPECTED" ] || die "checksum not found for ${ARCHIVE_NAME}"
 
 ACTUAL=$(sha256 "$TMPDIR/${ARCHIVE_NAME}")
 if [ "$EXPECTED" != "$ACTUAL" ]; then
-  die "Checksum mismatch!\n  Expected: ${EXPECTED}\n  Actual:   ${ACTUAL}"
+  die "checksum mismatch (expected ${EXPECTED}, got ${ACTUAL})"
 fi
 
 # --- Extract and install ----------------------------------------------------
@@ -131,47 +136,77 @@ chmod +x "$TMPDIR/$BINARY"
 
 # Ensure install directory exists
 if [ ! -d "$INSTALL_DIR" ]; then
-  mkdir -p "$INSTALL_DIR" 2>/dev/null || sudo mkdir -p "$INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR" 2>/dev/null || {
+    info "creating $INSTALL_DIR (requires sudo)"
+    sudo mkdir -p "$INSTALL_DIR"
+  }
 fi
 
 # Install binary
 if [ -w "$INSTALL_DIR" ]; then
   mv "$TMPDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 else
-  info "Writing to $INSTALL_DIR requires sudo..."
+  info "writing to $INSTALL_DIR (requires sudo)"
   sudo mv "$TMPDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 fi
 
-# --- Post-install -----------------------------------------------------------
+# --- Auto-configure PATH ---------------------------------------------------
 
+ensure_path() {
+  # Already in PATH — nothing to do
+  case ":$PATH:" in
+    *":${INSTALL_DIR}:"*) return 0 ;;
+  esac
+
+  SHELL_NAME=$(basename "${SHELL:-/bin/sh}")
+  LINE="export PATH=\"${INSTALL_DIR}:\$PATH\""
+
+  case "$SHELL_NAME" in
+    zsh)
+      RC="${ZDOTDIR:-$HOME}/.zshrc"
+      ;;
+    bash)
+      # macOS uses .bash_profile for login shells, Linux uses .bashrc
+      if [ "$OS" = "darwin" ]; then
+        RC="$HOME/.bash_profile"
+      else
+        RC="$HOME/.bashrc"
+      fi
+      ;;
+    fish)
+      RC="$HOME/.config/fish/config.fish"
+      LINE="fish_add_path ${INSTALL_DIR}"
+      ;;
+    *)
+      RC="$HOME/.profile"
+      ;;
+  esac
+
+  # Idempotent: don't append if already present
+  if [ -f "$RC" ] && grep -qF "$INSTALL_DIR" "$RC" 2>/dev/null; then
+    return 0
+  fi
+
+  # Ensure rc file exists
+  [ -f "$RC" ] || touch "$RC"
+
+  printf '\n# ctx\n%s\n' "$LINE" >> "$RC"
+  info "added ${INSTALL_DIR} to PATH in ${RC}"
+
+  # Export for current script so the final check works
+  export PATH="${INSTALL_DIR}:$PATH"
+}
+
+ensure_path
+
+# --- Done -------------------------------------------------------------------
+
+ok "ctx v${VERSION} installed successfully"
 echo ""
-echo "  \033[1;32mctx v${VERSION}\033[0m installed to ${INSTALL_DIR}/${BINARY}"
+echo "  run \`ctx --help\` to get started"
 echo ""
 
-# Check if install dir is in PATH
-case ":$PATH:" in
-  *":${INSTALL_DIR}:"*) ;;
-  *)
-    echo "  \033[1;33mNote:\033[0m ${INSTALL_DIR} is not in your PATH."
-    SHELL_NAME=$(basename "${SHELL:-/bin/sh}")
-    case "$SHELL_NAME" in
-      zsh)  RC="~/.zshrc" ;;
-      bash) RC="~/.bashrc" ;;
-      fish) RC="~/.config/fish/config.fish" ;;
-      *)    RC="your shell config" ;;
-    esac
-    echo "  Add it by running:"
-    echo ""
-    if [ "$SHELL_NAME" = "fish" ]; then
-      echo "    fish_add_path ${INSTALL_DIR}"
-    else
-      echo "    echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ${RC}"
-    fi
-    echo ""
-    ;;
-esac
-
-echo "  Get started:"
-echo "    ctx search \"code review\""
-echo "    ctx install @scope/name"
-echo "    ctx --help"
+# Hint to reload shell if we modified rc file
+if [ "${_CTX_PATH_ADDED:-}" = "1" ]; then
+  info "restart your shell or run: source ${RC}"
+fi
