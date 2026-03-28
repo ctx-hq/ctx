@@ -45,10 +45,11 @@ Choose the command matching the current platform. Both are zero-interaction — 
 ## Agent Invariants
 
 1. Use `--agent` flag for machine-parseable output (quiet JSON data, JSON errors)
-2. Use `--type` to filter by package type: `skill`, `mcp`, `cli`
-3. Installation auto-detects and links to all agents (Claude, Cursor, Windsurf, OpenCode, Codex)
-4. Use `ctx dr` to diagnose environment issues
-5. All operations are reversible — `ctx rm` cleanly removes all traces
+2. Use `--caller <name>` on install to identify yourself (e.g., `--caller claude`). The caller agent is linked first.
+3. Use `--type` to filter by package type: `skill`, `mcp`, `cli`
+4. Installation auto-detects and links to all agents (Claude, Cursor, Windsurf, OpenCode, Codex)
+5. Use `ctx dr` to diagnose environment issues
+6. All operations are reversible — `ctx rm` cleanly removes all traces
 
 ## Quick Reference
 
@@ -88,9 +89,9 @@ Choose the command matching the current platform. Both are zero-interaction — 
 
 ### Install Tools for Your Agent
 ```bash
-ctx s ffmpeg --type skill     # Search for skill packages
-ctx i @ctx/ffmpeg             # Install (auto-links to all agents)
-ctx ls                        # Verify installation
+ctx s ffmpeg --type skill           # Search for skill packages
+ctx i @ctx/ffmpeg --caller claude   # Install (caller agent gets priority)
+ctx ls                              # Verify installation
 ```
 
 ### Batch Update

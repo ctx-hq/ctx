@@ -76,9 +76,9 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 	versionDir := i.VersionDir(resolution.FullName, resolution.Version)
 	pkgDir := i.PackageDir(resolution.FullName)
 
-	// Check if this exact version is already installed
+	// Check if this exact version is already installed (with valid manifest)
 	versionExists := false
-	if _, err := os.Stat(versionDir); err == nil {
+	if _, err := os.Stat(filepath.Join(versionDir, "manifest.json")); err == nil {
 		versionExists = true
 	}
 
@@ -129,9 +129,24 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			}
 		}
 	} else if !versionExists {
-		// No download URL — just ensure the version directory exists
+		// No download URL — create version dir with manifest and content
 		if err := os.MkdirAll(versionDir, 0o755); err != nil {
 			return nil, nil, fmt.Errorf("create version dir: %w", err)
+		}
+		// Always write manifest so post-install linking can find it
+		manifestData, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal manifest: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(versionDir, "manifest.json"), manifestData, 0o644); err != nil {
+			return nil, nil, fmt.Errorf("write manifest: %w", err)
+		}
+		// For skills without an archive, generate a SKILL.md from the manifest
+		if m.Type == manifest.TypeSkill {
+			content := generateSkillMD(&m)
+			if err := os.WriteFile(filepath.Join(versionDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+				return nil, nil, fmt.Errorf("write SKILL.md: %w", err)
+			}
 		}
 	}
 
@@ -324,4 +339,20 @@ func extractArchive(r io.Reader, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// generateSkillMD creates a minimal SKILL.md from manifest metadata.
+func generateSkillMD(m *manifest.Manifest) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("name: " + m.ShortName() + "\n")
+	if m.Description != "" {
+		b.WriteString("description: |\n  " + m.Description + "\n")
+	}
+	b.WriteString("---\n\n")
+	b.WriteString("# " + m.Name + "\n\n")
+	if m.Description != "" {
+		b.WriteString(m.Description + "\n")
+	}
+	return b.String()
 }
