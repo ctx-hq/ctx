@@ -20,9 +20,15 @@ func TestVersionLifecycle(t *testing.T) {
 
 	// Simulate installing v1.0.0
 	v1Dir := inst.VersionDir(fullName, "1.0.0")
-	os.MkdirAll(v1Dir, 0o755)
-	os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("# v1.0.0 content"), 0o644)
-	os.WriteFile(filepath.Join(v1Dir, "manifest.json"), []byte(`{"name":"@test/lifecycle","version":"1.0.0","type":"skill"}`), 0o644)
+	if err := os.MkdirAll(v1Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("# v1.0.0 content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, "manifest.json"), []byte(`{"name":"@test/lifecycle","version":"1.0.0","type":"skill"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	pkgDir := inst.PackageDir(fullName)
 	if err := installer.SwitchCurrent(pkgDir, "1.0.0"); err != nil {
@@ -45,9 +51,15 @@ func TestVersionLifecycle(t *testing.T) {
 
 	// Simulate installing v2.0.0
 	v2Dir := inst.VersionDir(fullName, "2.0.0")
-	os.MkdirAll(v2Dir, 0o755)
-	os.WriteFile(filepath.Join(v2Dir, "SKILL.md"), []byte("# v2.0.0 content"), 0o644)
-	os.WriteFile(filepath.Join(v2Dir, "manifest.json"), []byte(`{"name":"@test/lifecycle","version":"2.0.0","type":"skill"}`), 0o644)
+	if err := os.MkdirAll(v2Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v2Dir, "SKILL.md"), []byte("# v2.0.0 content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v2Dir, "manifest.json"), []byte(`{"name":"@test/lifecycle","version":"2.0.0","type":"skill"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := installer.SwitchCurrent(pkgDir, "2.0.0"); err != nil {
 		t.Fatalf("SwitchCurrent to 2.0.0: %v", err)
@@ -109,16 +121,24 @@ func TestLinkRegistryRoundtrip(t *testing.T) {
 
 	// Create a source skill dir
 	srcDir := filepath.Join(dir, "source", "SKILL.md")
-	os.MkdirAll(filepath.Dir(srcDir), 0o755)
-	os.WriteFile(srcDir, []byte("# skill"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(srcDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(srcDir, []byte("# skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create agent dirs
 	agentSkillDir := filepath.Join(dir, "agent-claude", "skills")
-	os.MkdirAll(agentSkillDir, 0o755)
+	if err := os.MkdirAll(agentSkillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create symlink (simulating install)
 	linkTarget := filepath.Join(agentSkillDir, "review")
-	os.Symlink(filepath.Dir(srcDir), linkTarget)
+	if err := os.Symlink(filepath.Dir(srcDir), linkTarget); err != nil {
+		t.Fatal(err)
+	}
 
 	// Register in link registry
 	reg := &installer.LinkRegistry{
@@ -164,16 +184,26 @@ func TestCurrentSymlinkChain(t *testing.T) {
 	// Setup: package with version and current
 	pkgDir := filepath.Join(dir, "packages", "@hong", "review")
 	v1Dir := filepath.Join(pkgDir, "1.0.0")
-	os.MkdirAll(v1Dir, 0o755)
-	os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("# skill content"), 0o644)
-	installer.SwitchCurrent(pkgDir, "1.0.0")
+	if err := os.MkdirAll(v1Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("# skill content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.SwitchCurrent(pkgDir, "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Simulate agent symlink pointing to current/
 	agentDir := filepath.Join(dir, "agent", "skills")
-	os.MkdirAll(agentDir, 0o755)
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	agentLink := filepath.Join(agentDir, "review")
 	currentDir := filepath.Join(pkgDir, "current")
-	os.Symlink(currentDir, agentLink)
+	if err := os.Symlink(currentDir, agentLink); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read through the two-level chain: agentLink → current → 1.0.0/SKILL.md
 	data, err := os.ReadFile(filepath.Join(agentLink, "SKILL.md"))
@@ -186,9 +216,15 @@ func TestCurrentSymlinkChain(t *testing.T) {
 
 	// Now switch version — agent link should automatically resolve to new content
 	v2Dir := filepath.Join(pkgDir, "2.0.0")
-	os.MkdirAll(v2Dir, 0o755)
-	os.WriteFile(filepath.Join(v2Dir, "SKILL.md"), []byte("# v2 content"), 0o644)
-	installer.SwitchCurrent(pkgDir, "2.0.0")
+	if err := os.MkdirAll(v2Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v2Dir, "SKILL.md"), []byte("# v2 content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.SwitchCurrent(pkgDir, "2.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Same agent link now resolves to v2
 	data, err = os.ReadFile(filepath.Join(agentLink, "SKILL.md"))

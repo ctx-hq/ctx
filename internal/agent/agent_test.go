@@ -76,21 +76,29 @@ func TestWriteAndRemoveMCPConfig(t *testing.T) {
 
 	// Add another MCP
 	cfg2 := MCPConfig{Command: "node", Args: []string{"server.js"}}
-	writeMCPConfig(configPath, "other-mcp", cfg2)
+	if err := writeMCPConfig(configPath, "other-mcp", cfg2); err != nil {
+		t.Fatalf("writeMCPConfig (other-mcp): %v", err)
+	}
 
 	data2, _ := os.ReadFile(configPath)
 	var result2 map[string]any
-	json.Unmarshal(data2, &result2)
+	if err := json.Unmarshal(data2, &result2); err != nil {
+		t.Fatalf("parse config2: %v", err)
+	}
 	servers2 := result2["mcpServers"].(map[string]any)
 	if len(servers2) != 2 {
 		t.Errorf("expected 2 servers, got %d", len(servers2))
 	}
 
 	// Remove one
-	removeMCPFromConfig(configPath, "github-mcp")
+	if err := removeMCPFromConfig(configPath, "github-mcp"); err != nil {
+		t.Fatalf("removeMCPFromConfig: %v", err)
+	}
 	data3, _ := os.ReadFile(configPath)
 	var result3 map[string]any
-	json.Unmarshal(data3, &result3)
+	if err := json.Unmarshal(data3, &result3); err != nil {
+		t.Fatalf("parse config3: %v", err)
+	}
 	servers3 := result3["mcpServers"].(map[string]any)
 	if len(servers3) != 1 {
 		t.Errorf("expected 1 server after remove, got %d", len(servers3))
@@ -103,8 +111,12 @@ func TestInstallAndRemoveSkill(t *testing.T) {
 
 	// Create a source skill dir
 	srcDir := filepath.Join(dir, "src-skill")
-	os.MkdirAll(srcDir, 0o755)
-	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# Test"), 0o644)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# Test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Install skill
 	err := installSkillBySymlink(skillsDir, srcDir, "my-skill")

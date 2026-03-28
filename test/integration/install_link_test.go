@@ -19,15 +19,26 @@ func TestInstallRemoveRoundtrip(t *testing.T) {
 
 	// Simulate install: create version dir + current symlink
 	vDir := filepath.Join(dataDir, fullName, version)
-	os.MkdirAll(vDir, 0o755)
-	os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("# skill"), 0o644)
+	if err := os.MkdirAll(vDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	m := manifest.Manifest{Name: fullName, Version: version, Type: manifest.TypeSkill}
-	data, _ := json.MarshalIndent(m, "", "  ")
-	os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644)
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	pkgDir := filepath.Join(dataDir, fullName)
-	installer.SwitchCurrent(pkgDir, version)
+	if err := installer.SwitchCurrent(pkgDir, version); err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify install state
 	inst := &installer.Installer{DataDir: dataDir}
@@ -40,7 +51,9 @@ func TestInstallRemoveRoundtrip(t *testing.T) {
 	}
 
 	// Now simulate remove
-	os.RemoveAll(pkgDir)
+	if err := os.RemoveAll(pkgDir); err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify clean state
 	if _, err := os.Stat(pkgDir); !os.IsNotExist(err) {
@@ -58,8 +71,12 @@ func TestLinkCleanupRoundtrip(t *testing.T) {
 
 	// Setup: source dir with skill
 	srcDir := filepath.Join(dir, "packages", "@test", "skill", "1.0.0")
-	os.MkdirAll(srcDir, 0o755)
-	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Setup: multiple "agent" directories
 	agentDirs := []string{
@@ -68,7 +85,9 @@ func TestLinkCleanupRoundtrip(t *testing.T) {
 		filepath.Join(dir, "generic", "skills"),
 	}
 	for _, d := range agentDirs {
-		os.MkdirAll(d, 0o755)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Create symlinks (simulating install)
@@ -79,7 +98,9 @@ func TestLinkCleanupRoundtrip(t *testing.T) {
 
 	for i, agentDir := range agentDirs {
 		linkPath := filepath.Join(agentDir, "test-skill")
-		os.Symlink(srcDir, linkPath)
+		if err := os.Symlink(srcDir, linkPath); err != nil {
+			t.Fatal(err)
+		}
 
 		agents := []string{"claude", "cursor", "generic"}
 		reg.Add("@test/skill", installer.LinkEntry{
@@ -138,14 +159,22 @@ func TestMultiplePackagesIsolation(t *testing.T) {
 	// Install all
 	for _, pkg := range packages {
 		vDir := inst.VersionDir(pkg.name, pkg.version)
-		os.MkdirAll(vDir, 0o755)
-		os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("# "+pkg.name), 0o644)
+		if err := os.MkdirAll(vDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("# "+pkg.name), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		pkgDir := inst.PackageDir(pkg.name)
-		installer.SwitchCurrent(pkgDir, pkg.version)
+		if err := installer.SwitchCurrent(pkgDir, pkg.version); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Remove one — others should be unaffected
-	os.RemoveAll(inst.PackageDir("@test/pkg-b"))
+	if err := os.RemoveAll(inst.PackageDir("@test/pkg-b")); err != nil {
+		t.Fatal(err)
+	}
 
 	// pkg-a should still work
 	data, err := os.ReadFile(filepath.Join(inst.CurrentLink("@test/pkg-a"), "SKILL.md"))

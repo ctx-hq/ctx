@@ -76,9 +76,9 @@ func (r *Resolver) resolveGitHub(ctx context.Context, source, constraint string)
 
 	owner := parts[0]
 	repoName := parts[1]
-	subPath := ""
+	var subPath string
 	if len(parts) == 3 {
-		repoName, subPath, _ = strings.Cut(parts[1]+"/"+parts[2], "/")
+		_, subPath, _ = strings.Cut(parts[1]+"/"+parts[2], "/")
 		// Re-parse: first two are owner/repo, rest is path
 		repoParts := strings.SplitN(strings.TrimPrefix(source, "github:"), "/", 3)
 		owner = repoParts[0]

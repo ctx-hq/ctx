@@ -121,7 +121,7 @@ func SwitchCurrent(pkgDir, newVersion string) error {
 
 	// Atomic rename
 	if err := os.Rename(tmp, current); err != nil {
-		os.Remove(tmp) // cleanup on failure
+		_ = os.Remove(tmp) // cleanup on failure
 		return fmt.Errorf("atomic switch: %w", err)
 	}
 
@@ -182,7 +182,7 @@ func isHidden(name string) bool {
 // dirSize recursively calculates directory size in bytes.
 func dirSize(path string) int64 {
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			size += info.Size()
 		}

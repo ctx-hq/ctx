@@ -119,7 +119,7 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 	if err != nil {
 		return nil, fmt.Errorf("publish request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, parseError(resp)
@@ -163,7 +163,7 @@ func (c *Client) Download(ctx context.Context, fullName, version string) (io.Rea
 		return nil, fmt.Errorf("download: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
 	return resp.Body, nil
@@ -184,7 +184,7 @@ func (c *Client) get(ctx context.Context, path string, result any) error {
 	if err != nil {
 		return fmt.Errorf("request %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return parseError(resp)
@@ -222,7 +222,7 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 	if err != nil {
 		return fmt.Errorf("request %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return parseError(resp)

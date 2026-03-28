@@ -146,7 +146,9 @@ func TestNoDownloadBranch_NonSkillType_NoSkillMD(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	manifestData, _ := json.MarshalIndent(m, "", "  ")
-	os.WriteFile(filepath.Join(versionDir, "manifest.json"), manifestData, 0o644)
+	if err := os.WriteFile(filepath.Join(versionDir, "manifest.json"), manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// SKILL.md should NOT be generated for non-skill types
 	if m.Type == manifest.TypeSkill {

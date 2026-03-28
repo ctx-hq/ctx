@@ -20,5 +20,5 @@ func JSONCompact(v any) error {
 
 // JSONError prints an error as JSON.
 func JSONError(err error) {
-	fmt.Fprintf(os.Stdout, `{"error":%q}`+"\n", err.Error())
+	_, _ = fmt.Fprintf(os.Stdout, `{"error":%q}`+"\n", err.Error())
 }

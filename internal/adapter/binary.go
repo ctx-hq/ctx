@@ -39,7 +39,7 @@ func (a *BinaryAdapter) Install(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return fmt.Errorf("download %s: %w", rawURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned status %d", resp.StatusCode)
@@ -69,7 +69,7 @@ func (a *BinaryAdapter) Install(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, err = io.Copy(f, resp.Body)
 	return err
@@ -98,7 +98,7 @@ func extractTarGz(r io.Reader, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	absDestDir, err := filepath.Abs(destDir)
 	if err != nil {
@@ -138,10 +138,10 @@ func extractTarGz(r io.Reader, destDir string) error {
 		}
 		written, err := io.Copy(f, io.LimitReader(tr, maxFileSize+1))
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
-		f.Close()
+		_ = f.Close()
 		if written > maxFileSize {
 			return fmt.Errorf("file %s exceeds maximum size of %d bytes", hdr.Name, maxFileSize)
 		}

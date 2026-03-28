@@ -10,10 +10,18 @@ func TestSwitchCurrent(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create version directories
-	os.MkdirAll(filepath.Join(dir, "1.0.0"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "1.1.0"), 0o755)
-	os.WriteFile(filepath.Join(dir, "1.0.0", "SKILL.md"), []byte("v1"), 0o644)
-	os.WriteFile(filepath.Join(dir, "1.1.0", "SKILL.md"), []byte("v1.1"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "1.1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "1.0.0", "SKILL.md"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "1.1.0", "SKILL.md"), []byte("v1.1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Switch to 1.0.0
 	if err := SwitchCurrent(dir, "1.0.0"); err != nil {
@@ -69,13 +77,23 @@ func TestInstalledVersions(t *testing.T) {
 	pkgDir := filepath.Join(dir, "@hong", "review")
 
 	// Create version directories
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.MkdirAll(filepath.Join(pkgDir, "1.1.0"), 0o755)
-	os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755)
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Create hidden dir (should be ignored)
-	os.MkdirAll(filepath.Join(pkgDir, ".tmp"), 0o755)
+	if err := os.MkdirAll(filepath.Join(pkgDir, ".tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Create current symlink (should be ignored - it's a symlink not dir)
-	os.Symlink("2.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.Symlink("2.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &Installer{DataDir: dir}
 	versions := inst.InstalledVersions("@hong/review")
@@ -97,7 +115,9 @@ func TestInstalledVersions_SemverOrder(t *testing.T) {
 
 	// Create versions that would sort wrong with lexicographic order
 	for _, v := range []string{"1.9.0", "1.10.0", "1.2.0", "2.0.0", "1.0.0"} {
-		os.MkdirAll(filepath.Join(pkgDir, v), 0o755)
+		if err := os.MkdirAll(filepath.Join(pkgDir, v), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	inst := &Installer{DataDir: dir}
@@ -117,8 +137,12 @@ func TestInstalledVersions_SemverOrder(t *testing.T) {
 func TestCurrentVersion(t *testing.T) {
 	dir := t.TempDir()
 	pkgDir := filepath.Join(dir, "@hong", "review")
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.Symlink("1.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("1.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &Installer{DataDir: dir}
 	ver := inst.CurrentVersion("@hong/review")
@@ -143,11 +167,17 @@ func TestPruneVersions(t *testing.T) {
 	// Create 4 versions with content
 	for _, v := range []string{"1.0.0", "1.1.0", "1.2.0", "2.0.0"} {
 		vDir := filepath.Join(pkgDir, v)
-		os.MkdirAll(vDir, 0o755)
-		os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("content-"+v), 0o644)
+		if err := os.MkdirAll(vDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("content-"+v), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Set current to 2.0.0
-	os.Symlink("2.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.Symlink("2.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &Installer{DataDir: dir}
 
@@ -183,9 +213,15 @@ func TestPruneVersions_KeepsCurrent(t *testing.T) {
 	pkgDir := filepath.Join(dir, "@hong", "review")
 
 	// Create 2 versions, current on older one
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755)
-	os.Symlink("1.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("1.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &Installer{DataDir: dir}
 
@@ -210,8 +246,12 @@ func TestPruneVersions_KeepsCurrent(t *testing.T) {
 func TestPruneVersions_NothingToPrune(t *testing.T) {
 	dir := t.TempDir()
 	pkgDir := filepath.Join(dir, "@hong", "review")
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.Symlink("1.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("1.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &Installer{DataDir: dir}
 	removed, _, _ := inst.PruneVersions("@hong/review", 1)
@@ -235,8 +275,12 @@ func TestPruneVersions_EmptyPackage(t *testing.T) {
 
 func TestDirSize(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644)
-	os.WriteFile(filepath.Join(dir, "b.txt"), []byte("world!"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("world!"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	size := dirSize(dir)
 	if size != 11 { // 5 + 6

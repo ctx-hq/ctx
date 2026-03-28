@@ -144,7 +144,9 @@ func handleList(args json.RawMessage) (any, error) {
 	var params struct {
 		Type string `json:"type"`
 	}
-	json.Unmarshal(args, &params)
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

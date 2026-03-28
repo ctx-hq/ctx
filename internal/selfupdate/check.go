@@ -79,7 +79,7 @@ func fetchLatestVersion() string {
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return ""
 	}
@@ -171,10 +171,10 @@ func loadCache(path string) (*UpdateCache, error) {
 
 func saveCache(path string, cache *UpdateCache) {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0o700)
+	_ = os.MkdirAll(dir, 0o700)
 	data, err := json.Marshal(cache)
 	if err != nil {
 		return
 	}
-	os.WriteFile(path, data, 0o600)
+	_ = os.WriteFile(path, data, 0o600)
 }

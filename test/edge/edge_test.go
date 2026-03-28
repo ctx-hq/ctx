@@ -70,8 +70,12 @@ func TestValidateManifest_SpecialCharsInScope(t *testing.T) {
 
 func TestSwitchCurrent_ConcurrentSafe(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "1.0.0"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "2.0.0"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "2.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Run multiple switches concurrently — should not panic or corrupt
 	done := make(chan error, 10)
@@ -107,9 +111,15 @@ func TestInstallSameVersionTwice(t *testing.T) {
 	v1Dir := filepath.Join(pkgDir, "1.0.0")
 
 	// First install
-	os.MkdirAll(v1Dir, 0o755)
-	os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("original"), 0o644)
-	installer.SwitchCurrent(pkgDir, "1.0.0")
+	if err := os.MkdirAll(v1Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, "SKILL.md"), []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.SwitchCurrent(pkgDir, "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	// "Install" same version again — should not fail
 	err := installer.SwitchCurrent(pkgDir, "1.0.0")
@@ -173,12 +183,12 @@ func TestParseSkillMD_OnlyFrontmatter(t *testing.T) {
 func TestLinksRegistry_CorruptedJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "links.json")
-	os.WriteFile(path, []byte("{invalid json"), 0o600)
+	if err := os.WriteFile(path, []byte("{invalid json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	// Should return error, not panic
-	origHome := os.Getenv("CTX_HOME")
-	os.Setenv("CTX_HOME", dir)
-	defer os.Setenv("CTX_HOME", origHome)
+	t.Setenv("CTX_HOME", dir)
 
 	_, err := installer.LoadLinks()
 	if err == nil {
@@ -218,14 +228,14 @@ func TestWriter_NilSliceVsEmptySlice(t *testing.T) {
 	// Nil slice in count mode
 	buf := &bytes.Buffer{}
 	w := output.NewWriter(output.WithStdout(buf), output.WithFormat(output.FormatCount))
-	w.OK(nil)
+	_ = w.OK(nil)
 	if got := strings.TrimSpace(buf.String()); got != "0" {
 		t.Errorf("nil count = %q, want 0", got)
 	}
 
 	// Empty slice in count mode
 	buf.Reset()
-	w.OK([]string{})
+	_ = w.OK([]string{})
 	if got := strings.TrimSpace(buf.String()); got != "0" {
 		t.Errorf("empty count = %q, want 0", got)
 	}
@@ -234,10 +244,10 @@ func TestWriter_NilSliceVsEmptySlice(t *testing.T) {
 func TestWriter_JSONEnvelope_ErrorHasNoDataField(t *testing.T) {
 	buf := &bytes.Buffer{}
 	w := output.NewWriter(output.WithStdout(buf), output.WithFormat(output.FormatJSON))
-	w.Err(output.ErrAuth("not logged in"))
+	_ = w.Err(output.ErrAuth("not logged in"))
 
 	var resp map[string]any
-	json.Unmarshal(buf.Bytes(), &resp)
+	_ = json.Unmarshal(buf.Bytes(), &resp)
 
 	if resp["ok"] != false {
 		t.Error("error response ok should be false")
@@ -255,7 +265,7 @@ func TestWriter_IDsMode_FallbackKeys(t *testing.T) {
 	data := []map[string]any{
 		{"name": "review", "version": "1.0.0"},
 	}
-	w.OK(data)
+	_ = w.OK(data)
 	if got := strings.TrimSpace(buf.String()); got != "review" {
 		t.Errorf("IDs fallback to name = %q, want review", got)
 	}
@@ -362,8 +372,12 @@ func TestValidateManifest_SourceSpec(t *testing.T) {
 func TestPrune_KeepMinimumOne(t *testing.T) {
 	dir := t.TempDir()
 	pkgDir := filepath.Join(dir, "@test", "pkg")
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.Symlink("1.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("1.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &installer.Installer{DataDir: dir}
 
@@ -385,7 +399,9 @@ func TestPrune_KeepMinimumOne(t *testing.T) {
 func TestCurrentVersion_MissingSymlink(t *testing.T) {
 	dir := t.TempDir()
 	pkgDir := filepath.Join(dir, "@test", "pkg")
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// No current symlink created
 
 	inst := &installer.Installer{DataDir: dir}
@@ -403,10 +419,18 @@ func TestFormatBytes(t *testing.T) {
 	// but we verify the prune freed bytes are reported correctly
 	dir := t.TempDir()
 	pkgDir := filepath.Join(dir, "@test", "pkg")
-	os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755)
-	os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755)
-	os.WriteFile(filepath.Join(pkgDir, "1.0.0", "data"), make([]byte, 1024), 0o644)
-	os.Symlink("2.0.0", filepath.Join(pkgDir, "current"))
+	if err := os.MkdirAll(filepath.Join(pkgDir, "1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgDir, "2.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "1.0.0", "data"), make([]byte, 1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("2.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
 
 	inst := &installer.Installer{DataDir: dir}
 	_, freed, _ := inst.PruneVersions("@test/pkg", 1)

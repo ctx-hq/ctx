@@ -183,9 +183,13 @@ func (w *Writer) Err(err error) error {
 	}
 
 	// Styled error output
-	fmt.Fprintf(w.stderr, Red+"✗ "+Reset+"%s\n", cliErr.Message)
+	if _, err := fmt.Fprintf(w.stderr, Red+"✗ "+Reset+"%s\n", cliErr.Message); err != nil {
+		return err
+	}
 	if cliErr.Hint != "" {
-		fmt.Fprintf(w.stderr, Dim+"  Hint: %s"+Reset+"\n", cliErr.Hint)
+		if _, err := fmt.Fprintf(w.stderr, Dim+"  Hint: %s"+Reset+"\n", cliErr.Hint); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -215,7 +219,7 @@ func (w *Writer) writeStyled(resp *Response) error {
 
 	if len(items) == 0 {
 		if resp.Summary != "" {
-			fmt.Fprintln(w.stderr, Dim+resp.Summary+Reset)
+			_, _ = fmt.Fprintln(w.stderr, Dim+resp.Summary+Reset)
 		}
 		return nil
 	}
@@ -225,23 +229,23 @@ func (w *Writer) writeStyled(resp *Response) error {
 		if m, ok := asMap(item); ok {
 			w.printMapRow(m)
 		} else {
-			fmt.Fprintf(w.stdout, "  %v\n", item)
+			_, _ = fmt.Fprintf(w.stdout, "  %v\n", item)
 		}
 	}
 
 	if resp.Summary != "" {
-		fmt.Fprintf(w.stderr, "\n"+Dim+"  %s"+Reset+"\n", resp.Summary)
+		_, _ = fmt.Fprintf(w.stderr, "\n"+Dim+"  %s"+Reset+"\n", resp.Summary)
 	}
 	if resp.Notice != "" {
-		fmt.Fprintf(w.stderr, Dim+"  %s"+Reset+"\n", resp.Notice)
+		_, _ = fmt.Fprintf(w.stderr, Dim+"  %s"+Reset+"\n", resp.Notice)
 	}
 	return nil
 }
 
 func (w *Writer) writeMarkdown(resp *Response) error {
 	items := toSlice(resp.Data)
-	if items == nil || len(items) == 0 {
-		fmt.Fprintln(w.stdout, "*No data*")
+	if len(items) == 0 {
+		_, _ = fmt.Fprintln(w.stdout, "*No data*")
 		return nil
 	}
 
@@ -254,13 +258,13 @@ func (w *Writer) writeMarkdown(resp *Response) error {
 
 	headers := sortedKeys(first)
 	// Header row
-	fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(headers, " | "))
+	_, _ = fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(headers, " | "))
 	// Separator
 	seps := make([]string, len(headers))
 	for i := range seps {
 		seps[i] = "---"
 	}
-	fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(seps, " | "))
+	_, _ = fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(seps, " | "))
 	// Data rows
 	for _, item := range items {
 		if m, ok := asMap(item); ok {
@@ -268,7 +272,7 @@ func (w *Writer) writeMarkdown(resp *Response) error {
 			for i, h := range headers {
 				vals[i] = fmt.Sprintf("%v", m[h])
 			}
-			fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(vals, " | "))
+			_, _ = fmt.Fprintf(w.stdout, "| %s |\n", strings.Join(vals, " | "))
 		}
 	}
 	return nil
@@ -280,12 +284,12 @@ func (w *Writer) writeIDs(resp *Response) error {
 		if m, ok := asMap(item); ok {
 			for _, key := range []string{"id", "full_name", "name"} {
 				if v, exists := m[key]; exists {
-					fmt.Fprintf(w.stdout, "%v\n", v)
+					_, _ = fmt.Fprintf(w.stdout, "%v\n", v)
 					break
 				}
 			}
 		} else {
-			fmt.Fprintf(w.stdout, "%v\n", item)
+			_, _ = fmt.Fprintf(w.stdout, "%v\n", item)
 		}
 	}
 	return nil
@@ -294,11 +298,11 @@ func (w *Writer) writeIDs(resp *Response) error {
 func (w *Writer) writeCount(resp *Response) error {
 	items := toSlice(resp.Data)
 	if items != nil {
-		fmt.Fprintf(w.stdout, "%d\n", len(items))
+		_, _ = fmt.Fprintf(w.stdout, "%d\n", len(items))
 	} else if resp.Data != nil {
-		fmt.Fprintln(w.stdout, "1")
+		_, _ = fmt.Fprintln(w.stdout, "1")
 	} else {
-		fmt.Fprintln(w.stdout, "0")
+		_, _ = fmt.Fprintln(w.stdout, "0")
 	}
 	return nil
 }
@@ -316,14 +320,14 @@ func (w *Writer) printMapRow(m map[string]any) {
 		if typ != "" {
 			typeBadge = fmt.Sprintf(" [%s]", typ)
 		}
-		fmt.Fprintf(w.stdout, "  %-30s%-8s %s\n", name, typeBadge, extra)
+		_, _ = fmt.Fprintf(w.stdout, "  %-30s%-8s %s\n", name, typeBadge, extra)
 	} else {
 		// Fallback: print all keys
 		parts := make([]string, 0)
 		for _, k := range sortedKeys(m) {
 			parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
 		}
-		fmt.Fprintf(w.stdout, "  %s\n", strings.Join(parts, " "))
+		_, _ = fmt.Fprintf(w.stdout, "  %s\n", strings.Join(parts, " "))
 	}
 }
 

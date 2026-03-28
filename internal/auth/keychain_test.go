@@ -80,7 +80,7 @@ func TestFileKeychain_MultipleEntries(t *testing.T) {
 
 	kc := &fileKeychain{}
 	_ = kc.Set("svc1", "acct1", "secret1")
-	kc.Set("svc2", "acct2", "secret2")
+	_ = kc.Set("svc2", "acct2", "secret2")
 
 	v1, _ := kc.Get("svc1", "acct1")
 	v2, _ := kc.Get("svc2", "acct2")

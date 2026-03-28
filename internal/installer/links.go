@@ -93,20 +93,20 @@ func (r *LinkRegistry) Save() error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp file: %w", err)
 	}
 	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename temp to links.json: %w", err)
 	}
 	return nil
@@ -233,13 +233,13 @@ func CleanupLinks(entries []LinkEntry) int {
 				continue // already gone
 			}
 			if fi.Mode()&os.ModeSymlink != 0 {
-				os.Remove(entry.Target)
+				_ = os.Remove(entry.Target)
 				cleaned++
 			} else if fi.IsDir() {
 				// Check for .ctx-managed marker before removing
 				markerPath := filepath.Join(entry.Target, ".ctx-managed")
 				if _, err := os.Stat(markerPath); err == nil {
-					os.RemoveAll(entry.Target)
+					_ = os.RemoveAll(entry.Target)
 					cleaned++
 				}
 			}
@@ -258,7 +258,7 @@ func CleanupLinks(entries []LinkEntry) int {
 
 		case LinkBinary:
 			if _, err := os.Lstat(entry.Target); err == nil {
-				os.Remove(entry.Target)
+				_ = os.Remove(entry.Target)
 				cleaned++
 			}
 		}
@@ -332,7 +332,7 @@ func cleanEmptyParents(dir string) {
 		if err != nil || len(entries) > 0 {
 			return
 		}
-		os.Remove(dir)
+		_ = os.Remove(dir)
 		dir = filepath.Dir(dir)
 	}
 }

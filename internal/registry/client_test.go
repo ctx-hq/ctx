@@ -20,7 +20,7 @@ func TestClientSearch(t *testing.T) {
 			t.Errorf("q = %q, want %q", q, "test")
 		}
 
-		json.NewEncoder(w).Encode(SearchResult{
+		_ = json.NewEncoder(w).Encode(SearchResult{
 			Packages: []PackageInfo{
 				{FullName: "@test/pkg", Type: "skill", Description: "A test"},
 			},
@@ -44,7 +44,7 @@ func TestClientSearch(t *testing.T) {
 
 func TestClientGetPackage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(PackageDetail{
+		_ = json.NewEncoder(w).Encode(PackageDetail{
 			PackageInfo: PackageInfo{
 				FullName:    "@test/pkg",
 				Type:        "mcp",
@@ -68,12 +68,12 @@ func TestClientAuthHeader(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token-123")
-	c.GetMe(context.Background())
+	_, _ = c.GetMe(context.Background())
 
 	if gotAuth != "Bearer test-token-123" {
 		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer test-token-123")
@@ -84,7 +84,7 @@ func TestClientUserAgent(t *testing.T) {
 	var gotUA string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
-		json.NewEncoder(w).Encode(SearchResult{})
+		_ = json.NewEncoder(w).Encode(SearchResult{})
 	}))
 	defer srv.Close()
 
@@ -102,7 +102,7 @@ func TestClientUserAgent(t *testing.T) {
 func TestClientErrorParsing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		json.NewEncoder(w).Encode(ErrorResponse{
+		_ = json.NewEncoder(w).Encode(ErrorResponse{
 			Error:   "not_found",
 			Message: "Package not found",
 		})

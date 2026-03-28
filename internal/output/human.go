@@ -61,7 +61,7 @@ func Table(rows [][]string) {
 	}
 	for _, row := range rows {
 		if len(row) >= 2 {
-			fmt.Fprintf(os.Stdout, "  %-*s  %s\n", maxKey, row[0], row[1])
+			_, _ = fmt.Fprintf(os.Stdout, "  %-*s  %s\n", maxKey, row[0], row[1])
 		}
 	}
 }
@@ -69,7 +69,7 @@ func Table(rows [][]string) {
 // List prints a bulleted list.
 func List(items []string) {
 	for _, item := range items {
-		fmt.Fprintf(os.Stdout, "  • %s\n", item)
+		_, _ = fmt.Fprintf(os.Stdout, "  • %s\n", item)
 	}
 }
 

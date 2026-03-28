@@ -66,7 +66,7 @@ configuration, network connectivity, and detected agents.`,
 					fmt.Sprintf("cannot reach %s", registryURL),
 					"Check your internet connection")
 			} else {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if resp.StatusCode == 200 {
 					add("registry", "pass", registryURL)
 				} else {

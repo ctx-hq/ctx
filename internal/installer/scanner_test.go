@@ -26,7 +26,9 @@ func TestScanInstalled(t *testing.T) {
 
 	for _, pkg := range packages {
 		vDir := filepath.Join(dataDir, pkg.fullName, pkg.version)
-		os.MkdirAll(vDir, 0o755)
+		if err := os.MkdirAll(vDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		m := manifest.Manifest{
 			Name:        pkg.fullName,
 			Version:     pkg.version,
@@ -34,8 +36,12 @@ func TestScanInstalled(t *testing.T) {
 			Description: pkg.description,
 		}
 		data, _ := json.MarshalIndent(m, "", "  ")
-		os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644)
-		SwitchCurrent(filepath.Join(dataDir, pkg.fullName), pkg.version)
+		if err := os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := SwitchCurrent(filepath.Join(dataDir, pkg.fullName), pkg.version); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	result, err := inst.ScanInstalled()
@@ -101,18 +107,30 @@ func TestScanInstalled_CorruptManifest(t *testing.T) {
 
 	// Create a package with corrupt manifest
 	vDir := filepath.Join(dataDir, "@test", "corrupt", "1.0.0")
-	os.MkdirAll(vDir, 0o755)
-	os.WriteFile(filepath.Join(vDir, "manifest.json"), []byte("not json"), 0o644)
+	if err := os.MkdirAll(vDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vDir, "manifest.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	pkgDir := filepath.Join(dataDir, "@test", "corrupt")
-	SwitchCurrent(pkgDir, "1.0.0")
+	if err := SwitchCurrent(pkgDir, "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a valid package
 	vDir2 := filepath.Join(dataDir, "@test", "valid", "1.0.0")
-	os.MkdirAll(vDir2, 0o755)
+	if err := os.MkdirAll(vDir2, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	m := manifest.Manifest{Name: "@test/valid", Version: "1.0.0", Type: manifest.TypeSkill}
 	data, _ := json.MarshalIndent(m, "", "  ")
-	os.WriteFile(filepath.Join(vDir2, "manifest.json"), data, 0o644)
-	SwitchCurrent(filepath.Join(dataDir, "@test", "valid"), "1.0.0")
+	if err := os.WriteFile(filepath.Join(vDir2, "manifest.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SwitchCurrent(filepath.Join(dataDir, "@test", "valid"), "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := inst.ScanInstalled()
 	if err != nil {
@@ -139,11 +157,17 @@ func TestIsInstalled(t *testing.T) {
 
 	// Install a package
 	vDir := filepath.Join(dataDir, "@test", "present", "1.0.0")
-	os.MkdirAll(vDir, 0o755)
+	if err := os.MkdirAll(vDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	m := manifest.Manifest{Name: "@test/present", Version: "1.0.0", Type: manifest.TypeSkill}
 	data, _ := json.MarshalIndent(m, "", "  ")
-	os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644)
-	SwitchCurrent(filepath.Join(dataDir, "@test", "present"), "1.0.0")
+	if err := os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SwitchCurrent(filepath.Join(dataDir, "@test", "present"), "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	if !inst.IsInstalled("@test/present") {
 		t.Error("IsInstalled() = false for installed package")
@@ -162,7 +186,9 @@ func TestGetInstalled(t *testing.T) {
 
 	// Install a package
 	vDir := filepath.Join(dataDir, "@test", "myskill", "2.0.0")
-	os.MkdirAll(vDir, 0o755)
+	if err := os.MkdirAll(vDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	m := manifest.Manifest{
 		Name:        "@test/myskill",
 		Version:     "2.0.0",
@@ -170,8 +196,12 @@ func TestGetInstalled(t *testing.T) {
 		Description: "My test skill",
 	}
 	data, _ := json.MarshalIndent(m, "", "  ")
-	os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644)
-	SwitchCurrent(filepath.Join(dataDir, "@test", "myskill"), "2.0.0")
+	if err := os.WriteFile(filepath.Join(vDir, "manifest.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SwitchCurrent(filepath.Join(dataDir, "@test", "myskill"), "2.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	pkg, err := inst.GetInstalled("@test/myskill")
 	if err != nil {

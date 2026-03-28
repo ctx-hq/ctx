@@ -66,7 +66,7 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
 	}
 
-	links.Save() // best effort
+	_ = links.Save() // best effort
 	return nil
 }
 

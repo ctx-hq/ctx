@@ -105,7 +105,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			}
 		}
 		if body != nil {
-			defer body.Close()
+			defer func() { _ = body.Close() }()
 
 			// Extract to a temp dir first, then atomically move to version dir
 			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
@@ -115,7 +115,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			if err != nil {
 				return nil, nil, fmt.Errorf("create temp dir: %w", err)
 			}
-			defer os.RemoveAll(tmpDir) // clean up on failure
+			defer func() { _ = os.RemoveAll(tmpDir) }() // clean up on failure
 
 			if err := extractArchive(body, tmpDir); err != nil {
 				return nil, nil, fmt.Errorf("extract package: %w", err)
@@ -206,7 +206,7 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 	if linkErr == nil {
 		entries := links.Remove(fullName)
 		CleanupLinks(entries)
-		links.Save() // best effort
+		_ = links.Save() // best effort
 	}
 
 	// 2. Remove entire package directory (all versions + current symlink)
@@ -232,7 +232,7 @@ func downloadURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("download %s: status %d", rawURL, resp.StatusCode)
 	}
 	return resp.Body, nil
@@ -259,7 +259,7 @@ func extractArchive(r io.Reader, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -296,10 +296,10 @@ func extractArchive(r io.Reader, destDir string) error {
 		}
 		written, err := io.Copy(f, io.LimitReader(tr, maxExtractFileSize+1))
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
-		f.Close()
+		_ = f.Close()
 		if written > maxExtractFileSize {
 			return fmt.Errorf("file %s exceeds maximum size of %d bytes", hdr.Name, maxExtractFileSize)
 		}

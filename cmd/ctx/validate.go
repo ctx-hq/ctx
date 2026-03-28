@@ -37,7 +37,7 @@ var validateCmd = &cobra.Command{
 			}
 			skillPath := filepath.Join(dir, entry)
 			if f, openErr := os.Open(skillPath); openErr == nil {
-				defer f.Close()
+				defer func() { _ = f.Close() }()
 				fm, _, parseErr := manifest.ParseSkillMD(f)
 				if parseErr != nil {
 					skillWarnings = append(skillWarnings, "SKILL.md frontmatter parse error: "+parseErr.Error())

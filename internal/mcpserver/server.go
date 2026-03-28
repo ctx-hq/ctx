@@ -50,13 +50,17 @@ func (s *Server) Serve() error {
 		// Read exactly contentLen bytes of JSON body
 		body := make([]byte, contentLen)
 		if _, err := io.ReadFull(reader, body); err != nil {
-			writeFramedError(writer, nil, -32700, "Failed to read message body")
+			if err := writeFramedError(writer, nil, -32700, "Failed to read message body"); err != nil {
+				return fmt.Errorf("write error frame: %w", err)
+			}
 			continue
 		}
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			writeFramedError(writer, nil, -32700, "Parse error")
+			if err := writeFramedError(writer, nil, -32700, "Parse error"); err != nil {
+				return fmt.Errorf("write error frame: %w", err)
+			}
 			continue
 		}
 
@@ -65,8 +69,13 @@ func (s *Server) Serve() error {
 			continue // notifications don't produce a response
 		}
 
-		data, _ := json.Marshal(resp)
-		writeFrame(writer, data)
+		data, err := json.Marshal(resp)
+		if err != nil {
+			return fmt.Errorf("marshal response: %w", err)
+		}
+		if err := writeFrame(writer, data); err != nil {
+			return fmt.Errorf("write frame: %w", err)
+		}
 	}
 }
 
@@ -109,17 +118,24 @@ func readContentLength(r *bufio.Reader) (int, error) {
 }
 
 // writeFrame writes a JSON-RPC message with Content-Length framing.
-func writeFrame(w *bufio.Writer, data []byte) {
-	fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(data))
-	w.Write(data)
-	w.Flush()
+func writeFrame(w *bufio.Writer, data []byte) error {
+	if _, err := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(data)); err != nil {
+		return err
+	}
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	return w.Flush()
 }
 
 // writeFramedError writes a JSON-RPC error response with Content-Length framing.
-func writeFramedError(w *bufio.Writer, id any, code int, message string) {
+func writeFramedError(w *bufio.Writer, id any, code int, message string) error {
 	resp := errorResponse(id, code, message)
-	data, _ := json.Marshal(resp)
-	writeFrame(w, data)
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	return writeFrame(w, data)
 }
 
 func (s *Server) handleRequest(req *JSONRPCRequest) *JSONRPCResponse {

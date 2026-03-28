@@ -138,7 +138,7 @@ var skillUninstallCmd = &cobra.Command{
 			return fmt.Errorf("get home directory: %w", err)
 		}
 		canonicalDir := filepath.Join(home, ".agents", "skills", "ctx")
-		os.RemoveAll(canonicalDir)
+		_ = os.RemoveAll(canonicalDir)
 
 		return w.OK(
 			map[string]any{"uninstalled": true, "cleaned": cleaned},

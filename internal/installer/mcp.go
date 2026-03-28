@@ -54,7 +54,7 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 		})
 	}
 
-	links.Save() // best effort
+	_ = links.Save() // best effort
 	return nil
 }
 

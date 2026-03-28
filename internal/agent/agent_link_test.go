@@ -9,8 +9,12 @@ import (
 func TestInstallSkillBySymlink_Success(t *testing.T) {
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, "source")
-	os.MkdirAll(srcDir, 0o755)
-	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	skillsDir := filepath.Join(dir, "skills")
 	err := installSkillBySymlink(skillsDir, srcDir, "review")
@@ -42,15 +46,25 @@ func TestInstallSkillBySymlink_OverwritesExisting(t *testing.T) {
 	dir := t.TempDir()
 	srcDir1 := filepath.Join(dir, "v1")
 	srcDir2 := filepath.Join(dir, "v2")
-	os.MkdirAll(srcDir1, 0o755)
-	os.MkdirAll(srcDir2, 0o755)
-	os.WriteFile(filepath.Join(srcDir1, "SKILL.md"), []byte("v1"), 0o644)
-	os.WriteFile(filepath.Join(srcDir2, "SKILL.md"), []byte("v2"), 0o644)
+	if err := os.MkdirAll(srcDir1, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(srcDir2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir1, "SKILL.md"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir2, "SKILL.md"), []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	skillsDir := filepath.Join(dir, "skills")
 
 	// Install v1
-	installSkillBySymlink(skillsDir, srcDir1, "review")
+	if err := installSkillBySymlink(skillsDir, srcDir1, "review"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Install v2 (should overwrite)
 	err := installSkillBySymlink(skillsDir, srcDir2, "review")
@@ -67,8 +81,12 @@ func TestInstallSkillBySymlink_OverwritesExisting(t *testing.T) {
 func TestInstallSkillBySymlink_FallbackToCopy(t *testing.T) {
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, "source")
-	os.MkdirAll(srcDir, 0o755)
-	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# copy test"), 0o644)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# copy test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Test copyDirWithMarker directly (since we can't easily force symlink failure)
 	targetDir := filepath.Join(dir, "copied", "review")
@@ -99,8 +117,12 @@ func TestInstallSkillBySymlink_FallbackToCopy(t *testing.T) {
 func TestRemoveSkillDir(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "skills", "review")
-	os.MkdirAll(skillDir, 0o755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("test"), 0o644)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := removeSkillDir(filepath.Join(dir, "skills"), "review")
 	if err != nil {
@@ -124,10 +146,18 @@ func TestRemoveSkillDir_Nonexistent(t *testing.T) {
 func TestCopyDirWithMarker_NestedDirs(t *testing.T) {
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, "source")
-	os.MkdirAll(filepath.Join(srcDir, "sub", "deep"), 0o755)
-	os.WriteFile(filepath.Join(srcDir, "root.txt"), []byte("root"), 0o644)
-	os.WriteFile(filepath.Join(srcDir, "sub", "mid.txt"), []byte("mid"), 0o644)
-	os.WriteFile(filepath.Join(srcDir, "sub", "deep", "leaf.txt"), []byte("leaf"), 0o644)
+	if err := os.MkdirAll(filepath.Join(srcDir, "sub", "deep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "root.txt"), []byte("root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "sub", "mid.txt"), []byte("mid"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "sub", "deep", "leaf.txt"), []byte("leaf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	targetDir := filepath.Join(dir, "target")
 	err := copyDirWithMarker(srcDir, targetDir)

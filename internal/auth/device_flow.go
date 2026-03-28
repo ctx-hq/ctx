@@ -38,7 +38,7 @@ func StartDeviceFlow(ctx context.Context, registryURL string) (*DeviceFlowRespon
 	if err != nil {
 		return nil, fmt.Errorf("start device flow: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("device flow returned status %d", resp.StatusCode)
@@ -95,7 +95,7 @@ func checkToken(ctx context.Context, registryURL, deviceCode string) (*TokenResp
 	if err != nil {
 		return nil, fmt.Errorf("poll token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

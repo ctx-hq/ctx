@@ -68,7 +68,7 @@ validates it, and uploads to the registry.`,
 		archivePath := filepath.Join(dir, "package.tar.gz")
 		if f, err := os.Open(archivePath); err == nil {
 			archive = f
-			defer archive.Close()
+			defer func() { _ = archive.Close() }()
 		}
 
 		result, err := reg.Publish(cmd.Context(), data, archive)

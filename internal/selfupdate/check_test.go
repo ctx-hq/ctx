@@ -125,7 +125,9 @@ func TestLoadCache_Missing(t *testing.T) {
 func TestLoadCache_Invalid(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
-	os.WriteFile(path, []byte("not json"), 0o644)
+	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := loadCache(path)
 	if err == nil {
@@ -152,7 +154,9 @@ func TestCheckForUpdate_CachedUpToDate(t *testing.T) {
 		LatestVersion: "0.3.0",
 	}
 	data, _ := json.Marshal(cache)
-	os.WriteFile(filepath.Join(dir, cacheFile), data, 0o644)
+	if err := os.WriteFile(filepath.Join(dir, cacheFile), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Current version is same as cached latest — should return ""
 	if got := CheckForUpdate("0.3.0"); got != "" {
@@ -169,7 +173,9 @@ func TestCheckForUpdate_CachedNewer(t *testing.T) {
 		LatestVersion: "0.5.0",
 	}
 	data, _ := json.Marshal(cache)
-	os.WriteFile(filepath.Join(dir, cacheFile), data, 0o644)
+	if err := os.WriteFile(filepath.Join(dir, cacheFile), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Current version is older than cached latest
 	if got := CheckForUpdate("0.3.0"); got != "0.5.0" {

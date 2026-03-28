@@ -87,9 +87,7 @@ func TestLinkRegistry_SaveLoad(t *testing.T) {
 	path := filepath.Join(dir, "links.json")
 
 	// Temporarily override config dir
-	origDir := os.Getenv("CTX_HOME")
-	os.Setenv("CTX_HOME", dir)
-	defer os.Setenv("CTX_HOME", origDir)
+	t.Setenv("CTX_HOME", dir)
 
 	reg := &LinkRegistry{
 		Version: 1,
@@ -140,7 +138,9 @@ func TestLinkRegistry_VerifyBrokenSymlink(t *testing.T) {
 
 	// Create a broken symlink
 	target := filepath.Join(dir, "broken-link")
-	os.Symlink("/nonexistent/path", target)
+	if err := os.Symlink("/nonexistent/path", target); err != nil {
+		t.Fatal(err)
+	}
 
 	reg := &LinkRegistry{
 		Version: 1,
@@ -188,12 +188,18 @@ func TestLinkRegistry_VerifyValidSymlink(t *testing.T) {
 
 	// Create source file
 	srcFile := filepath.Join(dir, "source", "SKILL.md")
-	os.MkdirAll(filepath.Dir(srcFile), 0o755)
-	os.WriteFile(srcFile, []byte("# test"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(srcFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(srcFile, []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create valid symlink
 	linkPath := filepath.Join(dir, "link")
-	os.Symlink(filepath.Join(dir, "source"), linkPath)
+	if err := os.Symlink(filepath.Join(dir, "source"), linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	reg := &LinkRegistry{
 		Version: 1,
@@ -217,14 +223,22 @@ func TestCleanupLinks_Symlink(t *testing.T) {
 
 	// Create source and symlink
 	srcDir := filepath.Join(dir, "source")
-	os.MkdirAll(srcDir, 0o755)
-	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create nested target dir and symlink
 	targetParent := filepath.Join(dir, "agent", "skills")
-	os.MkdirAll(targetParent, 0o755)
+	if err := os.MkdirAll(targetParent, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	linkPath := filepath.Join(targetParent, "review")
-	os.Symlink(srcDir, linkPath)
+	if err := os.Symlink(srcDir, linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	entries := []LinkEntry{
 		{Agent: "claude", Type: LinkSymlink, Source: srcDir, Target: linkPath},
@@ -246,9 +260,15 @@ func TestCleanupLinks_CopiedDir(t *testing.T) {
 
 	// Simulate a fallback copy with .ctx-managed marker
 	copiedDir := filepath.Join(dir, "skills", "review")
-	os.MkdirAll(copiedDir, 0o755)
-	os.WriteFile(filepath.Join(copiedDir, "SKILL.md"), []byte("# test"), 0o644)
-	os.WriteFile(filepath.Join(copiedDir, ".ctx-managed"), []byte("managed by ctx"), 0o644)
+	if err := os.MkdirAll(copiedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(copiedDir, "SKILL.md"), []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(copiedDir, ".ctx-managed"), []byte("managed by ctx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	entries := []LinkEntry{
 		{Agent: "claude", Type: LinkSymlink, Source: "/src", Target: copiedDir},

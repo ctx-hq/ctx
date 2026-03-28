@@ -66,7 +66,7 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) error {
 		Source: pkg,
 		Target: m.CLI.Binary,
 	})
-	links.Save() // best effort
+	_ = links.Save() // best effort
 
 	return nil
 }
