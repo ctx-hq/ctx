@@ -14,13 +14,21 @@ The universal package manager for LLM agent skills, MCP servers, and CLI tools.
 ## Install
 
 ```bash
-curl -fsSL https://getctx.org/install.sh | sh
-```
+# macOS / Linux (Homebrew)
+brew install ctx-hq/tap/ctx
 
-Or build from source:
+# One-line install script (with SHA256 verification)
+curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
 
-```bash
+# Go users
 go install github.com/getctx/ctx/cmd/ctx@latest
+
+# Debian / Ubuntu
+dpkg -i ctx_*.deb
+
+# Windows (Scoop)
+scoop bucket add ctx https://github.com/ctx-hq/homebrew-tap
+scoop install ctx
 ```
 
 ## Quick Start
@@ -210,11 +218,35 @@ Environment variables:
 ## Development
 
 ```bash
-make build          # Build binary
+make build          # Build binary (version from git describe)
 make test           # Run tests
+make test-race      # Run tests with race detector
 make lint           # Run linter
+make vet            # Run go vet
+make check          # Run vet + lint + test
 make build-all      # Cross-compile for all platforms
 ```
+
+## Releasing
+
+Releases are automated via [release-please](https://github.com/googleapis/release-please). Push conventional commits to `main` and a release PR is created automatically.
+
+For manual releases:
+
+```bash
+# Dry-run (checks only, no tag)
+scripts/release.sh v0.2.0 --dry-run
+
+# Create release (7 preflight checks → tag → push)
+scripts/release.sh v0.2.0
+```
+
+The release pipeline (GoReleaser + GitHub Actions) handles:
+- Cross-compilation (Linux/macOS/Windows × AMD64/ARM64)
+- Shell completions (bash/zsh/fish)
+- Cosign signing + SBOM generation
+- Homebrew formula, Scoop manifest, deb/rpm packages
+- Build provenance attestation
 
 ## License
 

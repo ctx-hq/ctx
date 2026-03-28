@@ -14,13 +14,21 @@ LLM 智能体技能、MCP 服务器和 CLI 工具的通用包管理器。
 ## 安装
 
 ```bash
-curl -fsSL https://getctx.org/install.sh | sh
-```
+# macOS / Linux (Homebrew)
+brew install ctx-hq/tap/ctx
 
-或从源码构建：
+# 一键安装脚本（带 SHA256 校验）
+curl -fsSL https://raw.githubusercontent.com/ctx-hq/ctx/main/scripts/install.sh | sh
 
-```bash
+# Go 用户
 go install github.com/getctx/ctx/cmd/ctx@latest
+
+# Debian / Ubuntu
+dpkg -i ctx_*.deb
+
+# Windows (Scoop)
+scoop bucket add ctx https://github.com/ctx-hq/homebrew-tap
+scoop install ctx
 ```
 
 ## 快速开始
@@ -210,11 +218,35 @@ install:
 ## 开发
 
 ```bash
-make build          # 构建二进制文件
+make build          # 构建（版本号自动从 git 读取）
 make test           # 运行测试
+make test-race      # 运行测试（带竞态检测）
 make lint           # 运行代码检查
+make vet            # 运行 go vet
+make check          # vet + lint + test 全套检查
 make build-all      # 交叉编译所有平台
 ```
+
+## 发版
+
+通过 [release-please](https://github.com/googleapis/release-please) 自动管理版本。往 main 推送 Conventional Commits 格式的提交，会自动创建发版 PR。
+
+手动发版：
+
+```bash
+# 预演（只检查，不打 tag）
+scripts/release.sh v0.2.0 --dry-run
+
+# 正式发版（7 项安全检查 → 打 tag → 推送）
+scripts/release.sh v0.2.0
+```
+
+发版流水线（GoReleaser + GitHub Actions）自动完成：
+- 交叉编译（Linux/macOS/Windows × AMD64/ARM64）
+- Shell 自动补全（bash/zsh/fish）
+- Cosign 签名 + SBOM 生成
+- Homebrew formula、Scoop manifest、deb/rpm 包
+- Build Provenance 供应链证明
 
 ## 许可证
 
