@@ -134,9 +134,30 @@ ctx link <agent>                    # link packages to an agent
 
 # Publishing
 ctx login                           # authenticate via GitHub
-ctx init --type skill               # scaffold a ctx.yaml
+ctx init                            # interactive manifest scaffold
 ctx validate                        # validate your manifest
-ctx publish                         # publish to the registry
+ctx publish                         # publish to the registry (public)
+ctx push                            # push as private package (zero friction)
+
+# Organizations
+ctx org create <name>               # create an organization
+ctx org list                        # list your organizations
+ctx org info <name>                 # show org details
+ctx org packages <name>             # list org's packages
+ctx org add <org> <user> [--role]   # add member
+ctx org remove <org> <user>         # remove member
+ctx org delete <name>               # delete org (0 packages required)
+
+# Cross-device Sync
+ctx sync export                     # export installed state to local file
+ctx sync push                       # upload sync profile to registry
+ctx sync pull                       # restore packages on new device
+ctx sync status                     # view sync status + last sync time
+
+# Dist Tags
+ctx dist-tag ls <package>           # list distribution tags
+ctx dist-tag add <pkg> <tag> <ver>  # set a tag (e.g., beta → 2.0.0-beta.1)
+ctx dist-tag rm <pkg> <tag>         # remove a tag
 
 # Configuration
 ctx config list                     # show all settings

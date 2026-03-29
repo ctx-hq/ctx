@@ -134,9 +134,30 @@ ctx link <agent>                    # 链接包到智能体
 
 # 发布
 ctx login                           # 通过 GitHub 认证
-ctx init --type skill               # 生成 ctx.yaml 模板
+ctx init                            # 交互式生成 ctx.yaml
 ctx validate                        # 验证清单文件
-ctx publish                         # 发布到注册表
+ctx publish                         # 发布到注册表（公开）
+ctx push                            # 推送为私有包（零摩擦）
+
+# 组织管理
+ctx org create <name>               # 创建组织
+ctx org list                        # 列出所属组织
+ctx org info <name>                 # 查看组织详情
+ctx org packages <name>             # 列出组织的包
+ctx org add <org> <user> [--role]   # 添加成员
+ctx org remove <org> <user>         # 移除成员
+ctx org delete <name>               # 删除组织（需 0 个包）
+
+# 跨设备同步
+ctx sync export                     # 导出安装状态到本地文件
+ctx sync push                       # 上传同步配置到注册表
+ctx sync pull                       # 从配置恢复所有包
+ctx sync status                     # 查看同步状态和时间
+
+# 分发标签
+ctx dist-tag ls <package>           # 列出分发标签
+ctx dist-tag add <pkg> <tag> <ver>  # 设置标签
+ctx dist-tag rm <pkg> <tag>         # 移除标签
 
 # 配置
 ctx config list                     # 查看所有设置

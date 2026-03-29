@@ -184,14 +184,21 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 	versions := i.InstalledVersions(resolution.FullName)
 	isNew := len(versions) == 1 // only one version means this is a fresh install
 
-	return &InstallResult{
+	result := &InstallResult{
 		FullName:    resolution.FullName,
 		Version:     resolution.Version,
 		Type:        string(m.Type),
 		InstallPath: currentPath,
 		Source:      resolution.Source,
 		IsNew:       isNew,
-	}, nil
+	}
+
+	// Report telemetry (non-blocking, ignore errors)
+	if i.Registry != nil {
+		go i.Registry.ReportInstall(context.WithoutCancel(ctx), resolution.FullName, resolution.Version, nil, resolution.Source)
+	}
+
+	return result, nil
 }
 
 // Remove uninstalls a package, cleaning up links and all version directories.

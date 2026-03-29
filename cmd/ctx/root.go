@@ -107,10 +107,15 @@ func init() {
 		infoCmd,
 		listCmd,
 		publishCmd,
+		pushCmd,
 		loginCmd,
 		initCmd,
 		validateCmd,
 		versionCmd,
 		upgradeCmd,
+		distTagCmd,
+		syncCmd,
+		visibilityCmd,
+		enrichCmd,
 	)
 }
