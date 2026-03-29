@@ -55,6 +55,18 @@ var defaultRetryConfig = retryConfig{
 
 const maxParallelPush = 4
 
+// stagingExcludes lists files and directories removed from the staging
+// directory before creating an archive. These should never be uploaded
+// to the registry.
+var stagingExcludes = []string{
+	".git",
+	"node_modules",
+	".DS_Store",
+	"Thumbs.db",
+	".ctx-managed",
+	"package.tar.gz",
+}
+
 // pushMode describes how the push command was invoked.
 type pushMode int
 
@@ -113,14 +125,6 @@ Examples:
 			return showPushStatus(w)
 		}
 
-		// All other modes require network and auth.
-		if err := requireOnline(); err != nil {
-			return err
-		}
-		token := getToken()
-		if token == "" {
-			return output.ErrAuth("not logged in — run 'ctx login' first")
-		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -134,6 +138,39 @@ Examples:
 		// Resolve what to push.
 		mode, dir := resolveInput(args)
 
+		// --dry-run works offline without auth.
+		if flagPushDryRun {
+			switch mode {
+			case pushModeFile:
+				return pushSingleFile(cmd, args[0], w, singleFileOpts{
+					defaultVisibility: "private",
+					mutable:           true,
+					versionBump:       flagBump,
+					skipConfirm:       flagYes,
+					dryRun:            true,
+				})
+			case pushModeScan:
+				return pushScanDryRun(w, ps)
+			case pushModeName:
+				resolved, resolveErr := resolveSkillByName(args[0], cfg)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				return pushDirectoryDryRun(w, resolved, cfg)
+			case pushModeDir:
+				return pushDirectoryDryRun(w, dir, cfg)
+			}
+		}
+
+		// All other modes require network and auth.
+		if err := requireOnline(); err != nil {
+			return err
+		}
+		token := getToken()
+		if token == "" {
+			return output.ErrAuth("not logged in — run 'ctx login' first")
+		}
+
 		switch mode {
 		case pushModeFile:
 			return pushSingleFile(cmd, args[0], w, singleFileOpts{
@@ -141,7 +178,6 @@ Examples:
 				mutable:           true,
 				versionBump:       flagBump,
 				skipConfirm:       flagYes,
-				dryRun:            flagPushDryRun,
 			})
 
 		case pushModeDir:
@@ -327,80 +363,166 @@ func showPushStatus(w *output.Writer) error {
 		)
 	}
 
-	output.Header("Push Status")
-
-	type statusRow struct {
-		name       string
-		version    string
-		statusText string // plain text for alignment
-		statusDisp string // colored text for display
-		lastPushed string
+	// Build status entries for both human and machine output.
+	type statusEntry struct {
+		FullName   string `json:"full_name"`
+		Version    string `json:"version"`
+		Status     string `json:"status"`
+		LastPushed string `json:"last_pushed"`
 	}
 
-	var rows []statusRow
+	var entries []statusEntry
 	for _, s := range skills {
-		var statusText, statusDisp string
+		status := "up_to_date"
 		if s.Error != "" {
-			statusText = "error"
-			statusDisp = output.Red + statusText + output.Reset
+			status = "error"
 		} else if s.Dirty {
 			if _, ok := ps.Skills[s.FullName]; ok {
-				statusText = "modified"
-				statusDisp = output.Yellow + statusText + output.Reset
+				status = "modified"
 			} else {
-				statusText = "never pushed"
-				statusDisp = output.Cyan + statusText + output.Reset
+				status = "never_pushed"
 			}
-		} else {
-			statusText = "up to date"
-			statusDisp = output.Green + statusText + output.Reset
 		}
-		lastPushed := "—"
+		lastPushed := ""
 		if st, ok := ps.Skills[s.FullName]; ok {
 			lastPushed = st.LastPushedAt.Format("2006-01-02 15:04")
 		}
-		rows = append(rows, statusRow{s.FullName, s.Version, statusText, statusDisp, lastPushed})
+		entries = append(entries, statusEntry{s.FullName, s.Version, status, lastPushed})
 	}
-
-	// Print header.
-	fmt.Fprintf(os.Stderr, "  %-30s %-10s %-14s %s\n",
-		output.Dim+"SKILL"+output.Reset,
-		output.Dim+"VERSION"+output.Reset,
-		output.Dim+"STATUS"+output.Reset,
-		output.Dim+"LAST PUSHED"+output.Reset,
-	)
-	for _, r := range rows {
-		// Pad based on plain text length to avoid ANSI escape code misalignment.
-		padding := 14 - len(r.statusText)
-		if padding < 0 {
-			padding = 0
-		}
-		fmt.Fprintf(os.Stderr, "  %-30s %-10s %s%s %s\n", r.name, r.version, r.statusDisp, strings.Repeat(" ", padding), r.lastPushed)
-	}
-	fmt.Fprintln(os.Stderr)
 
 	// Count stats.
 	dirty, clean, errCount := 0, 0, 0
-	for _, s := range skills {
-		switch {
-		case s.Error != "":
+	for _, e := range entries {
+		switch e.Status {
+		case "error":
 			errCount++
-		case s.Dirty:
+		case "modified", "never_pushed":
 			dirty++
 		default:
 			clean++
 		}
 	}
 
-	type statusData struct {
-		Total  int `json:"total"`
-		Dirty  int `json:"dirty"`
-		Clean  int `json:"clean"`
-		Errors int `json:"errors"`
+	summary := fmt.Sprintf("%d skills: %d modified, %d up to date, %d errors", len(entries), dirty, clean, errCount)
+
+	// For machine-readable formats, pass structured data through the writer.
+	if w.IsMachine() {
+		return w.OK(entries, output.WithSummary(summary))
 	}
-	return w.OK(statusData{Total: len(skills), Dirty: dirty, Clean: clean, Errors: errCount},
-		output.WithSummary(fmt.Sprintf("%d skills: %d modified, %d up to date, %d errors", len(skills), dirty, clean, errCount)),
+
+	// For human output, print a colored table to stderr, then summary only.
+	output.Header("Push Status")
+	fmt.Fprintf(os.Stderr, "  %-30s %-10s %-14s %s\n",
+		output.Dim+"SKILL"+output.Reset,
+		output.Dim+"VERSION"+output.Reset,
+		output.Dim+"STATUS"+output.Reset,
+		output.Dim+"LAST PUSHED"+output.Reset,
 	)
+	for _, e := range entries {
+		var statusDisp string
+		switch e.Status {
+		case "error":
+			statusDisp = output.Red + "error" + output.Reset
+		case "modified":
+			statusDisp = output.Yellow + "modified" + output.Reset
+		case "never_pushed":
+			statusDisp = output.Cyan + "never pushed" + output.Reset
+		default:
+			statusDisp = output.Green + "up to date" + output.Reset
+		}
+		lp := e.LastPushed
+		if lp == "" {
+			lp = "—"
+		}
+		// Pad based on plain display text length for alignment.
+		var plainLen int
+		switch e.Status {
+		case "never_pushed":
+			plainLen = len("never pushed")
+		case "up_to_date":
+			plainLen = len("up to date")
+		default:
+			plainLen = len(e.Status)
+		}
+		padding := 14 - plainLen
+		if padding < 0 {
+			padding = 0
+		}
+		fmt.Fprintf(os.Stderr, "  %-30s %-10s %s%s %s\n", e.FullName, e.Version, statusDisp, strings.Repeat(" ", padding), lp)
+	}
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "  %s\n", output.Dim+summary+output.Reset)
+	return nil
+}
+
+// pushScanDryRun shows which skills would be pushed (no network, no writes).
+func pushScanDryRun(w *output.Writer, ps *pushstate.PushState) error {
+	output.Info("Scanning %s...", config.SkillsDir())
+	skills, err := scanSkills(ps)
+	if err != nil {
+		return err
+	}
+
+	var dirty []skillEntry
+	for _, s := range skills {
+		if s.Error != "" {
+			output.Warn("%s: %s (skipped)", s.FullName, s.Error)
+			continue
+		}
+		if s.Dirty {
+			dirty = append(dirty, s)
+		}
+	}
+	if len(dirty) == 0 {
+		return w.OK([]any{}, output.WithSummary("All skills up to date."))
+	}
+
+	fmt.Fprintln(os.Stderr)
+	for _, s := range dirty {
+		status := output.Yellow + "modified" + output.Reset
+		if _, ok := ps.Skills[s.FullName]; !ok {
+			status = output.Cyan + "never pushed" + output.Reset
+		}
+		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, output.Dim+s.Version+output.Reset, status)
+	}
+	fmt.Fprintln(os.Stderr)
+
+	type dryRunEntry struct {
+		FullName string `json:"full_name"`
+		Version  string `json:"version"`
+	}
+	entries := make([]dryRunEntry, len(dirty))
+	for i, s := range dirty {
+		entries[i] = dryRunEntry{s.FullName, s.Version}
+	}
+	return w.OK(entries, output.WithSummary(fmt.Sprintf("Would push %d skill(s).", len(dirty))))
+}
+
+// pushDirectoryDryRun previews a single directory push (no network, no writes).
+func pushDirectoryDryRun(w *output.Writer, dir string, cfg *config.Config) error {
+	yamlPath := filepath.Join(dir, manifest.FileName)
+	var m *manifest.Manifest
+	if _, statErr := os.Stat(yamlPath); statErr == nil {
+		var loadErr error
+		m, loadErr = manifest.LoadFromDir(dir)
+		if loadErr != nil {
+			return fmt.Errorf("ctx.yaml cannot be parsed: %w", loadErr)
+		}
+	} else {
+		return output.ErrUsageHint("no ctx.yaml found", "Run 'ctx init' first")
+	}
+
+	output.Header("Dry Run")
+	output.Table([][]string{
+		{"Name:", m.Name},
+		{"Version:", m.Version},
+		{"Directory:", dir},
+	})
+	return w.OK(map[string]string{
+		"full_name": m.Name,
+		"version":   m.Version,
+		"dir":       dir,
+	}, output.WithSummary(fmt.Sprintf("Would push %s@%s", m.Name, m.Version)))
 }
 
 // pushScan handles the no-args scan mode.
@@ -445,13 +567,6 @@ func pushScan(cmd *cobra.Command, w *output.Writer, cfg *config.Config, ps *push
 		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, output.Dim+s.Version+output.Reset, status)
 	}
 	fmt.Fprintln(os.Stderr)
-
-	// Dry-run: show and exit.
-	if flagPushDryRun {
-		return w.OK(dirty,
-			output.WithSummary(fmt.Sprintf("Would push %d skill(s).", len(dirty))),
-		)
-	}
 
 	// Confirm unless --all or --yes.
 	if !flagPushAll && !flagYes {
@@ -528,6 +643,11 @@ func pushBatch(ctx context.Context, skills []skillEntry, reg *registry.Client, p
 		summary += fmt.Sprintf(", %d failed", failed)
 	}
 
+	if failed > 0 {
+		// Report results but exit with error so CI/scripts detect partial failure.
+		_ = w.OK(results, output.WithSummary(summary))
+		return fmt.Errorf("%d of %d skill(s) failed to push", failed, len(skills))
+	}
 	return w.OK(results, output.WithSummary(summary))
 }
 
@@ -574,8 +694,10 @@ func stageAndArchive(dir string, manifestData []byte) (io.ReadSeeker, func(), er
 		return nil, nil, fmt.Errorf("stage directory: %w", err)
 	}
 
-	// Remove build artifacts that should not be included in the archive.
-	_ = os.Remove(filepath.Join(stg.Path, "package.tar.gz"))
+	// Remove files/directories that should not be included in the archive.
+	for _, name := range stagingExcludes {
+		_ = os.RemoveAll(filepath.Join(stg.Path, name))
+	}
 
 	// Overwrite ctx.yaml with the (possibly modified) manifest.
 	if err := stg.WriteFile(manifest.FileName, manifestData, 0o644); err != nil {
@@ -768,21 +890,6 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 		if writeErr := os.WriteFile(filepath.Join(dir, manifest.FileName), data, 0o644); writeErr != nil {
 			return fmt.Errorf("write %s: %w", manifest.FileName, writeErr)
 		}
-	}
-
-	// Dry-run: show what would happen.
-	if flagPushDryRun {
-		output.Header("Dry Run")
-		output.Table([][]string{
-			{"Name:", m.Name},
-			{"Version:", m.Version},
-			{"Directory:", dir},
-		})
-		return w.OK(map[string]string{
-			"full_name": m.Name,
-			"version":   m.Version,
-			"dir":       dir,
-		}, output.WithSummary(fmt.Sprintf("Would push %s@%s", m.Name, m.Version)))
 	}
 
 	// Stage, archive, and publish.

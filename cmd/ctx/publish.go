@@ -111,8 +111,10 @@ Examples:
 		if cpErr := stg.CopyFrom(dir); cpErr != nil {
 			return fmt.Errorf("stage directory: %w", cpErr)
 		}
-		// Remove build artifacts that should not be included in the archive.
-		_ = os.Remove(filepath.Join(stg.Path, "package.tar.gz"))
+		// Remove files/directories that should not be in the archive.
+		for _, name := range stagingExcludes {
+			_ = os.RemoveAll(filepath.Join(stg.Path, name))
+		}
 		if wErr := stg.WriteFile(manifest.FileName, data, 0o644); wErr != nil {
 			return fmt.Errorf("stage manifest: %w", wErr)
 		}
