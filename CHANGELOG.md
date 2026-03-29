@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/ctx-hq/ctx/compare/v0.9.0...v0.10.0) (2026-03-29)
+
+
+### Features
+
+* **cli:** implement visibility setting and unify registry API paths ([1523a86](https://github.com/ctx-hq/ctx/commit/1523a86f5e75b306c76e698b987bdd97b376a90f))
+
 ## [0.9.0](https://github.com/ctx-hq/ctx/compare/v0.8.0...v0.9.0) (2026-03-29)
 
 
