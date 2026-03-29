@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/ctx-hq/ctx/compare/v0.6.0...v0.7.0) (2026-03-29)
+
+
+### Features
+
+* **auth:** auto-open browser on login and display username ([04e62d7](https://github.com/ctx-hq/ctx/commit/04e62d741ccb66cf3bee4aac9ecf5e95187b0792))
+
 ## [0.6.0](https://github.com/ctx-hq/ctx/compare/v0.5.0...v0.6.0) (2026-03-29)
 
 
