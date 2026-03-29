@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/ctx-hq/ctx/compare/v0.12.0...v0.12.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* **registry:** handle SQLite datetime and integer boolean formats from API ([2e87d94](https://github.com/ctx-hq/ctx/commit/2e87d94))
+
 ## [0.12.0](https://github.com/ctx-hq/ctx/compare/v0.11.0...v0.12.0) (2026-03-30)
 
 
