@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/ctx-hq/ctx/compare/v0.7.0...v0.8.0) (2026-03-29)
+
+
+### Features
+
+* **auth:** add whoami command to show current authenticated user ([2aaa16a](https://github.com/ctx-hq/ctx/commit/2aaa16ab14b92dc11d4a00792dafdb2262e28a29))
+
 ## [0.7.0](https://github.com/ctx-hq/ctx/compare/v0.6.0...v0.7.0) (2026-03-29)
 
 
