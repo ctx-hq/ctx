@@ -19,15 +19,31 @@ var pushCmd = &cobra.Command{
 
 This is a shorthand for: ctx publish --visibility private --mutable
 
+Accepts a directory with ctx.yaml, or a single .md file (auto-scaffolds into
+a standard skill package with interactive prompts).
+
 Examples:
   ctx push                    Push current dir as private package
-  ctx push ./my-skill         Push a specific directory`,
+  ctx push ./my-skill         Push a specific directory
+  ctx push gc.md              Push a single .md file as a skill
+  ctx push gc.md --bump patch Bump version and push`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := requireOnline(); err != nil {
 			return err
 		}
 		w := getWriter(cmd)
+
+		// Detect single-file input
+		if len(args) > 0 && isSingleFile(args[0]) {
+			return pushSingleFile(cmd, args[0], w, singleFileOpts{
+				defaultVisibility: "private",
+				mutable:           true,
+				versionBump:       flagBump,
+				skipConfirm:       flagYes,
+			})
+		}
+
 		dir := "."
 		if len(args) > 0 {
 			dir = args[0]
@@ -78,6 +94,16 @@ Examples:
 			m = manifest.Scaffold(manifest.TypeSkill, scope, dirName)
 			m.Visibility = "private"
 			m.Mutable = true
+			needsWrite = true
+		}
+
+		// Apply version bump if --bump is set
+		if flagBump != "" {
+			bumped, bumpErr := manifest.BumpVersion(m.Version, flagBump)
+			if bumpErr != nil {
+				return bumpErr
+			}
+			m.Version = bumped
 			needsWrite = true
 		}
 

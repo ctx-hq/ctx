@@ -116,7 +116,7 @@ func TestWhoami_NotLoggedIn(t *testing.T) {
 
 func TestWhoami_Online(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/users/me" {
+		if r.URL.Path == "/v1/me" {
 			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 				w.WriteHeader(http.StatusUnauthorized)
 				json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
@@ -172,7 +172,7 @@ func TestWhoami_Online(t *testing.T) {
 
 func TestWhoami_TokenRevoked(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/users/me" {
+		if r.URL.Path == "/v1/me" {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 			return
@@ -341,6 +341,85 @@ func TestWhoami_NetworkFallback_NoCache(t *testing.T) {
 	}
 }
 
+func TestWhoami_ServerError_Fallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/me" {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "An unexpected error occurred"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	binary := buildCtxBinary(t)
+	home := setupCtxHome(t, "username: cacheduser\n")
+	writeCredentials(t, home, "valid-token")
+
+	cmd := exec.Command(binary, "whoami", "--json")
+	cmd.Env = hermeticEnv(home, "CTX_REGISTRY="+srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("whoami should fall back to cached on 500: %v\n%s", err, out)
+	}
+
+	var resp struct {
+		OK   bool       `json:"ok"`
+		Data WhoamiInfo `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v\nraw: %s", err, out)
+	}
+
+	if !resp.OK {
+		t.Error("expected ok=true")
+	}
+	if resp.Data.Username != "cacheduser" {
+		t.Errorf("username = %q, want %q", resp.Data.Username, "cacheduser")
+	}
+	if resp.Data.Source != "cached" {
+		t.Errorf("source = %q, want %q", resp.Data.Source, "cached")
+	}
+}
+
+func TestWhoami_ServerError_NoCache(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/me" {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "An unexpected error occurred"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	binary := buildCtxBinary(t)
+	home := setupCtxHome(t, "")
+	writeCredentials(t, home, "valid-token")
+
+	cmd := exec.Command(binary, "whoami", "--json")
+	cmd.Env = hermeticEnv(home, "CTX_REGISTRY="+srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error when server 500 and no cache")
+	}
+
+	var resp struct {
+		OK   bool   `json:"ok"`
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v\nraw: %s", err, out)
+	}
+
+	if resp.OK {
+		t.Error("expected ok=false")
+	}
+	if resp.Code != "api" {
+		t.Errorf("code = %q, want %q", resp.Code, "api")
+	}
+}
+
 func TestWhoami_NoArgs(t *testing.T) {
 	binary := buildCtxBinary(t)
 	home := setupCtxHome(t, "")
@@ -355,7 +434,7 @@ func TestWhoami_NoArgs(t *testing.T) {
 
 func TestWhoami_JSONEnvelope(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/users/me" {
+		if r.URL.Path == "/v1/me" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"username":   "envelopeuser",

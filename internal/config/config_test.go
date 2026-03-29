@@ -105,6 +105,23 @@ func TestConfig_SavePermissions(t *testing.T) {
 	}
 }
 
+func TestSkillsDir(t *testing.T) {
+	// Default: under ~/.ctx/skills/
+	dir := SkillsDir()
+	if !strings.HasSuffix(dir, "skills") {
+		t.Errorf("SkillsDir() = %q, want suffix 'skills'", dir)
+	}
+
+	// Respects CTX_HOME override
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+	got := SkillsDir()
+	want := filepath.Join(tmp, "skills")
+	if got != want {
+		t.Errorf("SkillsDir() with CTX_HOME = %q, want %q", got, want)
+	}
+}
+
 func TestConfig_PrivacyFieldsYAML(t *testing.T) {
 	f := false
 	cfg := &Config{

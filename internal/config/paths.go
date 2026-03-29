@@ -50,6 +50,11 @@ func CacheDir() string {
 	return filepath.Join(homeDir(), ".cache", appName)
 }
 
+// SkillsDir returns the skills authoring workspace directory (~/.ctx/skills/).
+func SkillsDir() string {
+	return filepath.Join(Dir(), "skills")
+}
+
 // ConfigFilePath returns the path to config.yaml.
 func ConfigFilePath() string {
 	return filepath.Join(Dir(), "config.yaml")

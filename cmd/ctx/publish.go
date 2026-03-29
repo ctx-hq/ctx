@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -17,13 +18,32 @@ var publishCmd = &cobra.Command{
 	Long: `Publish a package defined by ctx.yaml to getctx.org.
 
 Reads ctx.yaml from the current directory (or specified path),
-validates it, and uploads to the registry.`,
+validates it, and uploads to the registry.
+
+Accepts a directory with ctx.yaml, or a single .md file (auto-scaffolds into
+a standard skill package with interactive prompts).
+
+Examples:
+  ctx publish                    Publish current dir
+  ctx publish ./my-skill         Publish a specific directory
+  ctx publish gc.md              Publish a single .md file as a skill`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := requireOnline(); err != nil {
 			return err
 		}
 		w := getWriter(cmd)
+
+		// Detect single-file input
+		if len(args) > 0 && isSingleFile(args[0]) {
+			return pushSingleFile(cmd, args[0], w, singleFileOpts{
+				defaultVisibility: "public",
+				mutable:           false,
+				versionBump:       flagBump,
+				skipConfirm:       flagYes,
+			})
+		}
+
 		dir := "."
 		if len(args) > 0 {
 			dir = args[0]
@@ -33,6 +53,23 @@ validates it, and uploads to the registry.`,
 		m, err := manifest.LoadFromDir(dir)
 		if err != nil {
 			return err
+		}
+
+		// Apply version bump if --bump is set
+		if flagBump != "" {
+			bumped, bumpErr := manifest.BumpVersion(m.Version, flagBump)
+			if bumpErr != nil {
+				return bumpErr
+			}
+			m.Version = bumped
+			// Write back updated version
+			bumpData, marshalErr := manifest.Marshal(m)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			if writeErr := os.WriteFile(filepath.Join(dir, manifest.FileName), bumpData, 0o644); writeErr != nil {
+				return fmt.Errorf("write %s: %w", manifest.FileName, writeErr)
+			}
 		}
 
 		errs := manifest.Validate(m)

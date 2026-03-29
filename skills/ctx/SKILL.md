@@ -82,7 +82,10 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx validate` | `ctx val` | Validate a ctx.yaml manifest |
 | `ctx init` | | Scaffold a new package (interactive) |
 | `ctx publish` | | Publish to registry (public) |
+| `ctx publish <file.md>` | | Scaffold + publish a single .md skill |
 | `ctx push` | | Push as private package (zero friction) |
+| `ctx push <file.md>` | | Scaffold + push a single .md skill |
+| `ctx push --bump patch` | | Bump version and push |
 | `ctx dist-tag ls <pkg>` | `ctx tag ls` | List dist-tags |
 | `ctx dist-tag add <pkg> <tag> <ver>` | | Set a dist-tag |
 | `ctx dist-tag rm <pkg> <tag>` | | Remove a dist-tag |
@@ -132,6 +135,19 @@ ctx ls                              # Verify installation
 cd my-custom-skill/
 ctx push                            # Auto-detects SKILL.md, pushes as private
 ctx install @me/my-custom-skill     # Install on another device
+```
+
+### Publish a Single-File Skill
+```bash
+# From a standalone .md file (e.g., a Claude Code slash command)
+ctx push ~/.claude/commands/gc.md   # Interactive: scaffolds → publishes → links back
+
+# After first push, edit and update from the skills dir
+ctx push ~/.ctx/skills/biao29/gc/   # Push updates
+ctx push ~/.ctx/skills/biao29/gc/ --bump patch  # Bump version + push
+
+# Public release
+ctx publish ~/.ctx/skills/biao29/gc/
 ```
 
 ### Cross-device Sync

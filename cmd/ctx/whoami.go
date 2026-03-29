@@ -56,10 +56,18 @@ var whoamiCmd = &cobra.Command{
 		if err != nil {
 			var apiErr *registry.APIError
 			if errors.As(err, &apiErr) {
-				// Server responded with an HTTP error — use structured error
 				switch {
 				case apiErr.StatusCode == 401:
 					return output.ErrAuth("token expired or revoked")
+				case apiErr.StatusCode >= 500:
+					// Server error: fall back to cached username
+					if cfg.Username != "" {
+						if w.IsStyled() {
+							output.Warn("registry returned server error, showing cached info")
+						}
+						return whoamiCached(w, cfg, registryURL)
+					}
+					return output.FromHTTPStatus(apiErr.StatusCode, apiErr.Msg)
 				default:
 					return output.FromHTTPStatus(apiErr.StatusCode, apiErr.Msg)
 				}

@@ -142,7 +142,7 @@ func (c *Client) Yank(ctx context.Context, fullName, version string) error {
 // GetMe returns the current user.
 func (c *Client) GetMe(ctx context.Context) (*UserInfo, error) {
 	var result UserInfo
-	if err := c.get(ctx, "/v1/users/me", &result); err != nil {
+	if err := c.get(ctx, "/v1/me", &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
