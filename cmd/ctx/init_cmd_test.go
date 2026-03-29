@@ -1,80 +1,735 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/prompt"
+	"github.com/ctx-hq/ctx/internal/staging"
 )
 
-func TestInitModeDetection_ModeA_FromScratch(t *testing.T) {
-	// Mode A: no ctx.yaml, no SKILL.md => scaffold from scratch
-	// We test the scaffold output for each valid type
-	types := []struct {
-		pkgType manifest.PackageType
-		wantNil map[string]bool // which spec should be nil
-	}{
-		{manifest.TypeSkill, map[string]bool{"MCP": true, "CLI": true}},
-		{manifest.TypeMCP, map[string]bool{"Skill": true, "CLI": true}},
-		{manifest.TypeCLI, map[string]bool{"Skill": true, "MCP": true}},
+// --- detectInitInput tests ---
+
+func TestDetectInitInput_NoArgs(t *testing.T) {
+	input, err := detectInitInput(nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, tt := range types {
-		t.Run(string(tt.pkgType), func(t *testing.T) {
-			m := manifest.Scaffold(tt.pkgType, "testuser", "my-pkg")
-
-			if m.Name != "@testuser/my-pkg" {
-				t.Errorf("Name = %q, want %q", m.Name, "@testuser/my-pkg")
-			}
-			if m.Version != "0.1.0" {
-				t.Errorf("Version = %q, want %q", m.Version, "0.1.0")
-			}
-			if m.Type != tt.pkgType {
-				t.Errorf("Type = %q, want %q", m.Type, tt.pkgType)
-			}
-
-			// Verify only the correct spec is non-nil
-			if (m.Skill == nil) != tt.wantNil["Skill"] {
-				t.Errorf("Skill nil = %v, want %v", m.Skill == nil, tt.wantNil["Skill"])
-			}
-			if (m.MCP == nil) != tt.wantNil["MCP"] {
-				t.Errorf("MCP nil = %v, want %v", m.MCP == nil, tt.wantNil["MCP"])
-			}
-			if (m.CLI == nil) != tt.wantNil["CLI"] {
-				t.Errorf("CLI nil = %v, want %v", m.CLI == nil, tt.wantNil["CLI"])
-			}
-		})
+	if input.mode != initFromScratch {
+		t.Errorf("mode = %d, want initFromScratch", input.mode)
 	}
 }
 
-func TestInitModeDetection_PackageTypeValid(t *testing.T) {
-	tests := []struct {
-		input string
-		valid bool
-	}{
-		{"skill", true},
-		{"mcp", true},
-		{"cli", true},
-		{"tool", false},
-		{"plugin", false},
-		{"", false},
+func TestDetectInitInput_MDFile(t *testing.T) {
+	tmp := t.TempDir()
+	mdFile := filepath.Join(tmp, "gc.md")
+	if err := os.WriteFile(mdFile, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			pt := manifest.PackageType(tt.input)
-			if pt.Valid() != tt.valid {
-				t.Errorf("PackageType(%q).Valid() = %v, want %v", tt.input, pt.Valid(), tt.valid)
-			}
-		})
+	input, err := detectInitInput([]string{mdFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.mode != initFromFile {
+		t.Errorf("mode = %d, want initFromFile", input.mode)
+	}
+	if input.sourcePath != mdFile {
+		t.Errorf("sourcePath = %q, want %q", input.sourcePath, mdFile)
 	}
 }
 
-func TestInitCmd_DefaultType(t *testing.T) {
-	f := initCmd.Flags().Lookup("type")
-	if f == nil {
-		t.Fatal("--type flag not found on init command")
+func TestDetectInitInput_Directory(t *testing.T) {
+	tmp := t.TempDir()
+
+	input, err := detectInitInput([]string{tmp})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if f.DefValue != "skill" {
-		t.Errorf("default type = %q, want %q", f.DefValue, "skill")
+	if input.mode != initFromDirectory {
+		t.Errorf("mode = %d, want initFromDirectory", input.mode)
+	}
+}
+
+func TestDetectInitInput_NonMDFile(t *testing.T) {
+	tmp := t.TempDir()
+	txtFile := filepath.Join(tmp, "test.txt")
+	if err := os.WriteFile(txtFile, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := detectInitInput([]string{txtFile})
+	if err == nil {
+		t.Fatal("expected error for non-.md file")
+	}
+}
+
+func TestDetectInitInput_FileNotFound(t *testing.T) {
+	_, err := detectInitInput([]string{"/nonexistent/gc.md"})
+	if err == nil {
+		t.Fatal("expected error for missing .md file")
+	}
+}
+
+func TestDetectInitInput_NonExistentPath(t *testing.T) {
+	_, err := detectInitInput([]string{"/nonexistent/my-skill"})
+	if err == nil {
+		t.Fatal("expected error for non-existent path")
+	}
+	if !strings.Contains(err.Error(), "path not found") {
+		t.Errorf("error = %q, want 'path not found'", err)
+	}
+}
+
+// --- parseInitSource tests ---
+
+func TestParseFileSource_WithFrontmatter(t *testing.T) {
+	tmp := t.TempDir()
+	content := `---
+name: gc
+description: Generate commit messages
+triggers:
+  - /gc
+  - git commit
+invocable: true
+argument-hint: "<message>"
+---
+
+# GC Skill
+
+This skill generates commit messages.
+`
+	mdFile := filepath.Join(tmp, "gc.md")
+	if err := os.WriteFile(mdFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseFileSource(mdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.name != "gc" {
+		t.Errorf("name = %q, want %q", meta.name, "gc")
+	}
+	if meta.description != "Generate commit messages" {
+		t.Errorf("description = %q", meta.description)
+	}
+	if len(meta.triggers) != 2 {
+		t.Errorf("triggers len = %d, want 2", len(meta.triggers))
+	}
+	if !meta.invocable {
+		t.Error("invocable should be true")
+	}
+	if meta.argHint != "<message>" {
+		t.Errorf("argHint = %q", meta.argHint)
+	}
+	if !strings.Contains(meta.body, "GC Skill") {
+		t.Errorf("body missing content: %q", meta.body)
+	}
+}
+
+func TestParseFileSource_NoFrontmatter(t *testing.T) {
+	tmp := t.TempDir()
+	content := "# My Skill\n\nThis is a simple skill for testing.\n"
+	mdFile := filepath.Join(tmp, "my-tool.md")
+	if err := os.WriteFile(mdFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseFileSource(mdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.name != "my-tool" {
+		t.Errorf("name = %q, want %q", meta.name, "my-tool")
+	}
+	if meta.description != "This is a simple skill for testing." {
+		t.Errorf("description = %q", meta.description)
+	}
+	if len(meta.triggers) == 0 || meta.triggers[0] != "/my-tool" {
+		t.Errorf("triggers = %v, want [/my-tool]", meta.triggers)
+	}
+}
+
+func TestParseFileSource_EmptyFile(t *testing.T) {
+	tmp := t.TempDir()
+	mdFile := filepath.Join(tmp, "empty.md")
+	if err := os.WriteFile(mdFile, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := parseFileSource(mdFile)
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+}
+
+func TestParseDirSource_WithCtxYaml(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "my-skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	m := manifest.Scaffold(manifest.TypeSkill, "testuser", "my-skill")
+	m.Version = "1.2.0"
+	m.Description = "A test skill"
+	m.Keywords = []string{"/my-skill", "test"}
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseDirSource(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.name != "my-skill" {
+		t.Errorf("name = %q, want %q", meta.name, "my-skill")
+	}
+	if meta.version != "1.2.0" {
+		t.Errorf("version = %q, want %q", meta.version, "1.2.0")
+	}
+	if meta.description != "A test skill" {
+		t.Errorf("description = %q", meta.description)
+	}
+	if len(meta.triggers) != 2 {
+		t.Errorf("triggers len = %d, want 2", len(meta.triggers))
+	}
+}
+
+func TestParseDirSource_WithSKILLMD(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "cool-skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	content := `---
+name: cool
+description: A cool skill
+triggers:
+  - /cool
+invocable: true
+---
+
+# Cool Skill
+
+Does cool things.
+`
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseDirSource(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.name != "cool" {
+		t.Errorf("name = %q, want %q", meta.name, "cool")
+	}
+	if meta.description != "A cool skill" {
+		t.Errorf("description = %q", meta.description)
+	}
+}
+
+func TestParseDirSource_Empty(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "empty-dir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseDirSource(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.name != "empty-dir" {
+		t.Errorf("name = %q, want %q", meta.name, "empty-dir")
+	}
+	if meta.version != "0.1.0" {
+		t.Errorf("version = %q", meta.version)
+	}
+}
+
+func TestParseDirSource_PreservesArgumentHint(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "my-skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write ctx.yaml (no argument-hint field)
+	m := manifest.Scaffold(manifest.TypeSkill, "testuser", "my-skill")
+	m.Version = "1.0.0"
+	m.Description = "A skill"
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write SKILL.md with argument-hint in frontmatter
+	skillContent := `---
+name: my-skill
+description: A skill
+argument-hint: "<commit message>"
+invocable: true
+---
+
+# My Skill
+`
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseDirSource(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta.argHint != "<commit message>" {
+		t.Errorf("argHint = %q, want %q", meta.argHint, "<commit message>")
+	}
+}
+
+func TestInitPipeline_DirCopiesExtraFiles(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	// Create source directory with extra files
+	srcDir := filepath.Join(tmp, "my-skill")
+	if err := os.MkdirAll(filepath.Join(srcDir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(srcDir, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write SKILL.md
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# My Skill\n\nDoes things.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Write extra files
+	if err := os.WriteFile(filepath.Join(srcDir, "scripts", "helper.sh"), []byte("#!/bin/bash\necho hi"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "assets", "logo.png"), []byte("fake-png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use staging.CopyFrom + WriteFile like the real pipeline
+	stg, err := staging.New("ctx-init-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stg.Rollback()
+
+	if err := stg.CopyFrom(srcDir); err != nil {
+		t.Fatal(err)
+	}
+	// Overwrite SKILL.md (simulating normalization)
+	if err := stg.WriteFile("SKILL.md", []byte("# Normalized\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stg.WriteFile("ctx.yaml", []byte("name: test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(tmp, "skills", "local", "my-skill")
+	if err := stg.Commit(dest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify extra files were copied
+	helperData, err := os.ReadFile(filepath.Join(dest, "scripts", "helper.sh"))
+	if err != nil {
+		t.Fatalf("scripts/helper.sh should exist: %v", err)
+	}
+	if string(helperData) != "#!/bin/bash\necho hi" {
+		t.Errorf("helper.sh content = %q", string(helperData))
+	}
+
+	logoData, err := os.ReadFile(filepath.Join(dest, "assets", "logo.png"))
+	if err != nil {
+		t.Fatalf("assets/logo.png should exist: %v", err)
+	}
+	if string(logoData) != "fake-png" {
+		t.Errorf("logo.png content = %q", string(logoData))
+	}
+
+	// Verify SKILL.md was overwritten (normalized)
+	skillData, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(skillData) != "# Normalized\n" {
+		t.Errorf("SKILL.md should be normalized, got %q", string(skillData))
+	}
+}
+
+// --- promptMetadata tests ---
+
+func TestPromptMetadata_NoopPrompter(t *testing.T) {
+	p := prompt.NoopPrompter{}
+	meta := initMeta{
+		name:        "gc",
+		description: "Generate commits",
+		version:     "0.1.0",
+	}
+
+	result, err := promptMetadata(p, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.name != "gc" {
+		t.Errorf("name = %q, want %q", result.name, "gc")
+	}
+	if result.description != "Generate commits" {
+		t.Errorf("description = %q", result.description)
+	}
+	if result.version != "0.1.0" {
+		t.Errorf("version = %q", result.version)
+	}
+}
+
+// --- resolveScope tests ---
+
+func TestResolveScope_NoConfig(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	scope := resolveScope()
+	if scope != "local" {
+		t.Errorf("scope = %q, want %q", scope, "local")
+	}
+}
+
+// --- Full pipeline tests ---
+
+func TestInitPipeline_FromFile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	// Create source .md file
+	content := `---
+name: gc
+description: Generate bilingual commit messages
+triggers:
+  - /gc
+invocable: true
+---
+
+# GC
+
+Generate commit messages in both Chinese and English.
+`
+	srcFile := filepath.Join(tmp, "gc.md")
+	if err := os.WriteFile(srcFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Detect
+	input, err := detectInitInput([]string{srcFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.mode != initFromFile {
+		t.Fatalf("mode = %d, want initFromFile", input.mode)
+	}
+
+	// Parse
+	meta, err := parseInitSource(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.name != "gc" {
+		t.Errorf("name = %q", meta.name)
+	}
+
+	// Prompt (noop)
+	meta, err = promptMetadata(prompt.NoopPrompter{}, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build manifest
+	scope := "local"
+	skillName := slugify(meta.name)
+	fullName := manifest.FormatFullName(scope, skillName)
+	dest := filepath.Join(tmp, "skills", scope, skillName)
+
+	m := manifest.Scaffold(manifest.TypeSkill, scope, skillName)
+	m.Version = meta.version
+	m.Description = meta.description
+	m.Keywords = meta.triggers
+	m.Skill.UserInvocable = &meta.invocable
+
+	errs := manifest.Validate(m)
+	if len(errs) > 0 {
+		t.Fatalf("validation errors: %v", errs)
+	}
+
+	manifestData, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fm := &manifest.SkillFrontmatter{
+		Name:        skillName,
+		Description: meta.description,
+		Triggers:    meta.triggers,
+		Invocable:   meta.invocable,
+	}
+	skillContent, err := manifest.RenderSkillMD(fm, meta.body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to dest directly (simulating staging commit)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"), skillContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify SSOT files exist
+	loaded, err := manifest.LoadFromDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Name != fullName {
+		t.Errorf("loaded name = %q, want %q", loaded.Name, fullName)
+	}
+	if loaded.Version != "0.1.0" {
+		t.Errorf("version = %q", loaded.Version)
+	}
+
+	// Verify SKILL.md roundtrips
+	f, err := os.Open(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parsedFM, parsedBody, err := manifest.ParseSkillMD(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsedFM == nil || parsedFM.Name != "gc" {
+		t.Errorf("parsed name = %v", parsedFM)
+	}
+	if !strings.Contains(parsedBody, "Generate commit messages") {
+		t.Errorf("body missing content: %q", parsedBody)
+	}
+}
+
+func TestInitPipeline_LinkBack(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	// Create source and target
+	srcFile := filepath.Join(tmp, "gc.md")
+	if err := os.WriteFile(srcFile, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(tmp, "skills", "local", "gc")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(destDir, "SKILL.md")
+	if err := os.WriteFile(targetFile, []byte("skill content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Link
+	if err := linkToOriginal(srcFile, targetFile, "@local/gc"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify symlink
+	link, err := os.Readlink(srcFile)
+	if err != nil {
+		t.Fatalf("should be a symlink: %v", err)
+	}
+	if link != targetFile {
+		t.Errorf("link = %q, want %q", link, targetFile)
+	}
+
+	// Verify backup
+	bakData, err := os.ReadFile(srcFile + ".bak")
+	if err != nil {
+		t.Fatalf("backup should exist: %v", err)
+	}
+	if string(bakData) != "original" {
+		t.Errorf("backup content = %q", string(bakData))
+	}
+}
+
+func TestInitPipeline_AlreadyLinked(t *testing.T) {
+	tmp := t.TempDir()
+	skillsDir := filepath.Join(tmp, "skills", "local", "gc")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(skillsDir, "SKILL.md")
+	if err := os.WriteFile(target, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink
+	srcFile := filepath.Join(tmp, "gc.md")
+	if err := os.Symlink(target, srcFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Detect should show it's a symlink pointing into skills dir
+	readLink, err := os.Readlink(srcFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readLink, "skills") {
+		t.Errorf("symlink should point to skills dir, got %q", readLink)
+	}
+}
+
+func TestInitPipeline_Idempotent(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	dest := filepath.Join(tmp, "skills", "local", "gc")
+
+	// First write
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := manifest.Scaffold(manifest.TypeSkill, "local", "gc")
+	m.Version = "0.1.0"
+	m.Description = "test"
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it exists
+	if _, err := os.Stat(filepath.Join(dest, "ctx.yaml")); err != nil {
+		t.Fatal("first write should exist")
+	}
+
+	// Second write (overwrite) — simulates running init twice
+	m.Version = "0.2.0"
+	data2, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), data2, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify updated
+	loaded, err := manifest.LoadFromDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Version != "0.2.0" {
+		t.Errorf("version = %q, want %q", loaded.Version, "0.2.0")
+	}
+}
+
+func TestInitPipeline_StagingCommit(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CTX_HOME", tmp)
+
+	dest := filepath.Join(tmp, "skills", "local", "test-skill")
+
+	// Use real staging package
+	stg, err := staging.New("ctx-init-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stg.Rollback()
+
+	m := manifest.Scaffold(manifest.TypeSkill, "local", "test-skill")
+	m.Version = "0.1.0"
+	m.Description = "Test"
+	manifestData, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fm := &manifest.SkillFrontmatter{
+		Name:        "test-skill",
+		Description: "Test",
+		Triggers:    []string{"/test"},
+		Invocable:   true,
+	}
+	skillContent, err := manifest.RenderSkillMD(fm, "# Test\n\nContent.\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := stg.WriteFile("ctx.yaml", manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stg.WriteFile("SKILL.md", skillContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stg.Commit(dest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify both files exist
+	if _, err := os.Stat(filepath.Join(dest, "ctx.yaml")); err != nil {
+		t.Error("ctx.yaml should exist")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Error("SKILL.md should exist")
+	}
+
+	// Verify content
+	loaded, err := manifest.LoadFromDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Name != "@local/test-skill" {
+		t.Errorf("name = %q", loaded.Name)
+	}
+}
+
+// --- initCmd registration tests ---
+
+func TestInitCmd_AcceptsArgs(t *testing.T) {
+	// init should accept 0 or 1 args
+	if err := initCmd.Args(initCmd, nil); err != nil {
+		t.Errorf("should accept 0 args: %v", err)
+	}
+	if err := initCmd.Args(initCmd, []string{"gc.md"}); err != nil {
+		t.Errorf("should accept 1 arg: %v", err)
+	}
+	if err := initCmd.Args(initCmd, []string{"a", "b"}); err == nil {
+		t.Error("should reject 2 args")
 	}
 }

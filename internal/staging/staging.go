@@ -78,6 +78,15 @@ func (d *Dir) Commit(dest string) error {
 	return nil
 }
 
+// CopyFrom recursively copies all files from src into the staging directory.
+// Existing files in staging with the same name are overwritten.
+func (d *Dir) CopyFrom(src string) error {
+	if d.cleaned {
+		return fmt.Errorf("staging directory already cleaned up")
+	}
+	return copyDir(src, d.Path)
+}
+
 // Rollback removes the staging directory. Safe to call multiple times.
 func (d *Dir) Rollback() {
 	if d.cleaned {
