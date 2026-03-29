@@ -99,6 +99,101 @@ func TestClientUserAgent(t *testing.T) {
 	}
 }
 
+func TestClientPublish_PathAndMethod(t *testing.T) {
+	var gotMethod, gotPath, gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(PublishResponse{
+			FullName: "@test/pkg",
+			Version:  "1.0.0",
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	resp, err := c.Publish(context.Background(), []byte("name: test"), nil)
+	if err != nil {
+		t.Fatalf("Publish error: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/v1/packages" {
+		t.Errorf("path = %q, want /v1/packages", gotPath)
+	}
+	if !strings.HasPrefix(gotContentType, "multipart/form-data") {
+		t.Errorf("Content-Type = %q, want multipart/form-data", gotContentType)
+	}
+	if resp.FullName != "@test/pkg" || resp.Version != "1.0.0" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
+func TestClientYank_PathAndMethod(t *testing.T) {
+	var gotMethod string
+	var gotRawPath string
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotRawPath = r.URL.RawPath
+		if gotRawPath == "" {
+			gotRawPath = r.URL.Path
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	err := c.Yank(context.Background(), "@test/pkg", "1.0.0")
+	if err != nil {
+		t.Fatalf("Yank error: %v", err)
+	}
+	if gotMethod != "PATCH" {
+		t.Errorf("method = %q, want PATCH", gotMethod)
+	}
+	wantPath := "/v1/packages/@test%2Fpkg/versions/1.0.0"
+	if gotRawPath != wantPath {
+		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
+	}
+	if yanked, ok := gotBody["yanked"]; !ok || yanked != true {
+		t.Errorf("body = %v, want {yanked: true}", gotBody)
+	}
+}
+
+func TestClientDownload_PathAndMethod(t *testing.T) {
+	var gotMethod, gotRawPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotRawPath = r.URL.RawPath
+		if gotRawPath == "" {
+			gotRawPath = r.URL.Path
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("archive-data"))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	rc, err := c.Download(context.Background(), "@test/pkg", "1.0.0")
+	if err != nil {
+		t.Fatalf("Download error: %v", err)
+	}
+	defer rc.Close()
+
+	if gotMethod != "GET" {
+		t.Errorf("method = %q, want GET", gotMethod)
+	}
+	wantPath := "/v1/packages/@test%2Fpkg/versions/1.0.0/archive"
+	if gotRawPath != wantPath {
+		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
+	}
+}
+
 func TestClientErrorParsing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)

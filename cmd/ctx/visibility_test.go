@@ -35,27 +35,44 @@ func TestVisibilityValues_Invalid(t *testing.T) {
 
 func TestVisibilitySet_Online(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// PATCH /v1/packages/@scope%2Fpkg/visibility
-		if r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/v1/packages/") && strings.HasSuffix(r.URL.Path, "/visibility") {
-			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
-				return
-			}
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{
-				"full_name":  "@scope/pkg",
-				"visibility": body["visibility"],
-			})
+		// Assert exact method, path, and body
+		if r.Method != "PATCH" {
+			t.Errorf("method = %q, want PATCH", r.Method)
+			http.NotFound(w, r)
 			return
 		}
-		http.NotFound(w, r)
+		wantPath := "/v1/packages/@scope%2Fpkg/visibility"
+		if r.URL.RawPath != "" {
+			if r.URL.RawPath != wantPath {
+				t.Errorf("raw path = %q, want %q", r.URL.RawPath, wantPath)
+				http.NotFound(w, r)
+				return
+			}
+		} else if r.URL.Path != "/v1/packages/@scope%2Fpkg/visibility" {
+			t.Errorf("path = %q, want %q", r.URL.Path, wantPath)
+			http.NotFound(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("failed to decode body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
+			return
+		}
+		if body["visibility"] != "private" {
+			t.Errorf("body visibility = %q, want %q", body["visibility"], "private")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"full_name":  "@scope/pkg",
+			"visibility": body["visibility"],
+		})
 	}))
 	defer srv.Close()
 
