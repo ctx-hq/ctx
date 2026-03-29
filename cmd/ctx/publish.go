@@ -9,6 +9,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
 )
 
@@ -100,13 +101,27 @@ Examples:
 
 		output.Info("Publishing %s@%s...", m.Name, m.Version)
 
-		// Open archive file if it exists
-		var archive *os.File
-		archivePath := filepath.Join(dir, "package.tar.gz")
-		if f, err := os.Open(archivePath); err == nil {
-			archive = f
-			defer func() { _ = archive.Close() }()
+		// Stage directory and create archive.
+		stg, stgErr := staging.New("ctx-publish-")
+		if stgErr != nil {
+			return stgErr
 		}
+		defer stg.Rollback()
+
+		if cpErr := stg.CopyFrom(dir); cpErr != nil {
+			return fmt.Errorf("stage directory: %w", cpErr)
+		}
+		// Remove build artifacts that should not be included in the archive.
+		_ = os.Remove(filepath.Join(stg.Path, "package.tar.gz"))
+		if wErr := stg.WriteFile(manifest.FileName, data, 0o644); wErr != nil {
+			return fmt.Errorf("stage manifest: %w", wErr)
+		}
+
+		archive, archErr := stg.TarGz()
+		if archErr != nil {
+			return fmt.Errorf("create archive: %w", archErr)
+		}
+		defer func() { _ = archive.Close() }()
 
 		result, err := reg.Publish(cmd.Context(), data, archive)
 		if err != nil {

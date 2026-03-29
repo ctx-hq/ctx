@@ -118,6 +118,8 @@ func TestTruncate(t *testing.T) {
 		{"short", 10, "short"},
 		{"exactly10!", 10, "exactly10!"},
 		{"this is a longer string", 10, "this is..."},
+		{"请根据当前代码改动生成提交信息", 10, "请根据当前代码..."},
+		{"你好世界hello", 6, "你好世..."},
 	}
 
 	for _, tt := range tests {

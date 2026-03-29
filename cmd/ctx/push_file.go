@@ -10,6 +10,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
+	"github.com/ctx-hq/ctx/internal/pushstate"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ type singleFileOpts struct {
 	mutable           bool   // true for push
 	versionBump       string // "patch"/"minor"/"major"/""
 	skipConfirm       bool   // --yes flag
+	dryRun            bool   // --dry-run flag
 }
 
 // pushSingleFile handles `ctx push <file.md>` and `ctx publish <file.md>`.
@@ -202,7 +204,16 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	})
 	fmt.Fprintln(os.Stderr)
 
-	// 11. Confirm
+	// 11. Dry-run: show preview and exit without publishing.
+	if opts.dryRun {
+		return w.OK(map[string]string{
+			"full_name": fullName,
+			"version":   version,
+			"file":      filePath,
+		}, output.WithSummary(fmt.Sprintf("Would push %s@%s", fullName, version)))
+	}
+
+	// 12. Confirm
 	confirmed, err := p.Confirm("Publish to registry?", true)
 	if err != nil {
 		return err
@@ -212,7 +223,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		return nil
 	}
 
-	// 12. Create archive and publish (SKILL.md content goes to registry)
+	// 13. Create archive and publish (SKILL.md content goes to registry)
 	output.Info("Publishing %s@%s...", fullName, version)
 	archive, err := stg.TarGz()
 	if err != nil {
@@ -237,6 +248,14 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		)
 	}
 	output.Success("Saved to %s", dest)
+
+	// Record push state.
+	if pst, loadErr := pushstate.Load(); loadErr == nil {
+		if h, hErr := pushstate.HashDir(dest); hErr == nil {
+			pst.RecordPush(fullName, h, result.Version, dest)
+			_ = pst.Save()
+		}
+	}
 
 	// 14. Link back to original location
 	absFilePath, _ := filepath.Abs(filePath)
