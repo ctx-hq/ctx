@@ -28,7 +28,9 @@ func SaveToken(token, username string) error {
 // ClearToken removes the auth token from keychain and clears username from config.
 func ClearToken() error {
 	kc := getKeychain()
-	_ = kc.Delete(keychainService, keychainAccount) // best effort
+	if err := kc.Delete(keychainService, keychainAccount); err != nil {
+		return fmt.Errorf("failed to remove token from keychain: %w", err)
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

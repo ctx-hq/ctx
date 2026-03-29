@@ -109,6 +109,7 @@ func init() {
 		publishCmd,
 		pushCmd,
 		loginCmd,
+		logoutCmd,
 		initCmd,
 		validateCmd,
 		versionCmd,
