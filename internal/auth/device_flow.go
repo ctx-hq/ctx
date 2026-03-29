@@ -12,11 +12,21 @@ import (
 
 // DeviceFlowResponse is returned when starting the device flow.
 type DeviceFlowResponse struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
+}
+
+// BrowserURL returns the best URL to open in the browser.
+// Prefers verification_uri_complete (includes code) when available.
+func (r *DeviceFlowResponse) BrowserURL() string {
+	if r.VerificationURIComplete != "" {
+		return r.VerificationURIComplete
+	}
+	return r.VerificationURI
 }
 
 // TokenResponse is the final auth token.
