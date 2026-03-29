@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/ctx-hq/ctx/compare/v0.10.0...v0.10.1) (2026-03-29)
+
+
+### Tests
+
+* **registry:** add regression tests for API path, method, and body ([9774203](https://github.com/ctx-hq/ctx/commit/9774203))
+
 ## [0.10.0](https://github.com/ctx-hq/ctx/compare/v0.9.0...v0.10.0) (2026-03-29)
 
 
