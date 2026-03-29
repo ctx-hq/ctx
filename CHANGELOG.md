@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/ctx-hq/ctx/compare/v0.12.1...v0.13.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add logout command and fix silent keychain error swallowing ([dbf9e1e](https://github.com/ctx-hq/ctx/commit/dbf9e1e))
+
 ## [0.12.1](https://github.com/ctx-hq/ctx/compare/v0.12.0...v0.12.1) (2026-03-30)
 
 
