@@ -1,6 +1,62 @@
 package registry
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+// FlexTime handles both RFC3339 ("2006-01-02T15:04:05Z") and SQLite
+// datetime ("2006-01-02 15:04:05") formats returned by the API.
+type FlexTime struct {
+	time.Time
+}
+
+func (ft *FlexTime) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		return nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		ft.Time = t
+		return nil
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		ft.Time = t.UTC()
+		return nil
+	}
+	return fmt.Errorf("cannot parse time %q", s)
+}
+
+func (ft FlexTime) MarshalJSON() ([]byte, error) {
+	if ft.IsZero() {
+		return []byte(`""`), nil
+	}
+	return []byte(`"` + ft.Time.Format(time.RFC3339) + `"`), nil
+}
+
+// FlexBool handles both JSON booleans (true/false) and SQLite integers (0/1).
+type FlexBool bool
+
+func (fb *FlexBool) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	switch s {
+	case "true", "1":
+		*fb = true
+	case "false", "0", "null", "":
+		*fb = false
+	default:
+		return fmt.Errorf("cannot parse bool %q", s)
+	}
+	return nil
+}
+
+func (fb FlexBool) MarshalJSON() ([]byte, error) {
+	if fb {
+		return []byte("true"), nil
+	}
+	return []byte("false"), nil
+}
 
 // PackageInfo is a summary returned in search/list results.
 type PackageInfo struct {
@@ -15,31 +71,31 @@ type PackageInfo struct {
 // PackageDetail is the full package metadata.
 type PackageDetail struct {
 	PackageInfo
-	License    string            `json:"license,omitempty"`
-	Keywords   []string          `json:"keywords,omitempty"`
-	Platforms  []string          `json:"platforms,omitempty"`
-	Homepage   string            `json:"homepage,omitempty"`
-	Author     string            `json:"author,omitempty"`
-	Visibility string            `json:"visibility,omitempty"`
-	Versions   []VersionSummary  `json:"versions,omitempty"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	License    string           `json:"license,omitempty"`
+	Keywords   []string         `json:"keywords,omitempty"`
+	Platforms  []string         `json:"platforms,omitempty"`
+	Homepage   string           `json:"homepage,omitempty"`
+	Author     string           `json:"author,omitempty"`
+	Visibility string           `json:"visibility,omitempty"`
+	Versions   []VersionSummary `json:"versions,omitempty"`
+	CreatedAt  FlexTime         `json:"created_at"`
+	UpdatedAt  FlexTime         `json:"updated_at"`
 }
 
 // VersionSummary is a brief version listing.
 type VersionSummary struct {
-	Version   string    `json:"version"`
-	Yanked    bool      `json:"yanked"`
-	CreatedAt time.Time `json:"created_at"`
+	Version   string   `json:"version"`
+	Yanked    FlexBool `json:"yanked"`
+	CreatedAt FlexTime `json:"created_at"`
 }
 
 // VersionDetail is the full version metadata including manifest.
 type VersionDetail struct {
-	Version     string `json:"version"`
-	Manifest    string `json:"manifest"` // JSON-encoded ctx.yaml
-	Readme      string `json:"readme,omitempty"`
-	SHA256      string `json:"sha256"`
-	Yanked      bool   `json:"yanked"`
+	Version     string   `json:"version"`
+	Manifest    string   `json:"manifest"` // JSON-encoded ctx.yaml
+	Readme      string   `json:"readme,omitempty"`
+	SHA256      string   `json:"sha256"`
+	Yanked      FlexBool `json:"yanked"`
 	PublishedBy string `json:"published_by"`
 	CreatedAt   string `json:"created_at"`
 }
