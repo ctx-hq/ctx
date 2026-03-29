@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/ctx-hq/ctx/compare/v0.11.0...v0.12.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** overhaul ctx push with nil archive fix, state tracking, and batch support ([5b25d26](https://github.com/ctx-hq/ctx/commit/5b25d26))
+
+
+### Bug Fixes
+
+* **cli:** filter staging excludes, fail batch on errors, fix dry-run side effects and status double output ([0780939](https://github.com/ctx-hq/ctx/commit/0780939))
+
 ## [0.11.0](https://github.com/ctx-hq/ctx/compare/v0.10.1...v0.11.0) (2026-03-29)
 
 
