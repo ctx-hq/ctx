@@ -25,6 +25,11 @@ triggers:
   - sync packages across devices
   - manage organization
   - create organization
+  - ctx whoami
+  - ctx login
+  - who am i
+  - check auth
+  - check login status
 invocable: true
 argument-hint: "[command] [args...]"
 ---
@@ -94,6 +99,8 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx org add <org> <user>` | | Add member (--role admin) |
 | `ctx org remove <org> <user>` | | Remove member |
 | `ctx org delete <name>` | | Delete org (0 packages required) |
+| `ctx login` | | Authenticate via GitHub |
+| `ctx whoami` | | Show current authenticated user |
 | `ctx skill install` | | Install ctx's own skill to agents |
 
 ## Global Flags

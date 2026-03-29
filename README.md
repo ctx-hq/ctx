@@ -134,6 +134,7 @@ ctx link <agent>                    # link packages to an agent
 
 # Publishing
 ctx login                           # authenticate via GitHub
+ctx whoami                          # show current authenticated user
 ctx init                            # interactive manifest scaffold
 ctx validate                        # validate your manifest
 ctx publish                         # publish to the registry (public)

@@ -134,6 +134,7 @@ ctx link <agent>                    # 链接包到智能体
 
 # 发布
 ctx login                           # 通过 GitHub 认证
+ctx whoami                          # 查看当前登录用户
 ctx init                            # 交互式生成 ctx.yaml
 ctx validate                        # 验证清单文件
 ctx publish                         # 发布到注册表（公开）
