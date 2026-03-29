@@ -1,6 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +30,90 @@ func TestVisibilityValues_Invalid(t *testing.T) {
 				t.Errorf("visibility %q should be invalid", v)
 			}
 		})
+	}
+}
+
+func TestVisibilitySet_Online(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// PATCH /v1/packages/@scope%2Fpkg/visibility
+		if r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/v1/packages/") && strings.HasSuffix(r.URL.Path, "/visibility") {
+			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+				return
+			}
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"full_name":  "@scope/pkg",
+				"visibility": body["visibility"],
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	binary := buildCtxBinary(t)
+	home := setupCtxHome(t, "")
+	writeCredentials(t, home, "valid-token")
+
+	cmd := exec.Command(binary, "visibility", "@scope/pkg", "private", "--json")
+	cmd.Env = hermeticEnv(home, "CTX_REGISTRY="+srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("visibility set failed: %v\n%s", err, out)
+	}
+
+	var resp struct {
+		OK   bool              `json:"ok"`
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v\nraw: %s", err, out)
+	}
+
+	if !resp.OK {
+		t.Error("expected ok=true")
+	}
+	if resp.Data["visibility"] != "private" {
+		t.Errorf("visibility = %q, want %q", resp.Data["visibility"], "private")
+	}
+}
+
+func TestVisibilitySet_NotLoggedIn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	binary := buildCtxBinary(t)
+	home := setupCtxHome(t, "")
+
+	cmd := exec.Command(binary, "visibility", "@scope/pkg", "public", "--json")
+	cmd.Env = hermeticEnv(home, "CTX_REGISTRY="+srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error when not logged in")
+	}
+
+	var resp struct {
+		OK   bool   `json:"ok"`
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v\nraw: %s", err, out)
+	}
+	if resp.OK {
+		t.Error("expected ok=false")
+	}
+	if resp.Code != "auth" {
+		t.Errorf("code = %q, want %q", resp.Code, "auth")
 	}
 }
 

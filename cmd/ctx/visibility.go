@@ -58,7 +58,16 @@ Examples:
 			return output.ErrAuth("not logged in")
 		}
 
-		// TODO: PATCH /v1/packages/:fullName with visibility field
-		return fmt.Errorf("visibility change is not yet implemented (coming soon)")
+		if err := reg.SetVisibility(cmd.Context(), args[0], visibility); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"package": args[0], "visibility": visibility},
+			output.WithSummary(fmt.Sprintf("%s visibility changed to %s", args[0], visibility)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "info", Command: "ctx info " + args[0], Description: "View package details"},
+			),
+		)
 	},
 }

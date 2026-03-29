@@ -12,7 +12,6 @@ import (
 )
 
 var enrichResetFlag bool
-var enrichRedoFlag bool
 
 var enrichCmd = &cobra.Command{
 	Use:   "enrich <package>",
@@ -76,10 +75,6 @@ Examples:
 			)
 		}
 
-		if enrichRedoFlag {
-			return fmt.Errorf("--redo is not yet implemented")
-		}
-
 		// View enrichment details
 		hasOriginal := false
 		if _, err := os.Stat(originalPath); err == nil {
@@ -113,5 +108,4 @@ Examples:
 
 func init() {
 	enrichCmd.Flags().BoolVar(&enrichResetFlag, "reset", false, "Restore original SKILL.md")
-	enrichCmd.Flags().BoolVar(&enrichRedoFlag, "redo", false, "Re-detect and re-enrich")
 }

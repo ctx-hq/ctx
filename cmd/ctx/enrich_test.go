@@ -4,27 +4,25 @@ import (
 	"testing"
 )
 
-func TestEnrichFlags_ResetAndRedo_AreMutuallyExclusive(t *testing.T) {
-	// Both flags start false; only one should be set at a time
-	// This tests the default state
+func TestEnrichFlags_ResetIsBoolean(t *testing.T) {
 	cmd := enrichCmd
 
-	resetFlag := cmd.Flags().Lookup("reset")
-	redoFlag := cmd.Flags().Lookup("redo")
-
-	if resetFlag == nil {
+	f := cmd.Flags().Lookup("reset")
+	if f == nil {
 		t.Fatal("--reset flag not registered on enrich command")
 	}
-	if redoFlag == nil {
-		t.Fatal("--redo flag not registered on enrich command")
+	if f.DefValue != "false" {
+		t.Errorf("--reset default = %q, want %q", f.DefValue, "false")
 	}
+	if f.Value.Type() != "bool" {
+		t.Errorf("--reset type = %q, want %q", f.Value.Type(), "bool")
+	}
+}
 
-	// Defaults should be false
-	if resetFlag.DefValue != "false" {
-		t.Errorf("--reset default = %q, want %q", resetFlag.DefValue, "false")
-	}
-	if redoFlag.DefValue != "false" {
-		t.Errorf("--redo default = %q, want %q", redoFlag.DefValue, "false")
+func TestEnrichFlags_RedoRemoved(t *testing.T) {
+	cmd := enrichCmd
+	if f := cmd.Flags().Lookup("redo"); f != nil {
+		t.Error("--redo flag should have been removed")
 	}
 }
 
@@ -50,23 +48,6 @@ func TestEnrichCmd_RequiresExactlyOneArg(t *testing.T) {
 			err := cmd.Args(cmd, args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Args(%d) error = %v, wantErr = %v", tt.nArgs, err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestEnrichFlags_AreBoolean(t *testing.T) {
-	cmd := enrichCmd
-	flags := []string{"reset", "redo"}
-
-	for _, name := range flags {
-		t.Run(name, func(t *testing.T) {
-			f := cmd.Flags().Lookup(name)
-			if f == nil {
-				t.Fatalf("flag --%s not found", name)
-			}
-			if f.Value.Type() != "bool" {
-				t.Errorf("flag --%s type = %q, want %q", name, f.Value.Type(), "bool")
 			}
 		})
 	}

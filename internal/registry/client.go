@@ -106,7 +106,7 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+"/v1/publish", body)
+	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+"/v1/packages", body)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +135,8 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 
 // Yank yanks a version.
 func (c *Client) Yank(ctx context.Context, fullName, version string) error {
-	path := fmt.Sprintf("/v1/yank/%s/%s", url.PathEscape(fullName), url.PathEscape(version))
-	return c.post(ctx, path, nil, nil)
+	path := fmt.Sprintf("/v1/packages/%s/versions/%s", url.PathEscape(fullName), url.PathEscape(version))
+	return c.doPatch(ctx, path, map[string]bool{"yanked": true})
 }
 
 // GetMe returns the current user.
@@ -150,7 +150,7 @@ func (c *Client) GetMe(ctx context.Context) (*UserInfo, error) {
 
 // Download fetches the formula archive for a version.
 func (c *Client) Download(ctx context.Context, fullName, version string) (io.ReadCloser, error) {
-	path := fmt.Sprintf("/v1/download/%s/%s", url.PathEscape(fullName), url.PathEscape(version))
+	path := fmt.Sprintf("/v1/packages/%s/versions/%s/archive", url.PathEscape(fullName), url.PathEscape(version))
 	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+path, nil)
 	if err != nil {
 		return nil, err
@@ -240,6 +240,12 @@ func (c *Client) DeleteOrg(ctx context.Context, name string) error {
 	return c.doDelete(ctx, "/v1/orgs/"+url.PathEscape(name))
 }
 
+// SetVisibility changes a package's visibility.
+func (c *Client) SetVisibility(ctx context.Context, fullName, visibility string) error {
+	path := fmt.Sprintf("/v1/packages/%s/visibility", url.PathEscape(fullName))
+	return c.doPatch(ctx, path, map[string]string{"visibility": visibility})
+}
+
 // --- Dist-tag APIs ---
 
 // ListTags lists dist-tags for a package.
@@ -299,10 +305,14 @@ func (c *Client) ReportInstall(ctx context.Context, pkg, version string, agents 
 	_ = c.post(ctx, "/v1/telemetry/install", body, nil)
 }
 
-// --- HTTP helpers for PUT and DELETE ---
+// --- HTTP helpers ---
 
 func (c *Client) doPut(ctx context.Context, path string, body any) error {
 	return c.doJSON(ctx, "PUT", path, body, nil)
+}
+
+func (c *Client) doPatch(ctx context.Context, path string, body any) error {
+	return c.doJSON(ctx, "PATCH", path, body, nil)
 }
 
 func (c *Client) doDelete(ctx context.Context, path string) error {
