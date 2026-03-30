@@ -165,6 +165,72 @@ func TestClientYank_PathAndMethod(t *testing.T) {
 	}
 }
 
+func TestClientDeletePackage_PathAndMethod(t *testing.T) {
+	var gotMethod, gotRawPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotRawPath = r.URL.RawPath
+		if gotRawPath == "" {
+			gotRawPath = r.URL.Path
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"full_name": "@test/pkg", "deleted": true})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	err := c.DeletePackage(context.Background(), "@test/pkg")
+	if err != nil {
+		t.Fatalf("DeletePackage error: %v", err)
+	}
+	if gotMethod != "DELETE" {
+		t.Errorf("method = %q, want DELETE", gotMethod)
+	}
+	wantPath := "/v1/packages/@test%2Fpkg"
+	if gotRawPath != wantPath {
+		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
+	}
+}
+
+func TestClientDeleteVersion_PathAndMethod(t *testing.T) {
+	tests := []struct {
+		name     string
+		pkg      string
+		version  string
+		wantPath string
+	}{
+		{"simple version", "@test/pkg", "1.0.0", "/v1/packages/@test%2Fpkg/versions/1.0.0"},
+		{"version with plus", "@test/pkg", "2.0.0+build.123", "/v1/packages/@test%2Fpkg/versions/2.0.0+build.123"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMethod, gotRawPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotRawPath = r.URL.RawPath
+				if gotRawPath == "" {
+					gotRawPath = r.URL.Path
+				}
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"full_name": tt.pkg, "version": tt.version, "deleted": true})
+			}))
+			defer srv.Close()
+
+			c := New(srv.URL, "tok")
+			err := c.DeleteVersion(context.Background(), tt.pkg, tt.version)
+			if err != nil {
+				t.Fatalf("DeleteVersion error: %v", err)
+			}
+			if gotMethod != "DELETE" {
+				t.Errorf("method = %q, want DELETE", gotMethod)
+			}
+			if gotRawPath != tt.wantPath {
+				t.Errorf("raw path = %q, want %q", gotRawPath, tt.wantPath)
+			}
+		})
+	}
+}
+
 func TestClientDownload_PathAndMethod(t *testing.T) {
 	var gotMethod, gotRawPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

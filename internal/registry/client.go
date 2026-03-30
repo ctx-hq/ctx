@@ -139,6 +139,19 @@ func (c *Client) Yank(ctx context.Context, fullName, version string) error {
 	return c.doPatch(ctx, path, map[string]bool{"yanked": true})
 }
 
+// DeletePackage permanently deletes a package and all its versions.
+func (c *Client) DeletePackage(ctx context.Context, fullName string) error {
+	path := fmt.Sprintf("/v1/packages/%s", url.PathEscape(fullName))
+	return c.doDelete(ctx, path)
+}
+
+// DeleteVersion permanently deletes a single version.
+// If it was the last version, the package is also deleted.
+func (c *Client) DeleteVersion(ctx context.Context, fullName, version string) error {
+	path := fmt.Sprintf("/v1/packages/%s/versions/%s", url.PathEscape(fullName), url.PathEscape(version))
+	return c.doDelete(ctx, path)
+}
+
 // GetMe returns the current user.
 func (c *Client) GetMe(ctx context.Context) (*UserInfo, error) {
 	var result UserInfo
