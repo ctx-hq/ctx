@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/ctx-hq/ctx/compare/v0.14.0...v0.15.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add package transfer, rename, notifications, and org lifecycle commands ([8da372b](https://github.com/ctx-hq/ctx/commit/8da372b))
+
 ## [0.14.0](https://github.com/ctx-hq/ctx/compare/v0.13.0...v0.14.0) (2026-03-30)
 
 
