@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/ctx-hq/ctx/compare/v0.16.0...v0.17.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add CLI/MCP package init, install state tracking, and publish validation ([7ec5ecb](https://github.com/ctx-hq/ctx/commit/7ec5ecbac729fdc3ff1047614baf00dffde1e675))
+
 ## [0.16.0](https://github.com/ctx-hq/ctx/compare/v0.15.0...v0.16.0) (2026-03-30)
 
 
