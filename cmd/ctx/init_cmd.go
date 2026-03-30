@@ -52,6 +52,7 @@ type initMeta struct {
 	installPkg    string // the package identifier for the chosen method
 	authHint      string
 	bundlesSkill  bool
+	skillEntry    string // existing skill.entry path (e.g., "skills/fizzy/SKILL.md")
 
 	// MCP
 	transport string
@@ -62,8 +63,8 @@ type initMeta struct {
 
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
-	Short: "Bring a skill into ctx management",
-	Long: `Standardize and manage a skill under ~/.ctx/skills/ (Single Source of Truth).
+	Short: "Initialize a ctx package (skill, CLI, or MCP)",
+	Long: `Initialize and manage a package under ~/.ctx/skills/ (Single Source of Truth).
 
 Supports three input modes:
   1. From scratch       ctx init
@@ -116,7 +117,11 @@ Examples:
 		}
 
 		// 6. Interactive metadata prompts
-		meta, err = promptMetadata(p, meta)
+		sourceDir := ""
+		if input.mode == initFromDirectory {
+			sourceDir = input.sourceDir
+		}
+		meta, err = promptMetadata(p, meta, sourceDir)
 		if err != nil {
 			return err
 		}
@@ -188,13 +193,19 @@ Examples:
 		m.Version = meta.version
 		m.Description = meta.description
 
+		// Determine skill entry path
+		skillEntry := "SKILL.md"
+		if meta.skillEntry != "" {
+			skillEntry = meta.skillEntry
+		}
+
 		switch pkgType {
 		case manifest.TypeSkill:
 			m.Keywords = meta.triggers
 			if m.Skill == nil {
 				m.Skill = &manifest.SkillSpec{}
 			}
-			m.Skill.Entry = "SKILL.md"
+			m.Skill.Entry = skillEntry
 			m.Skill.UserInvocable = &meta.invocable
 
 		case manifest.TypeCLI:
@@ -208,7 +219,7 @@ Examples:
 				if m.Skill == nil {
 					m.Skill = &manifest.SkillSpec{}
 				}
-				m.Skill.Entry = "SKILL.md"
+				m.Skill.Entry = skillEntry
 				m.Skill.Origin = "native"
 			}
 
@@ -251,22 +262,27 @@ Examples:
 			return fmt.Errorf("stage ctx.yaml: %w", err)
 		}
 
-		// Generate SKILL.md for skill packages or CLI packages that bundle a skill
+		// Generate SKILL.md only if one doesn't already exist at the entry path
 		if pkgType == manifest.TypeSkill || (pkgType == manifest.TypeCLI && meta.bundlesSkill) {
-			fm := &manifest.SkillFrontmatter{
-				Name:         skillName,
-				Description:  meta.description,
-				Triggers:     meta.triggers,
-				Invocable:    meta.invocable,
-				ArgumentHint: meta.argHint,
+			existingSkillPath := filepath.Join(stg.Path, skillEntry)
+			if _, statErr := os.Stat(existingSkillPath); os.IsNotExist(statErr) {
+				// No existing SKILL.md at entry path — generate one
+				fm := &manifest.SkillFrontmatter{
+					Name:         skillName,
+					Description:  meta.description,
+					Triggers:     meta.triggers,
+					Invocable:    meta.invocable,
+					ArgumentHint: meta.argHint,
+				}
+				skillContent, err := manifest.RenderSkillMD(fm, meta.body)
+				if err != nil {
+					return err
+				}
+				if err := stg.WriteFile(skillEntry, skillContent, 0o644); err != nil {
+					return fmt.Errorf("stage SKILL.md: %w", err)
+				}
 			}
-			skillContent, err := manifest.RenderSkillMD(fm, meta.body)
-			if err != nil {
-				return err
-			}
-			if err := stg.WriteFile("SKILL.md", skillContent, 0o644); err != nil {
-				return fmt.Errorf("stage SKILL.md: %w", err)
-			}
+			// else: existing SKILL.md preserved from CopyFrom()
 		}
 
 		if err := stg.Commit(dest); err != nil {
@@ -495,9 +511,17 @@ func parseDirSource(dirPath string) (initMeta, error) {
 			meta.mcpURL = m.MCP.URL
 		}
 
-		// Read SKILL.md frontmatter + body to preserve fields like argument-hint
-		skillPath := filepath.Join(dirPath, "SKILL.md")
-		if fm, body, readErr := readAndParseSkillMD(skillPath); readErr == nil {
+		// Preserve skill.entry from existing ctx.yaml
+		if m.Skill != nil && m.Skill.Entry != "" {
+			meta.skillEntry = m.Skill.Entry
+		}
+
+		// Read SKILL.md from the declared entry path (not hardcoded root)
+		skillSearchPath := filepath.Join(dirPath, "SKILL.md")
+		if m.Skill != nil && m.Skill.Entry != "" {
+			skillSearchPath = filepath.Join(dirPath, m.Skill.Entry)
+		}
+		if fm, body, readErr := readAndParseSkillMD(skillSearchPath); readErr == nil {
 			meta.body = body
 			if fm != nil {
 				meta.argHint = fm.ArgumentHint
@@ -510,15 +534,21 @@ func parseDirSource(dirPath string) (initMeta, error) {
 		return meta, nil
 	}
 
-	// Try SKILL.md
-	skillPath := filepath.Join(dirPath, "SKILL.md")
-	fm, body, err := readAndParseSkillMD(skillPath)
-	if err != nil {
-		// Nothing found — scaffold from directory name
-		return metaFromFrontmatter(nil, "", dirName), nil
+	// Try to find SKILL.md (root first, then subdirectories)
+	found := findAllSkillMD(dirPath)
+	if len(found) > 0 {
+		// Use first found (root has priority)
+		skillPath := filepath.Join(dirPath, found[0])
+		fm, body, err := readAndParseSkillMD(skillPath)
+		if err == nil {
+			meta := metaFromFrontmatter(fm, body, dirName)
+			meta.skillEntry = found[0]
+			return meta, nil
+		}
 	}
 
-	return metaFromFrontmatter(fm, body, dirName), nil
+	// Nothing found — scaffold from directory name
+	return metaFromFrontmatter(nil, "", dirName), nil
 }
 
 // readAndParseSkillMD opens a SKILL.md file and returns frontmatter and body.
@@ -536,7 +566,8 @@ func readAndParseSkillMD(path string) (*manifest.SkillFrontmatter, string, error
 }
 
 // promptMetadata interactively fills in missing metadata fields.
-func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
+// sourceDir is the original directory path (empty for from-scratch mode).
+func promptMetadata(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta, error) {
 	var err error
 
 	meta.name, err = p.Text("Package name", meta.name)
@@ -568,7 +599,7 @@ func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	// Type-specific prompts
 	switch meta.pkgType {
 	case manifest.TypeCLI:
-		meta, err = promptCLIMeta(p, meta)
+		meta, err = promptCLIMeta(p, meta, sourceDir)
 	case manifest.TypeMCP:
 		meta, err = promptMCPMeta(p, meta)
 	}
@@ -594,7 +625,8 @@ var installMethods = []struct {
 }
 
 // promptCLIMeta prompts for CLI-specific metadata.
-func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
+// sourceDir is the original directory path (empty for from-scratch mode).
+func promptCLIMeta(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta, error) {
 	var err error
 
 	if meta.binary == "" {
@@ -639,7 +671,7 @@ func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	case "cargo":
 		pkgLabel = "cargo crate"
 	case "script":
-		pkgLabel = "Script URL (https://)"
+		pkgLabel = "Install script URL (ctx runs: curl -fsSL <url> | sh)"
 	case "binary":
 		pkgLabel = "Binary download URL (https://)"
 	}
@@ -654,10 +686,46 @@ func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 		return meta, err
 	}
 
-	// Bundles a skill?
-	meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
-	if err != nil {
-		return meta, err
+	// Detect existing SKILL.md files if in directory mode
+	if sourceDir != "" && meta.skillEntry == "" {
+		found := findAllSkillMD(sourceDir)
+		if len(found) > 0 {
+			// SKILL.md found — default to bundling
+			meta.bundlesSkill = true
+			if len(found) == 1 {
+				meta.skillEntry = found[0]
+				ok, confirmErr := p.Confirm(fmt.Sprintf("Found SKILL.md at %s, bundle it?", found[0]), true)
+				if confirmErr != nil {
+					return meta, confirmErr
+				}
+				if !ok {
+					meta.bundlesSkill = false
+					meta.skillEntry = ""
+				}
+			} else {
+				// Multiple found — let user pick
+				idx, selectErr := p.Select("Multiple SKILL.md found, select one", found, 0)
+				if selectErr != nil {
+					return meta, selectErr
+				}
+				meta.skillEntry = found[idx]
+			}
+		} else {
+			// No SKILL.md found
+			meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
+			if err != nil {
+				return meta, err
+			}
+		}
+	} else if meta.skillEntry != "" {
+		// Already have a skill entry from ctx.yaml
+		meta.bundlesSkill = true
+	} else {
+		// From-scratch mode or no source dir
+		meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
+		if err != nil {
+			return meta, err
+		}
 	}
 
 	return meta, nil
@@ -683,6 +751,25 @@ func buildInstallSpec(method, pkg string) *manifest.InstallSpec {
 		spec.Source = pkg
 	}
 	return spec
+}
+
+// findAllSkillMD searches a directory for SKILL.md files.
+// Returns relative paths, root first, then skills/*/SKILL.md.
+func findAllSkillMD(dirPath string) []string {
+	var results []string
+	// Check root
+	if _, err := os.Stat(filepath.Join(dirPath, "SKILL.md")); err == nil {
+		results = append(results, "SKILL.md")
+	}
+	// Check skills/*/SKILL.md
+	matches, _ := filepath.Glob(filepath.Join(dirPath, "skills", "*", "SKILL.md"))
+	for _, m := range matches {
+		rel, err := filepath.Rel(dirPath, m)
+		if err == nil {
+			results = append(results, rel)
+		}
+	}
+	return results
 }
 
 // promptMCPMeta prompts for MCP-specific metadata.

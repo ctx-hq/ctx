@@ -155,3 +155,110 @@ func TestInstallSpecGemField(t *testing.T) {
 		t.Errorf("Install.Gem = %q, want gem-tool-cli", loaded.Install.Gem)
 	}
 }
+
+// TestInitPreservesExistingSkillEntry verifies that skill.entry from ctx.yaml survives roundtrip.
+func TestInitPreservesExistingSkillEntry(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create ctx.yaml with skill.entry pointing to a subdirectory
+	m := manifest.Scaffold(manifest.TypeCLI, "test", "fizzy-cli")
+	m.Version = "0.1.0"
+	m.Description = "Fizzy CLI"
+	m.CLI = &manifest.CLISpec{Binary: "fizzy", Verify: "fizzy --version"}
+	m.Install = &manifest.InstallSpec{Script: "https://example.com/install.sh"}
+	m.Skill = &manifest.SkillSpec{
+		Entry:  "skills/fizzy/SKILL.md",
+		Origin: "native",
+	}
+
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Create the SKILL.md at the declared path
+	skillDir := filepath.Join(dir, "skills", "fizzy")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	originalContent := "# Fizzy Skill\n\nThis is a hand-crafted 1117-line SKILL.md.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(originalContent), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Load and verify skill.entry is preserved
+	loaded, err := manifest.LoadFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadFromDir: %v", err)
+	}
+	if loaded.Skill == nil {
+		t.Fatal("Skill is nil")
+	}
+	if loaded.Skill.Entry != "skills/fizzy/SKILL.md" {
+		t.Errorf("Skill.Entry = %q, want skills/fizzy/SKILL.md", loaded.Skill.Entry)
+	}
+
+	// Verify the SKILL.md content is intact
+	content, err := os.ReadFile(filepath.Join(dir, "skills", "fizzy", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(content) != originalContent {
+		t.Errorf("SKILL.md content changed: got %q", string(content))
+	}
+}
+
+// TestInitDoesNotOverwriteExistingSkillMD verifies the staging flow preserves existing SKILL.md.
+func TestInitDoesNotOverwriteExistingSkillMD(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a directory structure with SKILL.md in a subdirectory
+	skillDir := filepath.Join(dir, "skills", "fizzy")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	originalContent := "---\nname: fizzy\ndescription: Original content\n---\n\n# Original Fizzy Skill\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(originalContent), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Create ctx.yaml pointing to it
+	m := manifest.Scaffold(manifest.TypeCLI, "test", "fizzy-cli")
+	m.Version = "0.1.0"
+	m.Description = "Fizzy CLI"
+	m.CLI = &manifest.CLISpec{Binary: "fizzy"}
+	m.Install = &manifest.InstallSpec{Script: "https://example.com/install.sh"}
+	m.Skill = &manifest.SkillSpec{Entry: "skills/fizzy/SKILL.md", Origin: "native"}
+
+	data, _ := manifest.Marshal(m)
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate staging: CopyFrom should preserve the file
+	stgDir := t.TempDir()
+	// Copy skills/fizzy/SKILL.md to staging
+	stgSkillDir := filepath.Join(stgDir, "skills", "fizzy")
+	if err := os.MkdirAll(stgSkillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srcContent, _ := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err := os.WriteFile(filepath.Join(stgSkillDir, "SKILL.md"), srcContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check: existing SKILL.md should be detected
+	existingPath := filepath.Join(stgDir, "skills", "fizzy", "SKILL.md")
+	if _, err := os.Stat(existingPath); os.IsNotExist(err) {
+		t.Fatal("existing SKILL.md should be present in staging")
+	}
+
+	// Verify content unchanged
+	content, _ := os.ReadFile(existingPath)
+	if string(content) != originalContent {
+		t.Errorf("SKILL.md was overwritten: got %q", string(content))
+	}
+}

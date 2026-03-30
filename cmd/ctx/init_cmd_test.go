@@ -391,7 +391,7 @@ func TestPromptMetadata_NoopPrompter(t *testing.T) {
 		version:     "0.1.0",
 	}
 
-	result, err := promptMetadata(p, meta)
+	result, err := promptMetadata(p, meta, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ Generate commit messages in both Chinese and English.
 	}
 
 	// Prompt (noop)
-	meta, err = promptMetadata(prompt.NoopPrompter{}, meta)
+	meta, err = promptMetadata(prompt.NoopPrompter{}, meta, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,5 +731,76 @@ func TestInitCmd_AcceptsArgs(t *testing.T) {
 	}
 	if err := initCmd.Args(initCmd, []string{"a", "b"}); err == nil {
 		t.Error("should reject 2 args")
+	}
+}
+
+// --- findAllSkillMD tests ---
+
+func TestFindAllSkillMD_RootOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	found := findAllSkillMD(dir)
+	if len(found) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(found), found)
+	}
+	if found[0] != "SKILL.md" {
+		t.Errorf("expected SKILL.md, got %q", found[0])
+	}
+}
+
+func TestFindAllSkillMD_SubdirOnly(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "skills", "fizzy")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# fizzy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	found := findAllSkillMD(dir)
+	if len(found) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(found), found)
+	}
+	expected := filepath.Join("skills", "fizzy", "SKILL.md")
+	if found[0] != expected {
+		t.Errorf("expected %q, got %q", expected, found[0])
+	}
+}
+
+func TestFindAllSkillMD_Multiple(t *testing.T) {
+	dir := t.TempDir()
+	// Root
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Subdir
+	skillDir := filepath.Join(dir, "skills", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# foo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	found := findAllSkillMD(dir)
+	if len(found) != 2 {
+		t.Fatalf("expected 2 results, got %d: %v", len(found), found)
+	}
+	// Root should be first
+	if found[0] != "SKILL.md" {
+		t.Errorf("first result should be root SKILL.md, got %q", found[0])
+	}
+}
+
+func TestFindAllSkillMD_None(t *testing.T) {
+	dir := t.TempDir()
+
+	found := findAllSkillMD(dir)
+	if len(found) != 0 {
+		t.Errorf("expected 0 results, got %d: %v", len(found), found)
 	}
 }
