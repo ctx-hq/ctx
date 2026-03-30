@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/ctx-hq/ctx/compare/v0.18.0...v0.19.0) (2026-03-30)
+
+
+### Features
+
+* **unpublish:** add unpublish command to permanently delete packages or versions ([5ffcd1c](https://github.com/ctx-hq/ctx/commit/5ffcd1c411cf97634a94f6ed4740106e598ef1d8))
+
 ## [0.18.0](https://github.com/ctx-hq/ctx/compare/v0.17.2...v0.18.0) (2026-03-30)
 
 
