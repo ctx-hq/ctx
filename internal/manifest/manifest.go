@@ -77,6 +77,8 @@ func Validate(m *Manifest) []string {
 	// All types require a skill section — agents need instructions to use any package.
 	if m.Skill == nil || m.Skill.Entry == "" {
 		errs = append(errs, "skill section with entry is required (agents need instructions)")
+	} else if filepath.IsAbs(m.Skill.Entry) || strings.Contains(filepath.Clean(m.Skill.Entry), "..") {
+		errs = append(errs, "skill.entry must be a relative path within the project (no absolute paths or ..)")
 	}
 
 	// Type-specific validation

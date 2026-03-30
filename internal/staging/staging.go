@@ -87,6 +87,50 @@ func (d *Dir) CopyFrom(src string) error {
 	return copyDir(src, d.Path)
 }
 
+// CopyFiles copies only the specified files/directories from src into the staging directory.
+// Paths are relative to src. Missing paths are silently skipped.
+func (d *Dir) CopyFiles(src string, paths []string) error {
+	if d.cleaned {
+		return fmt.Errorf("staging directory already cleaned up")
+	}
+	for _, p := range paths {
+		srcPath := filepath.Join(src, p)
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			continue // skip missing paths
+		}
+		dstPath := filepath.Join(d.Path, p)
+		if info.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return fmt.Errorf("copy %s: %w", p, err)
+			}
+		} else {
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+				return fmt.Errorf("create parent for %s: %w", p, err)
+			}
+			if err := copyFile(srcPath, dstPath, info.Mode()); err != nil {
+				return fmt.Errorf("copy %s: %w", p, err)
+			}
+		}
+	}
+	return nil
+}
+
+// NormalizeSkillEntry copies the given skill entry file to root SKILL.md
+// so that install-side agent linking works without changes.
+// If the source file does not exist in staging, this is a no-op.
+func (d *Dir) NormalizeSkillEntry(entry string) error {
+	if d.cleaned {
+		return fmt.Errorf("staging directory already cleaned up")
+	}
+	src := filepath.Join(d.Path, entry)
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return nil // source missing — no-op
+	}
+	return d.WriteFile("SKILL.md", data, 0o644)
+}
+
 // Rollback removes the staging directory. Safe to call multiple times.
 func (d *Dir) Rollback() {
 	if d.cleaned {

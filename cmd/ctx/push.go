@@ -55,22 +55,6 @@ var defaultRetryConfig = retryConfig{
 
 const maxParallelPush = 4
 
-// stagingExcludes lists files and directories removed from the staging
-// directory before creating an archive. These should never be uploaded
-// to the registry.
-var stagingExcludes = []string{
-	".git",
-	"node_modules",
-	".DS_Store",
-	"Thumbs.db",
-	".ctx-managed",
-	"package.tar.gz",
-	".claude-plugin",
-	".claude",
-	".cursor",
-	".agents",
-}
-
 // pushMode describes how the push command was invoked.
 type pushMode int
 
@@ -675,7 +659,7 @@ func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*reg
 	}
 
 	// Stage and create archive.
-	archive, cleanup, err := stageAndArchive(s.Dir, data)
+	archive, cleanup, err := stageAndArchive(s.Dir, m, data)
 	if err != nil {
 		return nil, err
 	}
@@ -684,22 +668,26 @@ func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*reg
 	return publishWithRetry(ctx, reg, data, archive)
 }
 
-// stageAndArchive creates a staging directory from skill contents, creates a tar.gz archive,
-// and returns the archive reader plus a cleanup function.
-func stageAndArchive(dir string, manifestData []byte) (io.ReadSeeker, func(), error) {
+// stageAndArchive creates a staging directory from package files (whitelist),
+// creates a tar.gz archive, and returns the archive reader plus a cleanup function.
+func stageAndArchive(dir string, m *manifest.Manifest, manifestData []byte) (io.ReadSeeker, func(), error) {
 	stg, err := staging.New("ctx-push-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("create staging: %w", err)
 	}
 
-	if err := stg.CopyFrom(dir); err != nil {
+	// Copy only package files (whitelist) — no source code, build artifacts, etc.
+	if err := stg.CopyFiles(dir, m.PackageFiles()); err != nil {
 		stg.Rollback()
-		return nil, nil, fmt.Errorf("stage directory: %w", err)
+		return nil, nil, fmt.Errorf("stage package files: %w", err)
 	}
 
-	// Remove files/directories that should not be included in the archive.
-	for _, name := range stagingExcludes {
-		_ = os.RemoveAll(filepath.Join(stg.Path, name))
+	// Normalize: copy non-root skill entry to root SKILL.md for install-side compat.
+	if m.SkillEntryNeedsNormalize() {
+		if err := stg.NormalizeSkillEntry(m.Skill.Entry); err != nil {
+			stg.Rollback()
+			return nil, nil, fmt.Errorf("normalize skill entry: %w", err)
+		}
 	}
 
 	// Overwrite ctx.yaml with the (possibly modified) manifest.
@@ -899,7 +887,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 	reg := registry.New(cfg.RegistryURL(), token)
 	output.Info("Pushing %s@%s...", m.Name, m.Version)
 
-	archive, cleanup, err := stageAndArchive(dir, data)
+	archive, cleanup, err := stageAndArchive(dir, m, data)
 	if err != nil {
 		return err
 	}

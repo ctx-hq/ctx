@@ -134,27 +134,21 @@ Examples:
 
 		output.Info("Publishing %s@%s...", m.Name, m.Version)
 
-		// Stage directory and create archive.
+		// Stage only package files (whitelist) and create archive.
 		stg, stgErr := staging.New("ctx-publish-")
 		if stgErr != nil {
 			return stgErr
 		}
 		defer stg.Rollback()
 
-		if cpErr := stg.CopyFrom(dir); cpErr != nil {
-			return fmt.Errorf("stage directory: %w", cpErr)
-		}
-		// Remove files/directories that should not be in the archive.
-		for _, name := range stagingExcludes {
-			_ = os.RemoveAll(filepath.Join(stg.Path, name))
+		if cpErr := stg.CopyFiles(dir, m.PackageFiles()); cpErr != nil {
+			return fmt.Errorf("stage package files: %w", cpErr)
 		}
 
-		// Normalize: if skill.entry points to a non-root SKILL.md, copy it to root
-		// so that install-side hasSkillMD() and agent linking work without changes.
-		if m.Skill != nil && m.Skill.Entry != "" && m.Skill.Entry != "SKILL.md" {
-			entryPath := filepath.Join(stg.Path, m.Skill.Entry)
-			if skillData, readErr := os.ReadFile(entryPath); readErr == nil {
-				_ = stg.WriteFile("SKILL.md", skillData, 0o644)
+		// Normalize: copy non-root skill entry to root SKILL.md for install-side compat.
+		if m.SkillEntryNeedsNormalize() {
+			if err := stg.NormalizeSkillEntry(m.Skill.Entry); err != nil {
+				return fmt.Errorf("normalize skill entry: %w", err)
 			}
 		}
 

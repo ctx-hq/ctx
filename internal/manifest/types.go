@@ -1,6 +1,10 @@
 package manifest
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
 
 // PackageType represents the type of ctx package.
 type PackageType string
@@ -119,6 +123,48 @@ type PlatformInstall struct {
 	Brew   string `yaml:"brew,omitempty" json:"brew,omitempty"`
 	Npm    string `yaml:"npm,omitempty" json:"npm,omitempty"`
 	Binary string `yaml:"binary,omitempty" json:"binary,omitempty"`
+}
+
+// PackageFiles returns the list of files/directories that should be included
+// in a published archive. Only these paths (relative to the project root)
+// are packaged — everything else (source code, build artifacts, etc.) is excluded.
+func (m *Manifest) PackageFiles() []string {
+	files := []string{"ctx.yaml", "README.md"}
+
+	if m.Skill != nil && m.Skill.Entry != "" {
+		entry := filepath.Clean(m.Skill.Entry)
+		// Include the skill entry's parent directory (contains SKILL.md + scripts/, references/, assets/)
+		dir := filepath.Dir(entry)
+		if dir != "." {
+			files = append(files, dir)
+		} else {
+			// Skill at root — include actual entry file and conventional skill subdirectories
+			files = append(files, entry, "scripts", "references", "assets")
+		}
+	}
+
+	// MCP stdio packages may ship local runtime files (e.g. node dist/index.js).
+	if m.MCP != nil && m.MCP.Transport == "stdio" {
+		for _, arg := range m.MCP.Args {
+			if arg == "" || strings.HasPrefix(arg, "-") {
+				continue
+			}
+			dir := filepath.Dir(filepath.Clean(arg))
+			if dir != "." {
+				files = append(files, dir)
+			} else {
+				files = append(files, arg)
+			}
+		}
+	}
+
+	return files
+}
+
+// SkillEntryNeedsNormalize reports whether the skill entry should be copied
+// to a root SKILL.md for install-side compatibility.
+func (m *Manifest) SkillEntryNeedsNormalize() bool {
+	return m.Skill != nil && m.Skill.Entry != "" && m.Skill.Entry != "SKILL.md"
 }
 
 // ParseFullName splits "@scope/name" into ("scope", "name").

@@ -389,7 +389,7 @@ func TestStageAndArchive_CreatesValidArchive(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(dir, "ctx.yaml"))
-	archive, cleanup, err := stageAndArchive(dir, data)
+	archive, cleanup, err := stageAndArchive(dir, loadTestManifest(t, dir), data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestPublishWithRetry_Success(t *testing.T) {
 	writeTestManifest(t, dir, "@test/success", "0.1.0")
 	data, _ := os.ReadFile(filepath.Join(dir, "ctx.yaml"))
 
-	archive, cleanup, _ := stageAndArchive(dir, data)
+	archive, cleanup, _ := stageAndArchive(dir, loadTestManifest(t, dir), data)
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
@@ -473,7 +473,7 @@ func TestPublishWithRetry_RetriesOnServerError(t *testing.T) {
 	writeTestManifest(t, dir, "@test/retry", "0.1.0")
 	data, _ := os.ReadFile(filepath.Join(dir, "ctx.yaml"))
 
-	archive, cleanup, _ := stageAndArchive(dir, data)
+	archive, cleanup, _ := stageAndArchive(dir, loadTestManifest(t, dir), data)
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
@@ -503,7 +503,7 @@ func TestPublishWithRetry_NonRetryableError(t *testing.T) {
 	writeTestManifest(t, dir, "@test/forbidden", "0.1.0")
 	data, _ := os.ReadFile(filepath.Join(dir, "ctx.yaml"))
 
-	archive, cleanup, _ := stageAndArchive(dir, data)
+	archive, cleanup, _ := stageAndArchive(dir, loadTestManifest(t, dir), data)
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
@@ -529,7 +529,7 @@ func TestPublishWithRetry_ExhaustsRetries(t *testing.T) {
 	writeTestManifest(t, dir, "@test/exhaust", "0.1.0")
 	data, _ := os.ReadFile(filepath.Join(dir, "ctx.yaml"))
 
-	archive, cleanup, _ := stageAndArchive(dir, data)
+	archive, cleanup, _ := stageAndArchive(dir, loadTestManifest(t, dir), data)
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
@@ -615,4 +615,14 @@ func writeTestManifest(t *testing.T, dir, fullName, version string) {
 	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// loadTestManifest loads the manifest from a test directory (for stageAndArchive calls).
+func loadTestManifest(t *testing.T, dir string) *manifest.Manifest {
+	t.Helper()
+	m, err := manifest.LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
 }
