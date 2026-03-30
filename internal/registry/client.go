@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // Client communicates with the getctx.org API.
@@ -410,6 +411,8 @@ func (c *Client) doDelete(ctx context.Context, path string) error {
 
 // doJSON is a generic helper for JSON API requests.
 func (c *Client) doJSON(ctx context.Context, method, path string, body any, result any) error {
+	output.Verbose(ctx, "registry: %s %s%s", method, c.BaseURL, path)
+
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -437,6 +440,8 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, resu
 		return fmt.Errorf("request %s: %w", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	output.Verbose(ctx, "registry: %s %s%s → %d", method, c.BaseURL, path, resp.StatusCode)
 
 	if resp.StatusCode >= 400 {
 		return parseError(resp)

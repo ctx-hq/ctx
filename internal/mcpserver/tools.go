@@ -87,7 +87,7 @@ func getClient() (*registry.Client, error) {
 	return registry.New(cfg.RegistryURL(), getToken()), nil
 }
 
-func handleSearch(args json.RawMessage) (any, error) {
+func handleSearch(ctx context.Context, args json.RawMessage) (any, error) {
 	var params struct {
 		Query    string `json:"query"`
 		Type     string `json:"type"`
@@ -102,10 +102,10 @@ func handleSearch(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 
-	return client.Search(context.Background(), params.Query, params.Type, params.Platform, 20)
+	return client.Search(ctx, params.Query, params.Type, params.Platform, 20)
 }
 
-func handleInstall(args json.RawMessage) (any, error) {
+func handleInstall(ctx context.Context, args json.RawMessage) (any, error) {
 	var params struct {
 		Package string `json:"package"`
 	}
@@ -121,10 +121,10 @@ func handleInstall(args json.RawMessage) (any, error) {
 	res := resolver.New(client)
 	inst := installer.New(client, res)
 
-	return inst.Install(context.Background(), params.Package)
+	return inst.Install(ctx, params.Package)
 }
 
-func handleInfo(args json.RawMessage) (any, error) {
+func handleInfo(ctx context.Context, args json.RawMessage) (any, error) {
 	var params struct {
 		Package string `json:"package"`
 	}
@@ -137,10 +137,10 @@ func handleInfo(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 
-	return client.GetPackage(context.Background(), params.Package)
+	return client.GetPackage(ctx, params.Package)
 }
 
-func handleList(args json.RawMessage) (any, error) {
+func handleList(_ context.Context, args json.RawMessage) (any, error) {
 	var params struct {
 		Type string `json:"type"`
 	}

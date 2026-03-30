@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -13,7 +14,7 @@ func TestHandleInitialize(t *testing.T) {
 		Method:  "initialize",
 	}
 
-	resp := s.handleRequest(req)
+	resp := s.handleRequest(context.Background(), req)
 	if resp == nil {
 		t.Fatal("response is nil")
 	}
@@ -46,7 +47,7 @@ func TestHandleToolsList(t *testing.T) {
 		Method:  "tools/list",
 	}
 
-	resp := s.handleRequest(req)
+	resp := s.handleRequest(context.Background(), req)
 	if resp == nil {
 		t.Fatal("response is nil")
 	}
@@ -85,7 +86,7 @@ func TestHandleUnknownMethod(t *testing.T) {
 		Method:  "unknown/method",
 	}
 
-	resp := s.handleRequest(req)
+	resp := s.handleRequest(context.Background(), req)
 	if resp == nil {
 		t.Fatal("response is nil")
 	}
@@ -107,7 +108,7 @@ func TestHandleToolsCallUnknown(t *testing.T) {
 		Params:  params,
 	}
 
-	resp := s.handleRequest(req)
+	resp := s.handleRequest(context.Background(), req)
 	if resp == nil {
 		t.Fatal("response is nil")
 	}
@@ -123,7 +124,7 @@ func TestNotificationNoResponse(t *testing.T) {
 		Method:  "notifications/initialized",
 	}
 
-	resp := s.handleRequest(req)
+	resp := s.handleRequest(context.Background(), req)
 	if resp != nil {
 		t.Error("notifications should not produce a response")
 	}

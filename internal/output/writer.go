@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -101,6 +102,23 @@ type Writer struct {
 	format Format
 	stdout io.Writer
 	stderr io.Writer
+}
+
+// --- Verbose context propagation ---
+
+type verboseKeyType struct{}
+
+var verboseKey = verboseKeyType{}
+
+// ContextWithVerbose returns a context carrying the verbose flag.
+func ContextWithVerbose(ctx context.Context, v bool) context.Context {
+	return context.WithValue(ctx, verboseKey, v)
+}
+
+// IsVerboseContext reads the verbose flag from a context.
+func IsVerboseContext(ctx context.Context) bool {
+	v, _ := ctx.Value(verboseKey).(bool)
+	return v
 }
 
 // NewWriter creates a new Writer with the given options.

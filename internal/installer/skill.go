@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -13,7 +14,8 @@ import (
 // the links in the LinkRegistry for later cleanup. If caller is non-empty, that
 // agent is linked first and marked as the invoking agent.
 // Returns the list of skill states for tracking in state.json.
-func LinkSkillToAgents(installDir, skillName, fullName, caller string) ([]installstate.SkillState, error) {
+func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, caller string) ([]installstate.SkillState, error) {
+	output.Verbose(ctx, "linking skill %s to detected agents", skillName)
 	agents := agent.DetectAll()
 
 	links, linkErr := LoadLinks()

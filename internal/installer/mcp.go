@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ctx-hq/ctx/internal/agent"
@@ -12,7 +13,8 @@ import (
 // LinkMCPToAgents configures an MCP server in all detected agents and records
 // the config entries in the LinkRegistry for later cleanup.
 // Returns the list of MCP states for tracking in state.json.
-func LinkMCPToAgents(m *manifest.Manifest) ([]installstate.MCPState, error) {
+func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.MCPState, error) {
+	output.Verbose(ctx, "configuring MCP %s in detected agents", m.ShortName())
 	if m.MCP == nil {
 		return nil, fmt.Errorf("package is not an MCP server")
 	}

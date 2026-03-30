@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ type Server struct {
 }
 
 // ToolHandler handles an MCP tool call.
-type ToolHandler func(args json.RawMessage) (any, error)
+type ToolHandler func(ctx context.Context, args json.RawMessage) (any, error)
 
 // New creates a new MCP server.
 func New() *Server {
@@ -33,7 +34,7 @@ func (s *Server) RegisterTool(name string, handler ToolHandler) {
 }
 
 // Serve runs the MCP server over stdio using Content-Length framing (MCP spec).
-func (s *Server) Serve() error {
+func (s *Server) Serve(ctx context.Context) error {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 
@@ -64,7 +65,7 @@ func (s *Server) Serve() error {
 			continue
 		}
 
-		resp := s.handleRequest(&req)
+		resp := s.handleRequest(ctx, &req)
 		if resp == nil {
 			continue // notifications don't produce a response
 		}
@@ -138,7 +139,7 @@ func writeFramedError(w *bufio.Writer, id any, code int, message string) error {
 	return writeFrame(w, data)
 }
 
-func (s *Server) handleRequest(req *JSONRPCRequest) *JSONRPCResponse {
+func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {
 	switch req.Method {
 	case "initialize":
 		return &JSONRPCResponse{
@@ -186,7 +187,7 @@ func (s *Server) handleRequest(req *JSONRPCRequest) *JSONRPCResponse {
 			return errorResponse(req.ID, -32601, fmt.Sprintf("Unknown tool: %s", params.Name))
 		}
 
-		result, err := handler(params.Arguments)
+		result, err := handler(ctx, params.Arguments)
 		if err != nil {
 			return &JSONRPCResponse{
 				JSONRPC: "2.0",

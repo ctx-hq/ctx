@@ -146,7 +146,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 		// CLI packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
 			if linkErr != nil {
 				output.Warn("Skill linking: %v", linkErr)
 			}
@@ -159,21 +159,21 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		}
 
 	case manifest.TypeSkill:
-		skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+		skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
 		if linkErr != nil {
 			output.Warn("Skill linking: %v", linkErr)
 		}
 		state.Skills = skillStates
 
 	case manifest.TypeMCP:
-		mcpStates, err := installer.LinkMCPToAgents(&m)
+		mcpStates, err := installer.LinkMCPToAgents(cmd.Context(), &m)
 		if err != nil {
 			output.Warn("MCP config: %v", err)
 		}
 		state.MCP = mcpStates
 		// MCP packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
 			if linkErr != nil {
 				output.Warn("Skill linking: %v", linkErr)
 			}

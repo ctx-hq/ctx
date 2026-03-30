@@ -24,6 +24,7 @@ var (
 	flagAgent   bool
 	flagYes     bool
 	flagOffline bool
+	flagVerbose bool
 )
 
 // writerKey is the context key for the output Writer.
@@ -64,9 +65,13 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 			return err
 		}
 
+		// Verbose is silently ignored when quiet or agent mode is active
+		verbose := flagVerbose && !flagQuiet && !flagAgent
+
 		// Create Writer and attach to context
 		w := output.NewWriter(output.WithFormat(format))
 		ctx := context.WithValue(cmd.Context(), writerKey, w)
+		ctx = output.ContextWithVerbose(ctx, verbose)
 		cmd.SetContext(ctx)
 		return nil
 	},
@@ -99,6 +104,7 @@ func init() {
 	// Behavior flags
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Skip confirmation prompts")
 	rootCmd.PersistentFlags().BoolVar(&flagOffline, "offline", false, "Disable all network access")
+	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show verbose diagnostic output")
 
 	rootCmd.AddCommand(
 		installCmd,

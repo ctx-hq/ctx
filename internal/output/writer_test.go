@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -381,5 +382,24 @@ func TestOK_SingleObject(t *testing.T) {
 	}
 	if got := strings.TrimSpace(buf.String()); got != "1" {
 		t.Errorf("count single = %q, want %q", got, "1")
+	}
+}
+
+// --- Verbose context tests ---
+
+func TestContextVerbose(t *testing.T) {
+	ctx := context.Background()
+	if IsVerboseContext(ctx) {
+		t.Error("empty context should not be verbose")
+	}
+
+	ctx = ContextWithVerbose(ctx, true)
+	if !IsVerboseContext(ctx) {
+		t.Error("context with verbose=true should be verbose")
+	}
+
+	ctx = ContextWithVerbose(ctx, false)
+	if IsVerboseContext(ctx) {
+		t.Error("context with verbose=false should not be verbose")
 	}
 }

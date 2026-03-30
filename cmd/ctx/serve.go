@@ -27,7 +27,7 @@ Add to your agent's MCP config:
   }`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		server := mcpserver.New()
-		return server.Serve()
+		return server.Serve(cmd.Context())
 	},
 }
 

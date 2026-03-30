@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -76,4 +77,14 @@ func List(items []string) {
 // Separator prints a horizontal rule.
 func Separator() {
 	fmt.Fprintln(os.Stderr, Dim+strings.Repeat("─", 40)+Reset)
+}
+
+// Verbose prints a diagnostic message to stderr only when verbose mode is
+// active in the given context. Use this from internal packages that don't
+// have direct access to the Writer.
+func Verbose(ctx context.Context, format string, args ...any) {
+	if !IsVerboseContext(ctx) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, Dim+"[verbose] "+Reset+format+"\n", args...)
 }
