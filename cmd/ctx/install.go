@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/prompt"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
 	"github.com/spf13/cobra"
@@ -61,6 +63,10 @@ Examples:
 
 		// Show reload hint based on package type
 		hint := reloadHint(result.Type)
+		// CLI packages with bundled skills also need a reload hint
+		if hint == "" && manifest.PackageType(result.Type) == manifest.TypeCLI && hasSkillMD(result.InstallPath) {
+			hint = "Start a new conversation to use the bundled skill"
+		}
 		if hint != "" {
 			output.Info(hint)
 		}
@@ -104,8 +110,17 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 	switch manifest.PackageType(result.Type) {
 	case manifest.TypeCLI:
+		// Script installs require explicit user confirmation
+		if m.Install != nil && m.Install.Script != "" && !flagYes {
+			output.Warn("This package installs via shell script: %s", m.Install.Script)
+			p := prompt.DefaultPrompter()
+			ok, err := p.Confirm("Execute this script?", false)
+			if err != nil || !ok {
+				return fmt.Errorf("script installation cancelled by user")
+			}
+		}
 		if err := installer.InstallCLI(cmd.Context(), &m); err != nil {
-			output.Warn("CLI install: %v", err)
+			return fmt.Errorf("CLI install: %w", err)
 		}
 		// CLI packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {

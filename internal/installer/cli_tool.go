@@ -24,6 +24,7 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) error {
 		Npm:    m.Install.Npm,
 		Pip:    m.Install.Pip,
 		Cargo:  m.Install.Cargo,
+		Script: m.Install.Script,
 	}
 
 	if m.Install.Platforms != nil {

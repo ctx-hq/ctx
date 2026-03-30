@@ -201,6 +201,16 @@ func copyDir(src, dst string) error {
 			return err
 		}
 
+		// filepath.Walk follows symlinks, so info won't have ModeSymlink set.
+		// Use Lstat to detect and skip symlinks.
+		linfo, lerr := os.Lstat(path)
+		if lerr != nil {
+			return lerr
+		}
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err

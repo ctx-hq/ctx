@@ -105,6 +105,13 @@ func Validate(m *Manifest) []string {
 		}
 	}
 
+	// Validate skill.origin (applicable to any type that carries a skill section)
+	if m.Skill != nil && m.Skill.Origin != "" {
+		if m.Skill.Origin != "native" && m.Skill.Origin != "wrapped" {
+			errs = append(errs, fmt.Sprintf("skill.origin %q must be 'native' or 'wrapped'", m.Skill.Origin))
+		}
+	}
+
 	// Validate source spec (adapter packages)
 	if m.Source != nil {
 		if m.Source.GitHub != "" && !githubRepoRegex.MatchString(m.Source.GitHub) {
@@ -130,6 +137,9 @@ func Validate(m *Manifest) []string {
 				!strings.HasPrefix(m.Install.Source, "https://") {
 				errs = append(errs, fmt.Sprintf("install.source %q must start with github:, npm:, pip:, or https://", m.Install.Source))
 			}
+		}
+		if m.Install.Script != "" && !strings.HasPrefix(m.Install.Script, "https://") {
+			errs = append(errs, fmt.Sprintf("install.script %q must be an https:// URL", m.Install.Script))
 		}
 	}
 

@@ -65,6 +65,10 @@ var stagingExcludes = []string{
 	"Thumbs.db",
 	".ctx-managed",
 	"package.tar.gz",
+	".claude-plugin",
+	".claude",
+	".cursor",
+	".agents",
 }
 
 // pushMode describes how the push command was invoked.

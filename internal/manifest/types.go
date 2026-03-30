@@ -64,6 +64,7 @@ type SkillSpec struct {
 	Compatibility string   `yaml:"compatibility,omitempty" json:"compatibility,omitempty"`
 	Tags          []string `yaml:"tags,omitempty" json:"tags,omitempty"`
 	UserInvocable *bool    `yaml:"user_invocable,omitempty" json:"user_invocable,omitempty"`
+	Origin        string   `yaml:"origin,omitempty" json:"origin,omitempty"` // "native" (from source repo) or "wrapped" (generated)
 }
 
 // MCPSpec contains MCP server configuration.
@@ -106,6 +107,7 @@ type InstallSpec struct {
 	Npm       string                      `yaml:"npm,omitempty" json:"npm,omitempty"`
 	Pip       string                      `yaml:"pip,omitempty" json:"pip,omitempty"`
 	Cargo     string                      `yaml:"cargo,omitempty" json:"cargo,omitempty"`
+	Script    string                      `yaml:"script,omitempty" json:"script,omitempty"` // shell script URL (curl|sh style)
 	Platforms map[string]*PlatformInstall `yaml:"platforms,omitempty" json:"platforms,omitempty"`
 }
 

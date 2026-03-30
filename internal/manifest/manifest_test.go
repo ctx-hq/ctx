@@ -300,6 +300,159 @@ func TestScaffold(t *testing.T) {
 	}
 }
 
+func TestParseCLIWithSkill(t *testing.T) {
+	input := `
+name: "@biao29/fizzy-cli"
+version: "0.1.0"
+type: cli
+description: "CLI for Fizzy project management"
+cli:
+  binary: fizzy
+  verify: "fizzy --version"
+skill:
+  entry: "skills/fizzy/SKILL.md"
+  origin: native
+  tags: [project-management, kanban]
+  user_invocable: true
+install:
+  brew: "basecamp/tap/fizzy"
+  script: "https://example.com/install.sh"
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m.Type != TypeCLI {
+		t.Errorf("Type = %q, want %q", m.Type, TypeCLI)
+	}
+	if m.CLI == nil || m.CLI.Binary != "fizzy" {
+		t.Errorf("CLI.Binary = %v, want fizzy", m.CLI)
+	}
+	if m.Skill == nil {
+		t.Fatal("Skill should not be nil for CLI+Skill package")
+	}
+	if m.Skill.Origin != "native" {
+		t.Errorf("Skill.Origin = %q, want %q", m.Skill.Origin, "native")
+	}
+	if m.Skill.Entry != "skills/fizzy/SKILL.md" {
+		t.Errorf("Skill.Entry = %q, want %q", m.Skill.Entry, "skills/fizzy/SKILL.md")
+	}
+	if len(m.Skill.Tags) != 2 {
+		t.Errorf("Skill.Tags length = %d, want 2", len(m.Skill.Tags))
+	}
+	if m.Install.Script != "https://example.com/install.sh" {
+		t.Errorf("Install.Script = %q, want %q", m.Install.Script, "https://example.com/install.sh")
+	}
+
+	errs := Validate(m)
+	if len(errs) != 0 {
+		t.Errorf("Valid CLI+Skill manifest has errors: %v", errs)
+	}
+}
+
+func TestValidateCLISkillOriginAndScript(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			Name:        "@hong/test",
+			Version:     "1.0.0",
+			Type:        TypeCLI,
+			Description: "test",
+			CLI:         &CLISpec{Binary: "test"},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		modify  func(*Manifest)
+		wantErr int
+	}{
+		{
+			name: "cli with skill section valid",
+			modify: func(m *Manifest) {
+				m.Skill = &SkillSpec{Entry: "SKILL.md", Origin: "native"}
+			},
+			wantErr: 0,
+		},
+		{
+			name: "cli with skill origin wrapped",
+			modify: func(m *Manifest) {
+				m.Skill = &SkillSpec{Entry: "SKILL.md", Origin: "wrapped"}
+			},
+			wantErr: 0,
+		},
+		{
+			name: "cli with skill origin empty",
+			modify: func(m *Manifest) {
+				m.Skill = &SkillSpec{Entry: "SKILL.md"}
+			},
+			wantErr: 0,
+		},
+		{
+			name: "cli with invalid skill origin",
+			modify: func(m *Manifest) {
+				m.Skill = &SkillSpec{Entry: "SKILL.md", Origin: "invalid"}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "install script http rejected",
+			modify: func(m *Manifest) {
+				m.Install = &InstallSpec{Script: "http://example.com/install.sh"}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "install script https accepted",
+			modify: func(m *Manifest) {
+				m.Install = &InstallSpec{Script: "https://example.com/install.sh"}
+			},
+			wantErr: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := base()
+			tt.modify(&m)
+			errs := Validate(&m)
+			if len(errs) != tt.wantErr {
+				t.Errorf("Validate() returned %d errors, want %d: %v", len(errs), tt.wantErr, errs)
+			}
+		})
+	}
+}
+
+func TestMarshalRoundtripCLIWithSkill(t *testing.T) {
+	m := &Manifest{
+		Name:        "@hong/fizzy",
+		Version:     "1.0.0",
+		Type:        TypeCLI,
+		Description: "test cli with skill",
+		CLI:         &CLISpec{Binary: "fizzy", Verify: "fizzy --version"},
+		Skill:       &SkillSpec{Entry: "SKILL.md", Origin: "native", Tags: []string{"cli", "agent"}},
+		Install:     &InstallSpec{Brew: "fizzy", Script: "https://example.com/install.sh"},
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error: %v", err)
+	}
+
+	m2, err := Parse(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m2.CLI == nil || m2.CLI.Binary != "fizzy" {
+		t.Errorf("roundtrip CLI.Binary = %v", m2.CLI)
+	}
+	if m2.Skill == nil || m2.Skill.Origin != "native" {
+		t.Errorf("roundtrip Skill.Origin = %v", m2.Skill)
+	}
+	if m2.Install == nil || m2.Install.Script != "https://example.com/install.sh" {
+		t.Errorf("roundtrip Install.Script = %v", m2.Install)
+	}
+}
+
 func TestMarshalRoundtrip(t *testing.T) {
 	m := Scaffold(TypeMCP, "test", "server")
 	m.MCP = &MCPSpec{Transport: "stdio", Command: "node"}

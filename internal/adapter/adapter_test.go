@@ -54,6 +54,13 @@ func TestFindAdapter(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "script adapter",
+			spec: InstallSpec{
+				Script: "https://example.com/install.sh",
+			},
+			wantErr: runtime.GOOS == "windows",
+		},
+		{
 			name:    "no adapter available",
 			spec:    InstallSpec{},
 			wantErr: true,

@@ -115,6 +115,16 @@ Examples:
 		for _, name := range stagingExcludes {
 			_ = os.RemoveAll(filepath.Join(stg.Path, name))
 		}
+
+		// Normalize: if skill.entry points to a non-root SKILL.md, copy it to root
+		// so that install-side hasSkillMD() and agent linking work without changes.
+		if m.Skill != nil && m.Skill.Entry != "" && m.Skill.Entry != "SKILL.md" {
+			entryPath := filepath.Join(stg.Path, m.Skill.Entry)
+			if skillData, readErr := os.ReadFile(entryPath); readErr == nil {
+				_ = stg.WriteFile("SKILL.md", skillData, 0o644)
+			}
+		}
+
 		if wErr := stg.WriteFile(manifest.FileName, data, 0o644); wErr != nil {
 			return fmt.Errorf("stage manifest: %w", wErr)
 		}

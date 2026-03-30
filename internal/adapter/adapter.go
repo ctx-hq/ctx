@@ -72,6 +72,14 @@ func FindAdapter(spec InstallSpec) (Adapter, string, error) {
 		return &CargoAdapter{}, spec.Cargo, nil
 	}
 
+	// Shell script install
+	if spec.Script != "" {
+		sa := &ScriptAdapter{}
+		if sa.Available() {
+			return sa, spec.Script, nil
+		}
+	}
+
 	// Last resort: binary download
 	if spec.Platforms != nil {
 		if pSpec, ok := spec.Platforms[platform]; ok && pSpec.Binary != "" {
@@ -92,6 +100,7 @@ type InstallSpec struct {
 	Npm       string
 	Pip       string
 	Cargo     string
+	Script    string
 	Platforms map[string]PlatformSpec
 }
 
