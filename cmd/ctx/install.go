@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -127,14 +126,23 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 			p := prompt.DefaultPrompter()
 			ok, err := p.Confirm("Execute this script?", false)
 			if err != nil || !ok {
-				return fmt.Errorf("script installation cancelled by user")
+				output.Warn("script installation cancelled by user")
+			} else {
+				cliState, err := installer.InstallCLI(cmd.Context(), &m)
+				if err != nil {
+					output.Warn("CLI install: %v", err)
+				} else {
+					state.CLI = cliState
+				}
+			}
+		} else if m.Install != nil && m.Install.Script != "" {
+			cliState, err := installer.InstallCLI(cmd.Context(), &m)
+			if err != nil {
+				output.Warn("CLI install: %v", err)
+			} else {
+				state.CLI = cliState
 			}
 		}
-		cliState, err := installer.InstallCLI(cmd.Context(), &m)
-		if err != nil {
-			return fmt.Errorf("CLI install: %w", err)
-		}
-		state.CLI = cliState
 
 		// CLI packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
