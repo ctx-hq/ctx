@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ctx-hq/ctx/internal/manifest"
+	"github.com/ctx-hq/ctx/internal/staging"
 )
 
 // TestInitCLIManifest verifies that a CLI manifest with new fields can be created and validated.
@@ -211,12 +212,14 @@ func TestInitPreservesExistingSkillEntry(t *testing.T) {
 	}
 }
 
-// TestInitDoesNotOverwriteExistingSkillMD verifies the staging flow preserves existing SKILL.md.
+// TestInitDoesNotOverwriteExistingSkillMD verifies the full staging pipeline
+// preserves an existing SKILL.md at a non-root entry path.
 func TestInitDoesNotOverwriteExistingSkillMD(t *testing.T) {
-	dir := t.TempDir()
+	tmp := t.TempDir()
+	srcDir := filepath.Join(tmp, "fizzy-cli")
 
-	// Create a directory structure with SKILL.md in a subdirectory
-	skillDir := filepath.Join(dir, "skills", "fizzy")
+	// Create source directory with SKILL.md in a subdirectory
+	skillDir := filepath.Join(srcDir, "skills", "fizzy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
@@ -225,7 +228,7 @@ func TestInitDoesNotOverwriteExistingSkillMD(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Create ctx.yaml pointing to it
+	// Create ctx.yaml pointing to the subdirectory SKILL.md
 	m := manifest.Scaffold(manifest.TypeCLI, "test", "fizzy-cli")
 	m.Version = "0.1.0"
 	m.Description = "Fizzy CLI"
@@ -233,32 +236,51 @@ func TestInitDoesNotOverwriteExistingSkillMD(t *testing.T) {
 	m.Install = &manifest.InstallSpec{Script: "https://example.com/install.sh"}
 	m.Skill = &manifest.SkillSpec{Entry: "skills/fizzy/SKILL.md", Origin: "native"}
 
-	data, _ := manifest.Marshal(m)
-	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "ctx.yaml"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Simulate staging: CopyFrom should preserve the file
-	stgDir := t.TempDir()
-	// Copy skills/fizzy/SKILL.md to staging
-	stgSkillDir := filepath.Join(stgDir, "skills", "fizzy")
-	if err := os.MkdirAll(stgSkillDir, 0o755); err != nil {
-		t.Fatal(err)
+	// Run the real staging pipeline: CopyFrom → WriteFile(ctx.yaml) → check SKILL.md
+	stg, stgErr := staging.New("ctx-init-test-")
+	if stgErr != nil {
+		t.Fatal(stgErr)
 	}
-	srcContent, _ := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
-	if err := os.WriteFile(filepath.Join(stgSkillDir, "SKILL.md"), srcContent, 0o644); err != nil {
-		t.Fatal(err)
+	defer stg.Rollback()
+
+	// Step 1: CopyFrom copies all source files including skills/fizzy/SKILL.md
+	if err := stg.CopyFrom(srcDir); err != nil {
+		t.Fatalf("CopyFrom: %v", err)
 	}
 
-	// Check: existing SKILL.md should be detected
-	existingPath := filepath.Join(stgDir, "skills", "fizzy", "SKILL.md")
-	if _, err := os.Stat(existingPath); os.IsNotExist(err) {
-		t.Fatal("existing SKILL.md should be present in staging")
+	// Step 2: Overwrite ctx.yaml (like the real init command does)
+	if err := stg.WriteFile("ctx.yaml", data, 0o644); err != nil {
+		t.Fatalf("WriteFile ctx.yaml: %v", err)
 	}
 
-	// Verify content unchanged
-	content, _ := os.ReadFile(existingPath)
+	// Step 3: The init command checks if SKILL.md already exists at the entry path
+	// before generating a new one. Verify the file exists in staging.
+	skillEntry := "skills/fizzy/SKILL.md"
+	existingSkillPath := filepath.Join(stg.Path, skillEntry)
+	if _, err := os.Stat(existingSkillPath); os.IsNotExist(err) {
+		t.Fatal("existing SKILL.md should be present in staging after CopyFrom")
+	}
+
+	// Step 4: Commit to destination
+	dest := filepath.Join(tmp, "dest", "fizzy-cli")
+	if err := stg.Commit(dest); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Verify the SKILL.md at the entry path was preserved, not overwritten
+	content, err := os.ReadFile(filepath.Join(dest, skillEntry))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
 	if string(content) != originalContent {
-		t.Errorf("SKILL.md was overwritten: got %q", string(content))
+		t.Errorf("SKILL.md was overwritten: got %q, want %q", string(content), originalContent)
 	}
 }

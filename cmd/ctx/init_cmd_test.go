@@ -391,7 +391,7 @@ func TestPromptMetadata_NoopPrompter(t *testing.T) {
 		version:     "0.1.0",
 	}
 
-	result, err := promptMetadata(p, meta, "")
+	result, err := promptMetadata(p, meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ Generate commit messages in both Chinese and English.
 	}
 
 	// Prompt (noop)
-	meta, err = promptMetadata(prompt.NoopPrompter{}, meta, "")
+	meta, err = promptMetadata(prompt.NoopPrompter{}, meta)
 	if err != nil {
 		t.Fatal(err)
 	}

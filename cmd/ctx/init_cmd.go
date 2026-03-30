@@ -38,6 +38,7 @@ type initMeta struct {
 	description string
 	version     string
 	pkgType     manifest.PackageType
+	sourceDir   string // original directory path (initFromDirectory mode)
 
 	// Skill
 	triggers  []string
@@ -117,11 +118,10 @@ Examples:
 		}
 
 		// 6. Interactive metadata prompts
-		sourceDir := ""
 		if input.mode == initFromDirectory {
-			sourceDir = input.sourceDir
+			meta.sourceDir = input.sourceDir
 		}
-		meta, err = promptMetadata(p, meta, sourceDir)
+		meta, err = promptMetadata(p, meta)
 		if err != nil {
 			return err
 		}
@@ -566,8 +566,7 @@ func readAndParseSkillMD(path string) (*manifest.SkillFrontmatter, string, error
 }
 
 // promptMetadata interactively fills in missing metadata fields.
-// sourceDir is the original directory path (empty for from-scratch mode).
-func promptMetadata(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta, error) {
+func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	var err error
 
 	meta.name, err = p.Text("Package name", meta.name)
@@ -599,7 +598,7 @@ func promptMetadata(p prompt.Prompter, meta initMeta, sourceDir string) (initMet
 	// Type-specific prompts
 	switch meta.pkgType {
 	case manifest.TypeCLI:
-		meta, err = promptCLIMeta(p, meta, sourceDir)
+		meta, err = promptCLIMeta(p, meta)
 	case manifest.TypeMCP:
 		meta, err = promptMCPMeta(p, meta)
 	}
@@ -625,8 +624,7 @@ var installMethods = []struct {
 }
 
 // promptCLIMeta prompts for CLI-specific metadata.
-// sourceDir is the original directory path (empty for from-scratch mode).
-func promptCLIMeta(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta, error) {
+func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	var err error
 
 	if meta.binary == "" {
@@ -671,7 +669,7 @@ func promptCLIMeta(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta
 	case "cargo":
 		pkgLabel = "cargo crate"
 	case "script":
-		pkgLabel = "Install script URL (ctx runs: curl -fsSL <url> | sh)"
+		pkgLabel = "Script URL (https://)"
 	case "binary":
 		pkgLabel = "Binary download URL (https://)"
 	}
@@ -687,8 +685,8 @@ func promptCLIMeta(p prompt.Prompter, meta initMeta, sourceDir string) (initMeta
 	}
 
 	// Detect existing SKILL.md files if in directory mode
-	if sourceDir != "" && meta.skillEntry == "" {
-		found := findAllSkillMD(sourceDir)
+	if meta.sourceDir != "" && meta.skillEntry == "" {
+		found := findAllSkillMD(meta.sourceDir)
 		if len(found) > 0 {
 			// SKILL.md found — default to bundling
 			meta.bundlesSkill = true
@@ -755,13 +753,16 @@ func buildInstallSpec(method, pkg string) *manifest.InstallSpec {
 
 // findAllSkillMD searches a directory for SKILL.md files.
 // Returns relative paths, root first, then skills/*/SKILL.md.
+// Only checks root and the conventional skills/*/ subdirectory —
+// deeper or non-standard paths must be declared via skill.entry in ctx.yaml.
 func findAllSkillMD(dirPath string) []string {
 	var results []string
 	// Check root
 	if _, err := os.Stat(filepath.Join(dirPath, "SKILL.md")); err == nil {
 		results = append(results, "SKILL.md")
 	}
-	// Check skills/*/SKILL.md
+	// Check skills/*/SKILL.md — Glob only returns ErrBadPattern for
+	// malformed patterns; this pattern is static so the error is safe to discard.
 	matches, _ := filepath.Glob(filepath.Join(dirPath, "skills", "*", "SKILL.md"))
 	for _, m := range matches {
 		rel, err := filepath.Rel(dirPath, m)
