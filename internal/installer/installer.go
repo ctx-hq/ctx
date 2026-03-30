@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/ctx-hq/ctx/internal/adapter"
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installstate"
@@ -63,15 +65,17 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		return nil, nil, fmt.Errorf("resolve: %w", err)
 	}
 
-	// Parse manifest from resolution
+	// Parse manifest from resolution (may be JSON or YAML depending on source)
 	var m manifest.Manifest
 	if resolution.Manifest != "" {
 		if err := json.Unmarshal([]byte(resolution.Manifest), &m); err != nil {
-			// If manifest is not valid JSON, treat as source-only install
-			m = manifest.Manifest{
-				Name:    resolution.FullName,
-				Version: resolution.Version,
-				Type:    manifest.TypeSkill,
+			// Not valid JSON — try YAML (registry stores manifests as YAML)
+			if yamlErr := yaml.Unmarshal([]byte(resolution.Manifest), &m); yamlErr != nil {
+				m = manifest.Manifest{
+					Name:    resolution.FullName,
+					Version: resolution.Version,
+					Type:    manifest.TypeSkill,
+				}
 			}
 		}
 	}
