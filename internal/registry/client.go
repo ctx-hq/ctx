@@ -240,6 +240,82 @@ func (c *Client) DeleteOrg(ctx context.Context, name string) error {
 	return c.doDelete(ctx, "/v1/orgs/"+url.PathEscape(name))
 }
 
+// --- Invitation APIs ---
+
+// InviteOrgMember creates an invitation for a user to join an org.
+func (c *Client) InviteOrgMember(ctx context.Context, org, username, role string) (*OrgInvitation, error) {
+	var result OrgInvitation
+	if err := c.post(ctx, "/v1/orgs/"+url.PathEscape(org)+"/invitations",
+		map[string]string{"username": username, "role": role}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListOrgInvitations lists invitations for an org.
+func (c *Client) ListOrgInvitations(ctx context.Context, org string) ([]OrgInvitation, error) {
+	var result struct {
+		Invitations []OrgInvitation `json:"invitations"`
+	}
+	if err := c.get(ctx, "/v1/orgs/"+url.PathEscape(org)+"/invitations", &result); err != nil {
+		return nil, err
+	}
+	return result.Invitations, nil
+}
+
+// CancelOrgInvitation cancels a pending invitation.
+func (c *Client) CancelOrgInvitation(ctx context.Context, org, invitationID string) error {
+	return c.doDelete(ctx, "/v1/orgs/"+url.PathEscape(org)+"/invitations/"+url.PathEscape(invitationID))
+}
+
+// ListMyInvitations lists the current user's pending invitations.
+func (c *Client) ListMyInvitations(ctx context.Context) ([]OrgInvitation, error) {
+	var result struct {
+		Invitations []OrgInvitation `json:"invitations"`
+	}
+	if err := c.get(ctx, "/v1/me/invitations", &result); err != nil {
+		return nil, err
+	}
+	return result.Invitations, nil
+}
+
+// AcceptInvitation accepts an org invitation.
+func (c *Client) AcceptInvitation(ctx context.Context, invitationID string) error {
+	return c.post(ctx, "/v1/me/invitations/"+url.PathEscape(invitationID)+"/accept", nil, nil)
+}
+
+// DeclineInvitation declines an org invitation.
+func (c *Client) DeclineInvitation(ctx context.Context, invitationID string) error {
+	return c.post(ctx, "/v1/me/invitations/"+url.PathEscape(invitationID)+"/decline", nil, nil)
+}
+
+// --- Package Access APIs ---
+
+// GetPackageAccess lists users with access to a package.
+func (c *Client) GetPackageAccess(ctx context.Context, fullName string) ([]PackageAccessEntry, error) {
+	var result struct {
+		Access []PackageAccessEntry `json:"access"`
+	}
+	path := fmt.Sprintf("/v1/packages/%s/access", url.PathEscape(fullName))
+	if err := c.get(ctx, path, &result); err != nil {
+		return nil, err
+	}
+	return result.Access, nil
+}
+
+// UpdatePackageAccess adds or removes users from a package's access list.
+func (c *Client) UpdatePackageAccess(ctx context.Context, fullName string, add, remove []string) error {
+	path := fmt.Sprintf("/v1/packages/%s/access", url.PathEscape(fullName))
+	body := map[string][]string{}
+	if len(add) > 0 {
+		body["add"] = add
+	}
+	if len(remove) > 0 {
+		body["remove"] = remove
+	}
+	return c.doPatch(ctx, path, body)
+}
+
 // SetVisibility changes a package's visibility.
 func (c *Client) SetVisibility(ctx context.Context, fullName, visibility string) error {
 	path := fmt.Sprintf("/v1/packages/%s/visibility", url.PathEscape(fullName))

@@ -99,9 +99,18 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx org list` | `ctx org ls` | List your organizations |
 | `ctx org info <name>` | | Show org details |
 | `ctx org packages <name>` | | List org's packages |
-| `ctx org add <org> <user>` | | Add member (--role admin) |
-| `ctx org remove <org> <user>` | | Remove member |
+| `ctx org add <org> <user>` | | Add member directly (--role admin) |
+| `ctx org invite <org> <user>` | | Invite member (--role admin) |
+| `ctx org invitations <org>` | | List pending invitations |
+| `ctx org cancel-invite <org> <id>` | | Cancel a pending invitation |
+| `ctx org remove <org> <user>` | | Remove member (cascades access) |
 | `ctx org delete <name>` | | Delete org (0 packages required) |
+| `ctx invitations` | `ctx inv` | List your pending invitations |
+| `ctx invitations accept <id>` | | Accept an org invitation |
+| `ctx invitations decline <id>` | | Decline an org invitation |
+| `ctx access <package>` | | List users with access to a package |
+| `ctx access grant <pkg> <user...>` | | Grant access to users |
+| `ctx access revoke <pkg> <user...>` | | Revoke access from users |
 | `ctx login` | | Authenticate via GitHub |
 | `ctx whoami` | | Show current authenticated user |
 | `ctx skill install` | | Install ctx's own skill to agents |
@@ -159,10 +168,13 @@ ctx sync status                     # Check last sync time
 
 ### Organization Workflow
 ```bash
-ctx org create myteam               # Create org
-ctx org add myteam alice --role admin  # Add team member
-ctx publish                         # Publish to @myteam scope
-ctx org packages myteam             # List team's packages
+ctx org create myteam                          # Create org
+ctx org invite myteam alice --role admin        # Invite member (they must accept)
+ctx invitations                                # (as alice) See pending invitations
+ctx invitations accept <id>                    # (as alice) Accept invitation
+ctx access grant @myteam/pkg alice bob              # Grant access to specific users
+ctx org packages myteam                        # List team's packages
+ctx org remove myteam alice                    # Remove member (cascades access cleanup)
 ```
 
 ### Dist-tag Management
@@ -200,6 +212,7 @@ ctx dr                        # Check agents, registry, links
 - **public**: Discoverable via search, anyone can install
 - **unlisted**: Not in search, but installable with full name
 - **private**: Only publisher (or org members) can install, requires auth
+- **private + access grant**: Only specified users can access (`ctx access grant` for per-user ACL)
 
 ## Trust Tiers
 

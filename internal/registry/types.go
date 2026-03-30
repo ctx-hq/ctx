@@ -163,6 +163,27 @@ type OrgDetail struct {
 	Packages int `json:"packages"`
 }
 
+// OrgInvitation represents an org membership invitation.
+type OrgInvitation struct {
+	ID             string `json:"id"`
+	OrgName        string `json:"org_name"`
+	OrgDisplayName string `json:"org_display_name,omitempty"`
+	Inviter        string `json:"inviter"`
+	Invitee        string `json:"invitee"`
+	Role           string `json:"role"`
+	Status         string `json:"status"`
+	ExpiresAt      string `json:"expires_at"`
+	CreatedAt      string `json:"created_at"`
+	ResolvedAt     string `json:"resolved_at,omitempty"`
+}
+
+// PackageAccessEntry represents a user granted access to a restricted package.
+type PackageAccessEntry struct {
+	Username  string `json:"username"`
+	GrantedBy string `json:"granted_by"`
+	CreatedAt string `json:"created_at"`
+}
+
 // DistTag is a named pointer to a version.
 type DistTag struct {
 	Tag     string `json:"tag"`

@@ -141,8 +141,6 @@ var orgPackagesCmd = &cobra.Command{
 	},
 }
 
-var orgAddMemberRole string
-
 var orgAddCmd = &cobra.Command{
 	Use:   "add <org> <username>",
 	Short: "Add a member to an organization",
@@ -157,7 +155,8 @@ var orgAddCmd = &cobra.Command{
 			return output.ErrAuth("not logged in")
 		}
 
-		role := strings.ToLower(orgAddMemberRole)
+		roleStr, _ := cmd.Flags().GetString("role")
+		role := strings.ToLower(roleStr)
 		if role != "owner" && role != "admin" && role != "member" {
 			return output.ErrUsage("role must be owner, admin, or member")
 		}
@@ -210,6 +209,108 @@ var orgRemoveCmd = &cobra.Command{
 	},
 }
 
+var orgInviteCmd = &cobra.Command{
+	Use:   "invite <org> <username>",
+	Short: "Invite a user to join an organization",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
+		w := getWriter(cmd)
+		token := getToken()
+		if token == "" {
+			return output.ErrAuth("not logged in")
+		}
+
+		roleStr, _ := cmd.Flags().GetString("role")
+		role := strings.ToLower(roleStr)
+		if role != "owner" && role != "admin" && role != "member" {
+			return output.ErrUsage("role must be owner, admin, or member")
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		reg := registry.New(cfg.RegistryURL(), token)
+		inv, err := reg.InviteOrgMember(cmd.Context(), args[0], args[1], role)
+		if err != nil {
+			return err
+		}
+
+		return w.OK(inv,
+			output.WithSummary(fmt.Sprintf("Invited %s to @%s as %s", args[1], args[0], role)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "check", Command: "ctx org invitations " + args[0], Description: "View pending invitations"},
+			),
+		)
+	},
+}
+
+var orgInvitationsCmd = &cobra.Command{
+	Use:   "invitations <org>",
+	Short: "List invitations for an organization",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
+		w := getWriter(cmd)
+		token := getToken()
+		if token == "" {
+			return output.ErrAuth("not logged in")
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		reg := registry.New(cfg.RegistryURL(), token)
+		invitations, err := reg.ListOrgInvitations(cmd.Context(), args[0])
+		if err != nil {
+			return err
+		}
+
+		return w.OK(invitations,
+			output.WithSummary(fmt.Sprintf("%d invitations for @%s", len(invitations), args[0])),
+		)
+	},
+}
+
+var orgCancelInviteCmd = &cobra.Command{
+	Use:   "cancel-invite <org> <invitation-id>",
+	Short: "Cancel a pending invitation",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireOnline(); err != nil {
+			return err
+		}
+		w := getWriter(cmd)
+		token := getToken()
+		if token == "" {
+			return output.ErrAuth("not logged in")
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		reg := registry.New(cfg.RegistryURL(), token)
+		if err := reg.CancelOrgInvitation(cmd.Context(), args[0], args[1]); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"org": args[0], "cancelled": args[1]},
+			output.WithSummary(fmt.Sprintf("Cancelled invitation %s in @%s", args[1], args[0])),
+		)
+	},
+}
+
 var orgDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete an organization (must have 0 packages)",
@@ -249,7 +350,9 @@ var orgDeleteCmd = &cobra.Command{
 
 func init() {
 	orgCreateCmd.Flags().StringVar(&orgDisplayName, "display-name", "", "Display name for the organization")
-	orgAddCmd.Flags().StringVar(&orgAddMemberRole, "role", "member", "Member role (owner, admin, member)")
+	orgAddCmd.Flags().String("role", "member", "Member role (owner, admin, member)")
+
+	orgInviteCmd.Flags().String("role", "member", "Member role (owner, admin, member)")
 
 	orgCmd.AddCommand(orgCreateCmd)
 	orgCmd.AddCommand(orgInfoCmd)
@@ -258,5 +361,8 @@ func init() {
 	orgCmd.AddCommand(orgAddCmd)
 	orgCmd.AddCommand(orgRemoveCmd)
 	orgCmd.AddCommand(orgDeleteCmd)
+	orgCmd.AddCommand(orgInviteCmd)
+	orgCmd.AddCommand(orgInvitationsCmd)
+	orgCmd.AddCommand(orgCancelInviteCmd)
 	rootCmd.AddCommand(orgCmd)
 }

@@ -39,7 +39,7 @@ func TestOrgCmd_HasExpectedSubcommands(t *testing.T) {
 		names[sub.Name()] = true
 	}
 
-	required := []string{"create", "info", "list", "packages", "add", "remove", "delete"}
+	required := []string{"create", "info", "list", "packages", "add", "remove", "delete", "invite", "invitations", "cancel-invite"}
 	for _, name := range required {
 		if !names[name] {
 			t.Errorf("org missing subcommand %q", name)
