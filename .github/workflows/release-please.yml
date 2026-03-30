@@ -13,6 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # When release-please creates a release, trigger the Release workflow
+      # (GITHUB_TOKEN-created tags don't trigger push events, so we use workflow_dispatch)
+      - name: Trigger release build
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          gh workflow run release.yml --ref main -f tag=${{ steps.release.outputs.tag_name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
