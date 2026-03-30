@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/ctx-hq/ctx/compare/v0.19.1...v0.19.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* **install:** do not skip skill linking when CLI script is declined or fails ([64f2151](https://github.com/ctx-hq/ctx/commit/64f2151dc5e8a4c8528976b86907ca17e9da4c2f))
+
 ## [0.19.1](https://github.com/ctx-hq/ctx/compare/v0.19.0...v0.19.1) (2026-03-30)
 
 
