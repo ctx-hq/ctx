@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.1](https://github.com/ctx-hq/ctx/compare/v0.17.0...v0.17.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* **ci:** trigger release build after release-please creates tag ([c1591ff](https://github.com/ctx-hq/ctx/commit/c1591ff7f6bc78c40aa7cc7c3199c55aee1fc8f8))
+* **init:** preserve existing SKILL.md path and content during directory init ([fb026a7](https://github.com/ctx-hq/ctx/commit/fb026a73975923c0cc23930a05dd96aac6c8bd70))
+
 ## [0.17.0](https://github.com/ctx-hq/ctx/compare/v0.16.0...v0.17.0) (2026-03-30)
 
 
