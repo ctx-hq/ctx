@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/ctx-hq/ctx/compare/v0.15.0...v0.16.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add wrap command and script install adapter for packaging CLI tools as ctx skills ([8e78a60](https://github.com/ctx-hq/ctx/commit/8e78a60e5ebad3906fa68cb7becf6de338d88e51))
+
 ## [0.15.0](https://github.com/ctx-hq/ctx/compare/v0.14.0...v0.15.0) (2026-03-30)
 
 
