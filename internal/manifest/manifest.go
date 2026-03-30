@@ -74,10 +74,15 @@ func Validate(m *Manifest) []string {
 		errs = append(errs, "description must be 1024 characters or less")
 	}
 
+	// All types require a skill section — agents need instructions to use any package.
+	if m.Skill == nil || m.Skill.Entry == "" {
+		errs = append(errs, "skill section with entry is required (agents need instructions)")
+	}
+
 	// Type-specific validation
 	switch m.Type {
 	case TypeSkill:
-		// skill section is optional, SKILL.md can stand alone
+		// no extra fields beyond skill section
 	case TypeMCP:
 		if m.MCP == nil {
 			errs = append(errs, "mcp section is required for type=mcp")
@@ -165,18 +170,21 @@ func Scaffold(pkgType PackageType, scope, name string) *Manifest {
 		Description: fmt.Sprintf("A %s package", pkgType),
 	}
 
+	// All types include a skill section — agents need instructions.
+	m.Skill = &SkillSpec{Entry: "SKILL.md"}
+
 	switch pkgType {
 	case TypeSkill:
-		m.Skill = &SkillSpec{
-			Entry: "SKILL.md",
-		}
+		// skill section already set above
 	case TypeMCP:
+		m.Skill.Entry = fmt.Sprintf("skills/%s/SKILL.md", name)
 		m.MCP = &MCPSpec{
 			Transport: "stdio",
 			Command:   "node",
 			Args:      []string{"dist/index.js"},
 		}
 	case TypeCLI:
+		m.Skill.Entry = fmt.Sprintf("skills/%s/SKILL.md", name)
 		m.CLI = &CLISpec{
 			Binary: name,
 			Verify: fmt.Sprintf("%s --version", name),

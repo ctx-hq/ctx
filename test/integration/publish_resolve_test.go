@@ -90,6 +90,9 @@ func TestPublishResolveFlow_MarshalRoundtrip(t *testing.T) {
 			Command:   "node",
 			Args:      []string{"dist/index.js"},
 		},
+		Skill: &manifest.SkillSpec{
+			Entry: "skills/roundtrip/SKILL.md",
+		},
 	}
 
 	data, err := manifest.Marshal(m)

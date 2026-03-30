@@ -8,7 +8,6 @@ import (
 
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/prompt"
-	"github.com/ctx-hq/ctx/internal/staging"
 )
 
 // --- detectInitInput tests ---
@@ -306,78 +305,37 @@ invocable: true
 	}
 }
 
-func TestInitPipeline_DirCopiesExtraFiles(t *testing.T) {
+func TestResolveOutputDir_Scratch(t *testing.T) {
+	cwd, _ := os.Getwd()
+	dir, err := resolveOutputDir(initInput{mode: initFromScratch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != cwd {
+		t.Errorf("scratch mode: got %q, want cwd %q", dir, cwd)
+	}
+}
+
+func TestResolveOutputDir_File(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("CTX_HOME", tmp)
-
-	// Create source directory with extra files
-	srcDir := filepath.Join(tmp, "my-skill")
-	if err := os.MkdirAll(filepath.Join(srcDir, "scripts"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(srcDir, "assets"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write SKILL.md
-	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# My Skill\n\nDoes things.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// Write extra files
-	if err := os.WriteFile(filepath.Join(srcDir, "scripts", "helper.sh"), []byte("#!/bin/bash\necho hi"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(srcDir, "assets", "logo.png"), []byte("fake-png"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Use staging.CopyFrom + WriteFile like the real pipeline
-	stg, err := staging.New("ctx-init-test-")
+	mdFile := filepath.Join(tmp, "gc.md")
+	dir, err := resolveOutputDir(initInput{mode: initFromFile, sourcePath: mdFile})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stg.Rollback()
+	if dir != tmp {
+		t.Errorf("file mode: got %q, want %q", dir, tmp)
+	}
+}
 
-	if err := stg.CopyFrom(srcDir); err != nil {
-		t.Fatal(err)
-	}
-	// Overwrite SKILL.md (simulating normalization)
-	if err := stg.WriteFile("SKILL.md", []byte("# Normalized\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := stg.WriteFile("ctx.yaml", []byte("name: test\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	dest := filepath.Join(tmp, "skills", "local", "my-skill")
-	if err := stg.Commit(dest); err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify extra files were copied
-	helperData, err := os.ReadFile(filepath.Join(dest, "scripts", "helper.sh"))
-	if err != nil {
-		t.Fatalf("scripts/helper.sh should exist: %v", err)
-	}
-	if string(helperData) != "#!/bin/bash\necho hi" {
-		t.Errorf("helper.sh content = %q", string(helperData))
-	}
-
-	logoData, err := os.ReadFile(filepath.Join(dest, "assets", "logo.png"))
-	if err != nil {
-		t.Fatalf("assets/logo.png should exist: %v", err)
-	}
-	if string(logoData) != "fake-png" {
-		t.Errorf("logo.png content = %q", string(logoData))
-	}
-
-	// Verify SKILL.md was overwritten (normalized)
-	skillData, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+func TestResolveOutputDir_Directory(t *testing.T) {
+	tmp := t.TempDir()
+	dir, err := resolveOutputDir(initInput{mode: initFromDirectory, sourceDir: tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(skillData) != "# Normalized\n" {
-		t.Errorf("SKILL.md should be normalized, got %q", string(skillData))
+	if dir != tmp {
+		t.Errorf("directory mode: got %q, want %q", dir, tmp)
 	}
 }
 
@@ -421,7 +379,7 @@ func TestResolveScope_NoConfig(t *testing.T) {
 
 // --- Full pipeline tests ---
 
-func TestInitPipeline_FromFile(t *testing.T) {
+func TestInitPipeline_FromFile_WritesLocally(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("CTX_HOME", tmp)
 
@@ -452,13 +410,19 @@ Generate commit messages in both Chinese and English.
 		t.Fatalf("mode = %d, want initFromFile", input.mode)
 	}
 
+	// Resolve output directory — should be the file's parent
+	outDir, err := resolveOutputDir(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outDir != tmp {
+		t.Fatalf("outDir = %q, want %q", outDir, tmp)
+	}
+
 	// Parse
 	meta, err := parseInitSource(input)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if meta.name != "gc" {
-		t.Errorf("name = %q", meta.name)
 	}
 
 	// Prompt (noop)
@@ -467,11 +431,10 @@ Generate commit messages in both Chinese and English.
 		t.Fatal(err)
 	}
 
-	// Build manifest
+	// Build manifest — skill type from file defaults to skill
 	scope := "local"
 	skillName := slugify(meta.name)
 	fullName := manifest.FormatFullName(scope, skillName)
-	dest := filepath.Join(tmp, "skills", scope, skillName)
 
 	m := manifest.Scaffold(manifest.TypeSkill, scope, skillName)
 	m.Version = meta.version
@@ -489,6 +452,14 @@ Generate commit messages in both Chinese and English.
 		t.Fatal(err)
 	}
 
+	// Write ctx.yaml to the file's directory (local write, no staging)
+	if err := os.WriteFile(filepath.Join(outDir, "ctx.yaml"), manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Generate SKILL.md (since none exists at entry path)
+	skillEntry := m.Skill.Entry
+	skillAbsPath := filepath.Join(outDir, skillEntry)
 	fm := &manifest.SkillFrontmatter{
 		Name:        skillName,
 		Description: meta.description,
@@ -499,20 +470,12 @@ Generate commit messages in both Chinese and English.
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Write to dest directly (simulating staging commit)
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), manifestData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"), skillContent, 0o644); err != nil {
+	if err := os.WriteFile(skillAbsPath, skillContent, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify SSOT files exist
-	loaded, err := manifest.LoadFromDir(dest)
+	// Verify files are in the local directory, not ~/.ctx/skills/
+	loaded, err := manifest.LoadFromDir(outDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +487,7 @@ Generate commit messages in both Chinese and English.
 	}
 
 	// Verify SKILL.md roundtrips
-	f, err := os.Open(filepath.Join(dest, "SKILL.md"))
+	f, err := os.Open(skillAbsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,44 +548,11 @@ func TestInitPipeline_LinkBack(t *testing.T) {
 	}
 }
 
-func TestInitPipeline_AlreadyLinked(t *testing.T) {
-	tmp := t.TempDir()
-	skillsDir := filepath.Join(tmp, "skills", "local", "gc")
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	target := filepath.Join(skillsDir, "SKILL.md")
-	if err := os.WriteFile(target, []byte("content"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create symlink
-	srcFile := filepath.Join(tmp, "gc.md")
-	if err := os.Symlink(target, srcFile); err != nil {
-		t.Fatal(err)
-	}
-
-	// Detect should show it's a symlink pointing into skills dir
-	readLink, err := os.Readlink(srcFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(readLink, "skills") {
-		t.Errorf("symlink should point to skills dir, got %q", readLink)
-	}
-}
 
 func TestInitPipeline_Idempotent(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("CTX_HOME", tmp)
+	dir := t.TempDir()
 
-	dest := filepath.Join(tmp, "skills", "local", "gc")
-
-	// First write
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	// First write — ctx.yaml in project directory
 	m := manifest.Scaffold(manifest.TypeSkill, "local", "gc")
 	m.Version = "0.1.0"
 	m.Description = "test"
@@ -630,12 +560,12 @@ func TestInitPipeline_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify it exists
-	if _, err := os.Stat(filepath.Join(dest, "ctx.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "ctx.yaml")); err != nil {
 		t.Fatal("first write should exist")
 	}
 
@@ -645,12 +575,12 @@ func TestInitPipeline_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dest, "ctx.yaml"), data2, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data2, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify updated
-	loaded, err := manifest.LoadFromDir(dest)
+	loaded, err := manifest.LoadFromDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,63 +589,92 @@ func TestInitPipeline_Idempotent(t *testing.T) {
 	}
 }
 
-func TestInitPipeline_StagingCommit(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("CTX_HOME", tmp)
+func TestInitPipeline_CLIWritesNestedSkill(t *testing.T) {
+	dir := t.TempDir()
 
-	dest := filepath.Join(tmp, "skills", "local", "test-skill")
-
-	// Use real staging package
-	stg, err := staging.New("ctx-init-test-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stg.Rollback()
-
-	m := manifest.Scaffold(manifest.TypeSkill, "local", "test-skill")
+	// Scaffold a CLI manifest — Scaffold now includes skill section
+	m := manifest.Scaffold(manifest.TypeCLI, "local", "fizzy")
 	m.Version = "0.1.0"
-	m.Description = "Test"
+	m.Description = "Fizzy CLI"
+	m.CLI.Binary = "fizzy"
+	m.CLI.Verify = "fizzy --version"
+	m.Install = &manifest.InstallSpec{Script: "https://example.com/install.sh"}
+	m.Skill.Origin = "native"
+
+	errs := manifest.Validate(m)
+	if len(errs) > 0 {
+		t.Fatalf("validation errors: %v", errs)
+	}
+
 	manifestData, err := manifest.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Write ctx.yaml locally
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write SKILL.md at the nested entry path
+	skillEntry := m.Skill.Entry // "skills/fizzy/SKILL.md"
+	skillAbsPath := filepath.Join(dir, skillEntry)
+	if err := os.MkdirAll(filepath.Dir(skillAbsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	fm := &manifest.SkillFrontmatter{
-		Name:        "test-skill",
-		Description: "Test",
-		Triggers:    []string{"/test"},
+		Name:        "fizzy",
+		Description: "Fizzy CLI",
+		Triggers:    []string{"/fizzy", "fizzy"},
 		Invocable:   true,
 	}
-	skillContent, err := manifest.RenderSkillMD(fm, "# Test\n\nContent.\n")
+	skillContent, err := manifest.RenderSkillMD(fm, "# Fizzy\n\nA fizzy CLI tool.\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if err := stg.WriteFile("ctx.yaml", manifestData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := stg.WriteFile("SKILL.md", skillContent, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := stg.Commit(dest); err != nil {
+	if err := os.WriteFile(skillAbsPath, skillContent, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify both files exist
-	if _, err := os.Stat(filepath.Join(dest, "ctx.yaml")); err != nil {
-		t.Error("ctx.yaml should exist")
-	}
-	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
-		t.Error("SKILL.md should exist")
-	}
-
-	// Verify content
-	loaded, err := manifest.LoadFromDir(dest)
+	// Verify ctx.yaml
+	loaded, err := manifest.LoadFromDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Name != "@local/test-skill" {
-		t.Errorf("name = %q", loaded.Name)
+	if loaded.Name != "@local/fizzy" {
+		t.Errorf("name = %q, want @local/fizzy", loaded.Name)
+	}
+	if loaded.Skill == nil || loaded.Skill.Entry != "skills/fizzy/SKILL.md" {
+		t.Errorf("skill.entry = %v, want skills/fizzy/SKILL.md", loaded.Skill)
+	}
+
+	// Verify SKILL.md exists at nested path
+	if _, err := os.Stat(skillAbsPath); err != nil {
+		t.Errorf("SKILL.md should exist at %s", skillEntry)
+	}
+}
+
+func TestScaffold_AllTypesHaveSkill(t *testing.T) {
+	for _, tt := range []struct {
+		pkgType       manifest.PackageType
+		expectedEntry string
+	}{
+		{manifest.TypeSkill, "SKILL.md"},
+		{manifest.TypeCLI, "skills/test-pkg/SKILL.md"},
+		{manifest.TypeMCP, "skills/test-pkg/SKILL.md"},
+	} {
+		m := manifest.Scaffold(tt.pkgType, "local", "test-pkg")
+		if m.Skill == nil {
+			t.Errorf("%s: Skill should not be nil", tt.pkgType)
+			continue
+		}
+		if m.Skill.Entry != tt.expectedEntry {
+			t.Errorf("%s: Skill.Entry = %q, want %q", tt.pkgType, m.Skill.Entry, tt.expectedEntry)
+		}
+		errs := manifest.Validate(m)
+		if len(errs) > 0 {
+			t.Errorf("%s: validation errors: %v", tt.pkgType, errs)
+		}
 	}
 }
 

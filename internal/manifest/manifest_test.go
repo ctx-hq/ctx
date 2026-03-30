@@ -153,7 +153,7 @@ func TestValidate(t *testing.T) {
 		{
 			name:    "empty manifest",
 			m:       Manifest{},
-			wantErr: 4, // name, version, type, description
+			wantErr: 5, // name, version, type, description, skill
 		},
 		{
 			name: "valid skill",
@@ -162,8 +162,19 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeSkill,
 				Description: "A test skill",
+				Skill:       &SkillSpec{Entry: "SKILL.md"},
 			},
 			wantErr: 0,
+		},
+		{
+			name: "missing skill section",
+			m: Manifest{
+				Name:        "@hong/test",
+				Version:     "1.0.0",
+				Type:        TypeSkill,
+				Description: "test",
+			},
+			wantErr: 1, // skill section required
 		},
 		{
 			name: "invalid name format",
@@ -172,6 +183,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeSkill,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "SKILL.md"},
 			},
 			wantErr: 1,
 		},
@@ -182,16 +194,18 @@ func TestValidate(t *testing.T) {
 				Version:     "v1.0",
 				Type:        TypeSkill,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "SKILL.md"},
 			},
 			wantErr: 1,
 		},
 		{
-			name: "mcp missing section",
+			name: "mcp missing mcp section",
 			m: Manifest{
 				Name:        "@hong/test",
 				Version:     "1.0.0",
 				Type:        TypeMCP,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 			},
 			wantErr: 1,
 		},
@@ -202,6 +216,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeMCP,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				MCP:         &MCPSpec{},
 			},
 			wantErr: 1,
@@ -213,6 +228,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeMCP,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				MCP:         &MCPSpec{Transport: "stdio"},
 			},
 			wantErr: 1,
@@ -224,17 +240,19 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeMCP,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				MCP:         &MCPSpec{Transport: "stdio", Command: "node"},
 			},
 			wantErr: 0,
 		},
 		{
-			name: "cli missing section",
+			name: "cli missing cli section",
 			m: Manifest{
 				Name:        "@hong/test",
 				Version:     "1.0.0",
 				Type:        TypeCLI,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 			},
 			wantErr: 1,
 		},
@@ -245,6 +263,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeCLI,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				CLI:         &CLISpec{},
 			},
 			wantErr: 1,
@@ -256,6 +275,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0",
 				Type:        TypeCLI,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				CLI:         &CLISpec{Binary: "rg"},
 			},
 			wantErr: 0,
@@ -267,6 +287,7 @@ func TestValidate(t *testing.T) {
 				Version:     "1.0.0-beta.1",
 				Type:        TypeSkill,
 				Description: "test",
+				Skill:       &SkillSpec{Entry: "SKILL.md"},
 			},
 			wantErr: 0,
 		},
@@ -358,6 +379,7 @@ func TestValidateCLISkillOriginAndScript(t *testing.T) {
 			Type:        TypeCLI,
 			Description: "test",
 			CLI:         &CLISpec{Binary: "test"},
+			Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 		}
 	}
 

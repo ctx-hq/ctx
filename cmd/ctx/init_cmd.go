@@ -7,11 +7,9 @@ import (
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/config"
-	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
-	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
 )
 
@@ -40,11 +38,12 @@ type initMeta struct {
 	pkgType     manifest.PackageType
 	sourceDir   string // original directory path (initFromDirectory mode)
 
-	// Skill
-	triggers  []string
-	invocable bool
-	argHint   string
-	body      string // SKILL.md body content
+	// Skill (all types require a skill component)
+	triggers   []string
+	invocable  bool
+	argHint    string
+	body       string // SKILL.md body content
+	skillEntry string // skill.entry path (e.g., "SKILL.md", "skills/fizzy/SKILL.md")
 
 	// CLI
 	binary        string
@@ -52,8 +51,6 @@ type initMeta struct {
 	installMethod string // brew, npm, pip, gem, cargo, script, binary
 	installPkg    string // the package identifier for the chosen method
 	authHint      string
-	bundlesSkill  bool
-	skillEntry    string // existing skill.entry path (e.g., "skills/fizzy/SKILL.md")
 
 	// MCP
 	transport string
@@ -65,20 +62,20 @@ type initMeta struct {
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
 	Short: "Initialize a ctx package (skill, CLI, or MCP)",
-	Long: `Initialize and manage a package under ~/.ctx/skills/ (Single Source of Truth).
+	Long: `Initialize a ctx package in the current directory (like npm init).
+
+Generates ctx.yaml and SKILL.md in the project directory.
+No files are copied elsewhere — authoring happens locally.
 
 Supports three input modes:
   1. From scratch       ctx init
   2. From .md file      ctx init gc.md
   3. From directory     ctx init ./my-skill/
 
-All modes normalize the skill into a standard structure (ctx.yaml + SKILL.md),
-archive it to ~/.ctx/skills/{scope}/{name}/, and link it to detected agents.
-
 Examples:
-  ctx init                     Create a new skill interactively
-  ctx init gc.md               Adopt an existing .md file
-  ctx init ./my-skill/         Adopt an existing skill directory
+  ctx init                     Create a new package interactively
+  ctx init gc.md               Adopt an existing .md file as a skill
+  ctx init ./my-skill/         Initialize from an existing directory
   ctx init gc.md -y            Non-interactive with defaults`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -93,14 +90,10 @@ Examples:
 			return err
 		}
 
-		// 3. Check if source is already managed (symlink to SSOT)
-		if input.mode == initFromFile {
-			if target, linkErr := os.Readlink(input.sourcePath); linkErr == nil {
-				if strings.HasPrefix(target, config.SkillsDir()) {
-					output.Info("Already managed: %s → %s", input.sourcePath, target)
-					return nil
-				}
-			}
+		// 3. Determine output directory (where ctx.yaml will be written)
+		outDir, err := resolveOutputDir(input)
+		if err != nil {
+			return err
 		}
 
 		// 4. Parse source into metadata
@@ -126,14 +119,13 @@ Examples:
 			return err
 		}
 
-		// 7. Compute destination
+		// 7. Check if ctx.yaml already exists
 		skillName := slugify(meta.name)
 		fullName := manifest.FormatFullName(scope, skillName)
-		dest := filepath.Join(config.SkillsDir(), scope, skillName)
 
-		// 8. Check if already exists in SSOT
-		if _, statErr := os.Stat(dest); statErr == nil {
-			overwrite, confirmErr := p.Confirm(fmt.Sprintf("%s already exists, overwrite?", fullName), false)
+		ctxYamlPath := filepath.Join(outDir, "ctx.yaml")
+		if _, statErr := os.Stat(ctxYamlPath); statErr == nil {
+			overwrite, confirmErr := p.Confirm("ctx.yaml already exists, overwrite?", false)
 			if confirmErr != nil {
 				return confirmErr
 			}
@@ -143,7 +135,7 @@ Examples:
 			}
 		}
 
-		// 9. Preview and confirm
+		// 8. Preview and confirm
 		pkgTypePreview := meta.pkgType
 		if pkgTypePreview == "" {
 			pkgTypePreview = manifest.TypeSkill
@@ -171,7 +163,7 @@ Examples:
 				previewRows = append(previewRows, []string{"URL:", meta.mcpURL})
 			}
 		}
-		previewRows = append(previewRows, []string{"Target:", dest})
+		previewRows = append(previewRows, []string{"Directory:", outDir})
 		output.Table(previewRows)
 		fmt.Fprintln(os.Stderr) // blank line after table
 
@@ -184,7 +176,7 @@ Examples:
 			return nil
 		}
 
-		// 10. Build manifest based on package type
+		// 9. Build manifest based on package type
 		pkgType := meta.pkgType
 		if pkgType == "" {
 			pkgType = manifest.TypeSkill
@@ -194,18 +186,15 @@ Examples:
 		m.Description = meta.description
 
 		// Determine skill entry path
-		skillEntry := "SKILL.md"
+		skillEntry := m.Skill.Entry // default from Scaffold
 		if meta.skillEntry != "" {
 			skillEntry = meta.skillEntry
 		}
+		m.Skill.Entry = skillEntry
 
 		switch pkgType {
 		case manifest.TypeSkill:
 			m.Keywords = meta.triggers
-			if m.Skill == nil {
-				m.Skill = &manifest.SkillSpec{}
-			}
-			m.Skill.Entry = skillEntry
 			m.Skill.UserInvocable = &meta.invocable
 
 		case manifest.TypeCLI:
@@ -215,13 +204,7 @@ Examples:
 				Auth:   meta.authHint,
 			}
 			m.Install = buildInstallSpec(meta.installMethod, meta.installPkg)
-			if meta.bundlesSkill {
-				if m.Skill == nil {
-					m.Skill = &manifest.SkillSpec{}
-				}
-				m.Skill.Entry = skillEntry
-				m.Skill.Origin = "native"
-			}
+			m.Skill.Origin = "native"
 
 		case manifest.TypeMCP:
 			m.MCP = &manifest.MCPSpec{
@@ -230,6 +213,7 @@ Examples:
 				Args:      meta.mcpArgs,
 				URL:       meta.mcpURL,
 			}
+			m.Skill.Origin = "native"
 		}
 
 		errs := manifest.Validate(m)
@@ -242,78 +226,45 @@ Examples:
 			return err
 		}
 
-		// 11. Stage and commit atomically
-		stg, err := staging.New("ctx-init-")
-		if err != nil {
-			return err
+		// 10. Write ctx.yaml to output directory
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			return fmt.Errorf("create directory: %w", err)
 		}
-		defer stg.Rollback()
+		if err := os.WriteFile(ctxYamlPath, manifestData, 0o644); err != nil {
+			return fmt.Errorf("write ctx.yaml: %w", err)
+		}
 
-		// For directory mode, copy all source files first to preserve
-		// scripts/, assets/, references/ and other skill dependencies.
-		if input.mode == initFromDirectory {
-			if err := stg.CopyFrom(input.sourceDir); err != nil {
-				return fmt.Errorf("copy source directory: %w", err)
+		// 11. Generate SKILL.md if it doesn't already exist at the entry path
+		skillAbsPath := filepath.Join(outDir, skillEntry)
+		if _, statErr := os.Stat(skillAbsPath); os.IsNotExist(statErr) {
+			// Create parent directories for nested skill paths (e.g., skills/fizzy/)
+			if err := os.MkdirAll(filepath.Dir(skillAbsPath), 0o755); err != nil {
+				return fmt.Errorf("create skill directory: %w", err)
+			}
+			fm := &manifest.SkillFrontmatter{
+				Name:         skillName,
+				Description:  meta.description,
+				Triggers:     meta.triggers,
+				Invocable:    meta.invocable,
+				ArgumentHint: meta.argHint,
+			}
+			skillContent, err := manifest.RenderSkillMD(fm, meta.body)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(skillAbsPath, skillContent, 0o644); err != nil {
+				return fmt.Errorf("write SKILL.md: %w", err)
 			}
 		}
 
-		// Overwrite ctx.yaml with normalized version
-		if err := stg.WriteFile("ctx.yaml", manifestData, 0o644); err != nil {
-			return fmt.Errorf("stage ctx.yaml: %w", err)
-		}
+		output.Success("Created %s in %s", fullName, outDir)
 
-		// Generate SKILL.md only if one doesn't already exist at the entry path
-		if pkgType == manifest.TypeSkill || (pkgType == manifest.TypeCLI && meta.bundlesSkill) {
-			existingSkillPath := filepath.Join(stg.Path, skillEntry)
-			if _, statErr := os.Stat(existingSkillPath); os.IsNotExist(statErr) {
-				// No existing SKILL.md at entry path — generate one
-				fm := &manifest.SkillFrontmatter{
-					Name:         skillName,
-					Description:  meta.description,
-					Triggers:     meta.triggers,
-					Invocable:    meta.invocable,
-					ArgumentHint: meta.argHint,
-				}
-				skillContent, err := manifest.RenderSkillMD(fm, meta.body)
-				if err != nil {
-					return err
-				}
-				if err := stg.WriteFile(skillEntry, skillContent, 0o644); err != nil {
-					return fmt.Errorf("stage SKILL.md: %w", err)
-				}
-			}
-			// else: existing SKILL.md preserved from CopyFrom()
-		}
-
-		if err := stg.Commit(dest); err != nil {
-			return fmt.Errorf("commit to %s: %w", dest, err)
-		}
-
-		output.Success("Created %s → %s", fullName, dest)
-
-		// 12. Symlink back to original location (single-file mode)
-		if input.mode == initFromFile {
-			skillMDPath := filepath.Join(dest, "SKILL.md")
-			if linkErr := linkToOriginal(input.sourcePath, skillMDPath, fullName); linkErr != nil {
-				output.Warn("Could not link back: %v", linkErr)
-			} else {
-				output.Success("Linked: %s → %s", input.sourcePath, skillMDPath)
-			}
-		}
-
-		// 13. Link to all detected agents (if package has a skill component)
-		if pkgType == manifest.TypeSkill || (pkgType == manifest.TypeCLI && meta.bundlesSkill) {
-			if _, linkErr := installer.LinkSkillToAgents(dest, skillName, fullName, ""); linkErr != nil {
-				output.Warn("Agent linking: %v", linkErr)
-			}
-		}
-
-		// 14. Output
+		// 12. Output
 		return w.OK(
-			map[string]string{"name": fullName, "version": meta.version, "path": dest},
+			map[string]string{"name": fullName, "version": meta.version, "path": outDir},
 			output.WithSummary(fmt.Sprintf("Created %s (%s)", fullName, meta.version)),
 			output.WithBreadcrumbs(
-				output.Breadcrumb{Action: "edit", Command: "edit " + filepath.Join(dest, "SKILL.md"), Description: "Edit skill content"},
+				output.Breadcrumb{Action: "edit", Command: "edit " + skillAbsPath, Description: "Edit skill content"},
 				output.Breadcrumb{Action: "publish", Command: "ctx push " + fullName, Description: "Publish to registry"},
 			),
 		)
@@ -330,6 +281,24 @@ func resolveScope() string {
 		return cfg.Username
 	}
 	return "local"
+}
+
+// resolveOutputDir determines where ctx.yaml should be written.
+func resolveOutputDir(input initInput) (string, error) {
+	switch input.mode {
+	case initFromScratch:
+		dir, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("resolve working directory: %w", err)
+		}
+		return dir, nil
+	case initFromFile:
+		return filepath.Dir(input.sourcePath), nil
+	case initFromDirectory:
+		return input.sourceDir, nil
+	default:
+		return "", fmt.Errorf("unknown init mode")
+	}
 }
 
 // detectInitInput determines the input mode from command args.
@@ -499,10 +468,6 @@ func parseDirSource(dirPath string) (initMeta, error) {
 				meta.installPkg = m.Install.Source
 			}
 		}
-		if m.Skill != nil && m.Type == manifest.TypeCLI {
-			meta.bundlesSkill = true
-		}
-
 		// Preserve MCP fields from existing ctx.yaml
 		if m.MCP != nil {
 			meta.transport = m.MCP.Transport
@@ -684,46 +649,20 @@ func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 		return meta, err
 	}
 
-	// Detect existing SKILL.md files if in directory mode
+	// Detect existing SKILL.md files if in directory mode and no entry set yet
 	if meta.sourceDir != "" && meta.skillEntry == "" {
 		found := findAllSkillMD(meta.sourceDir)
-		if len(found) > 0 {
-			// SKILL.md found — default to bundling
-			meta.bundlesSkill = true
-			if len(found) == 1 {
-				meta.skillEntry = found[0]
-				ok, confirmErr := p.Confirm(fmt.Sprintf("Found SKILL.md at %s, bundle it?", found[0]), true)
-				if confirmErr != nil {
-					return meta, confirmErr
-				}
-				if !ok {
-					meta.bundlesSkill = false
-					meta.skillEntry = ""
-				}
-			} else {
-				// Multiple found — let user pick
-				idx, selectErr := p.Select("Multiple SKILL.md found, select one", found, 0)
-				if selectErr != nil {
-					return meta, selectErr
-				}
-				meta.skillEntry = found[idx]
+		if len(found) == 1 {
+			meta.skillEntry = found[0]
+		} else if len(found) > 1 {
+			// Multiple found — let user pick
+			idx, selectErr := p.Select("Multiple SKILL.md found, select one", found, 0)
+			if selectErr != nil {
+				return meta, selectErr
 			}
-		} else {
-			// No SKILL.md found
-			meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
-			if err != nil {
-				return meta, err
-			}
+			meta.skillEntry = found[idx]
 		}
-	} else if meta.skillEntry != "" {
-		// Already have a skill entry from ctx.yaml
-		meta.bundlesSkill = true
-	} else {
-		// From-scratch mode or no source dir
-		meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
-		if err != nil {
-			return meta, err
-		}
+		// If none found, skillEntry stays empty → Scaffold default will be used
 	}
 
 	return meta, nil

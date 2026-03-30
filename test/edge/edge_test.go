@@ -22,6 +22,7 @@ func TestValidateManifest_LongPackageName(t *testing.T) {
 		Version:     "1.0.0",
 		Type:        manifest.TypeSkill,
 		Description: "test",
+		Skill:       &manifest.SkillSpec{Entry: "SKILL.md"},
 	}
 	errs := manifest.Validate(m)
 	// Should be valid — names up to reasonable length are allowed
