@@ -20,6 +20,11 @@ type Prompter interface {
 	// Displays: "  label [Y/n] " or "  label [y/N] "
 	// Returns defaultVal if user enters empty string.
 	Confirm(label string, defaultVal bool) (bool, error)
+
+	// Select prompts the user to choose from a numbered list.
+	// Displays each option with a 1-based index, returns the 0-based selected index.
+	// Returns defaultIdx if user enters empty string.
+	Select(label string, options []string, defaultIdx int) (int, error)
 }
 
 // TTYPrompter reads from a reader (typically os.Stdin).
@@ -78,6 +83,36 @@ func (p *TTYPrompter) Confirm(label string, defaultVal bool) (bool, error) {
 	}
 }
 
+// Select prompts the user to choose from a numbered list.
+func (p *TTYPrompter) Select(label string, options []string, defaultIdx int) (int, error) {
+	fmt.Fprintf(os.Stderr, "  %s:\n", label)
+	for i, opt := range options {
+		marker := "  "
+		if i == defaultIdx {
+			marker = "* "
+		}
+		fmt.Fprintf(os.Stderr, "    %s%d. %s\n", marker, i+1, opt)
+	}
+	fmt.Fprintf(os.Stderr, "  Choice [%d]: ", defaultIdx+1)
+
+	line, err := p.reader.ReadString('\n')
+	if err != nil {
+		return 0, fmt.Errorf("read input: %w", err)
+	}
+
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return defaultIdx, nil
+	}
+
+	var choice int
+	if _, err := fmt.Sscanf(line, "%d", &choice); err != nil || choice < 1 || choice > len(options) {
+		fmt.Fprintf(os.Stderr, "  Invalid choice, using default (%d)\n", defaultIdx+1)
+		return defaultIdx, nil
+	}
+	return choice - 1, nil
+}
+
 // NoopPrompter always returns defaults. Used for non-TTY, CI, and --yes flag.
 type NoopPrompter struct{}
 
@@ -89,6 +124,11 @@ func (NoopPrompter) Text(_, defaultVal string) (string, error) {
 // Confirm returns the default value.
 func (NoopPrompter) Confirm(_ string, defaultVal bool) (bool, error) {
 	return defaultVal, nil
+}
+
+// Select returns the default index.
+func (NoopPrompter) Select(_ string, _ []string, defaultIdx int) (int, error) {
+	return defaultIdx, nil
 }
 
 // DefaultPrompter returns a TTYPrompter if stdin is a terminal, else NoopPrompter.

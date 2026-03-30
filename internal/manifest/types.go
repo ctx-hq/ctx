@@ -92,6 +92,7 @@ type CLISpec struct {
 	Verify     string       `yaml:"verify,omitempty" json:"verify,omitempty"`
 	Compatible string       `yaml:"compatible,omitempty" json:"compatible,omitempty"` // semver range for CLI version
 	Require    *RequireSpec `yaml:"require,omitempty" json:"require,omitempty"`
+	Auth       string       `yaml:"auth,omitempty" json:"auth,omitempty"` // human-readable auth/setup hint
 }
 
 // RequireSpec declares runtime prerequisites.
@@ -106,6 +107,7 @@ type InstallSpec struct {
 	Brew      string                      `yaml:"brew,omitempty" json:"brew,omitempty"`
 	Npm       string                      `yaml:"npm,omitempty" json:"npm,omitempty"`
 	Pip       string                      `yaml:"pip,omitempty" json:"pip,omitempty"`
+	Gem       string                      `yaml:"gem,omitempty" json:"gem,omitempty"`
 	Cargo     string                      `yaml:"cargo,omitempty" json:"cargo,omitempty"`
 	Script    string                      `yaml:"script,omitempty" json:"script,omitempty"` // shell script URL (curl|sh style)
 	Platforms map[string]*PlatformInstall `yaml:"platforms,omitempty" json:"platforms,omitempty"`

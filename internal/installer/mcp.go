@@ -4,15 +4,17 @@ import (
 	"fmt"
 
 	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // LinkMCPToAgents configures an MCP server in all detected agents and records
 // the config entries in the LinkRegistry for later cleanup.
-func LinkMCPToAgents(m *manifest.Manifest) error {
+// Returns the list of MCP states for tracking in state.json.
+func LinkMCPToAgents(m *manifest.Manifest) ([]installstate.MCPState, error) {
 	if m.MCP == nil {
-		return fmt.Errorf("package is not an MCP server")
+		return nil, fmt.Errorf("package is not an MCP server")
 	}
 
 	cfg := agent.MCPConfig{
@@ -30,7 +32,7 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 	agents := agent.DetectAll()
 	if len(agents) == 0 {
 		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
-		return nil
+		return nil, nil
 	}
 
 	links, linkErr := LoadLinks()
@@ -39,9 +41,11 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 	}
 
 	name := m.ShortName()
+	var mcpStates []installstate.MCPState
 	for _, a := range agents {
 		if err := a.AddMCP(name, cfg); err != nil {
 			output.Warn("Failed to configure %s in %s: %v", name, a.Name(), err)
+			mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "missing"})
 			continue
 		}
 		output.PrintDim("  Configured in: %s", a.Name())
@@ -52,10 +56,11 @@ func LinkMCPToAgents(m *manifest.Manifest) error {
 			Source:    m.Name,
 			ConfigKey: name,
 		})
+		mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "ok"})
 	}
 
 	_ = links.Save() // best effort
-	return nil
+	return mcpStates, nil
 }
 
 // UnlinkMCPFromAgents removes an MCP config from all detected agents.

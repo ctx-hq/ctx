@@ -3,14 +3,17 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/ctx-hq/ctx/internal/adapter"
 	"github.com/ctx-hq/ctx/internal/agent"
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -143,7 +146,45 @@ configuration, network connectivity, and detected agents.`,
 			}
 		}
 
-		// 9. Available adapters (package managers)
+		// 9. Per-package health (via state.json)
+		if scanErr == nil {
+			unhealthyDetails := []string{}
+			checker2 := &installer.Installer{DataDir: config.DataDir()}
+			for _, entry := range installed {
+				pkgDir := checker2.PackageDir(entry.FullName)
+				state, _ := installstate.Load(pkgDir)
+				if state == nil {
+					continue
+				}
+				if state.CLI != nil && state.CLI.Status == "ok" {
+					if err := adapter.Verify(state.CLI.Binary, ""); err != nil {
+						unhealthyDetails = append(unhealthyDetails,
+							fmt.Sprintf("%s: CLI binary %s not found", entry.FullName, state.CLI.Binary))
+					}
+				}
+				for _, s := range state.Skills {
+					if _, err := os.Stat(s.SymlinkPath); err != nil {
+						unhealthyDetails = append(unhealthyDetails,
+							fmt.Sprintf("%s: skill link broken for %s", entry.FullName, s.Agent))
+					}
+				}
+			}
+			if len(unhealthyDetails) == 0 {
+				add("package health", "pass", "all components healthy")
+			} else {
+				detail := fmt.Sprintf("%d issue(s)", len(unhealthyDetails))
+				for i, d := range unhealthyDetails {
+					if i >= 3 {
+						detail += fmt.Sprintf(" (+%d more)", len(unhealthyDetails)-3)
+						break
+					}
+					detail += "\n    " + d
+				}
+				addHint("package health", "warn", detail, "Run 'ctx install <pkg>' to repair")
+			}
+		}
+
+		// 10. Available adapters (package managers)
 		for _, pm := range []struct{ name, cmd string }{
 			{"brew", "brew"},
 			{"npm", "npm"},

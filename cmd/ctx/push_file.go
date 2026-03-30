@@ -17,10 +17,12 @@ import (
 )
 
 var flagBump string
+var flagForce bool
 
 func init() {
 	pushCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
+	publishCmd.Flags().BoolVar(&flagForce, "force", false, "Skip install method validation")
 }
 
 // singleFileOpts configures push vs publish behavior for single-file skills.

@@ -27,6 +27,7 @@ func DetectAdapters() []Adapter {
 		&BrewAdapter{},
 		&NpmAdapter{},
 		&PipAdapter{},
+		&GemAdapter{},
 		&CargoAdapter{},
 		&BinaryAdapter{},
 	}
@@ -68,6 +69,9 @@ func FindAdapter(spec InstallSpec) (Adapter, string, error) {
 	if spec.Pip != "" && commandExists("pip3") {
 		return &PipAdapter{}, spec.Pip, nil
 	}
+	if spec.Gem != "" && commandExists("gem") {
+		return &GemAdapter{}, spec.Gem, nil
+	}
 	if spec.Cargo != "" && commandExists("cargo") {
 		return &CargoAdapter{}, spec.Cargo, nil
 	}
@@ -99,9 +103,28 @@ type InstallSpec struct {
 	Brew      string
 	Npm       string
 	Pip       string
+	Gem       string
 	Cargo     string
 	Script    string
 	Platforms map[string]PlatformSpec
+}
+
+// FindByName returns an adapter by its name string.
+func FindByName(name string) (Adapter, error) {
+	adapters := map[string]Adapter{
+		"brew":   &BrewAdapter{},
+		"npm":    &NpmAdapter{},
+		"pip":    &PipAdapter{},
+		"gem":    &GemAdapter{},
+		"cargo":  &CargoAdapter{},
+		"script": &ScriptAdapter{},
+		"binary": &BinaryAdapter{},
+	}
+	a, ok := adapters[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown adapter: %s", name)
+	}
+	return a, nil
 }
 
 // PlatformSpec is platform-specific install options.

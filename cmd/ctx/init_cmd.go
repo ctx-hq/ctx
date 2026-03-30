@@ -31,15 +31,33 @@ type initInput struct {
 	sourceDir  string // absolute path to source dir (initFromDirectory)
 }
 
-// initMeta holds the parsed/prompted metadata for a skill.
+// initMeta holds the parsed/prompted metadata for a package.
 type initMeta struct {
+	// Common
 	name        string
 	description string
 	version     string
-	triggers    []string
-	invocable   bool
-	argHint     string
-	body        string // SKILL.md body content
+	pkgType     manifest.PackageType
+
+	// Skill
+	triggers  []string
+	invocable bool
+	argHint   string
+	body      string // SKILL.md body content
+
+	// CLI
+	binary        string
+	verify        string
+	installMethod string // brew, npm, pip, gem, cargo, script, binary
+	installPkg    string // the package identifier for the chosen method
+	authHint      string
+	bundlesSkill  bool
+
+	// MCP
+	transport string
+	command   string
+	mcpArgs   []string
+	mcpURL    string
 }
 
 var initCmd = &cobra.Command{
@@ -121,17 +139,38 @@ Examples:
 		}
 
 		// 9. Preview and confirm
-		output.Header("Skill Preview")
-		output.Table([][]string{
+		pkgTypePreview := meta.pkgType
+		if pkgTypePreview == "" {
+			pkgTypePreview = manifest.TypeSkill
+		}
+		output.Header("Package Preview")
+		previewRows := [][]string{
 			{"Name:", fullName},
 			{"Version:", meta.version},
-			{"Type:", "skill"},
+			{"Type:", string(pkgTypePreview)},
 			{"Description:", truncate(meta.description, 60)},
-			{"Target:", dest},
-		})
+		}
+		if meta.pkgType == manifest.TypeCLI {
+			previewRows = append(previewRows, []string{"Binary:", meta.binary})
+			previewRows = append(previewRows, []string{"Install:", meta.installMethod + ": " + meta.installPkg})
+			if meta.authHint != "" {
+				previewRows = append(previewRows, []string{"Auth:", truncate(meta.authHint, 50)})
+			}
+		}
+		if meta.pkgType == manifest.TypeMCP {
+			previewRows = append(previewRows, []string{"Transport:", meta.transport})
+			if meta.command != "" {
+				previewRows = append(previewRows, []string{"Command:", meta.command})
+			}
+			if meta.mcpURL != "" {
+				previewRows = append(previewRows, []string{"URL:", meta.mcpURL})
+			}
+		}
+		previewRows = append(previewRows, []string{"Target:", dest})
+		output.Table(previewRows)
 		fmt.Fprintln(os.Stderr) // blank line after table
 
-		confirmed, err := p.Confirm("Create skill?", true)
+		confirmed, err := p.Confirm("Create package?", true)
 		if err != nil {
 			return err
 		}
@@ -140,16 +179,47 @@ Examples:
 			return nil
 		}
 
-		// 10. Build manifest and SKILL.md
-		m := manifest.Scaffold(manifest.TypeSkill, scope, skillName)
+		// 10. Build manifest based on package type
+		pkgType := meta.pkgType
+		if pkgType == "" {
+			pkgType = manifest.TypeSkill
+		}
+		m := manifest.Scaffold(pkgType, scope, skillName)
 		m.Version = meta.version
 		m.Description = meta.description
-		m.Keywords = meta.triggers
-		if m.Skill == nil {
-			m.Skill = &manifest.SkillSpec{}
+
+		switch pkgType {
+		case manifest.TypeSkill:
+			m.Keywords = meta.triggers
+			if m.Skill == nil {
+				m.Skill = &manifest.SkillSpec{}
+			}
+			m.Skill.Entry = "SKILL.md"
+			m.Skill.UserInvocable = &meta.invocable
+
+		case manifest.TypeCLI:
+			m.CLI = &manifest.CLISpec{
+				Binary: meta.binary,
+				Verify: meta.verify,
+				Auth:   meta.authHint,
+			}
+			m.Install = buildInstallSpec(meta.installMethod, meta.installPkg)
+			if meta.bundlesSkill {
+				if m.Skill == nil {
+					m.Skill = &manifest.SkillSpec{}
+				}
+				m.Skill.Entry = "SKILL.md"
+				m.Skill.Origin = "native"
+			}
+
+		case manifest.TypeMCP:
+			m.MCP = &manifest.MCPSpec{
+				Transport: meta.transport,
+				Command:   meta.command,
+				Args:      meta.mcpArgs,
+				URL:       meta.mcpURL,
+			}
 		}
-		m.Skill.Entry = "SKILL.md"
-		m.Skill.UserInvocable = &meta.invocable
 
 		errs := manifest.Validate(m)
 		if len(errs) > 0 {
@@ -157,18 +227,6 @@ Examples:
 		}
 
 		manifestData, err := manifest.Marshal(m)
-		if err != nil {
-			return err
-		}
-
-		fm := &manifest.SkillFrontmatter{
-			Name:         skillName,
-			Description:  meta.description,
-			Triggers:     meta.triggers,
-			Invocable:    meta.invocable,
-			ArgumentHint: meta.argHint,
-		}
-		skillContent, err := manifest.RenderSkillMD(fm, meta.body)
 		if err != nil {
 			return err
 		}
@@ -188,12 +246,27 @@ Examples:
 			}
 		}
 
-		// Overwrite ctx.yaml and SKILL.md with normalized versions
+		// Overwrite ctx.yaml with normalized version
 		if err := stg.WriteFile("ctx.yaml", manifestData, 0o644); err != nil {
 			return fmt.Errorf("stage ctx.yaml: %w", err)
 		}
-		if err := stg.WriteFile("SKILL.md", skillContent, 0o644); err != nil {
-			return fmt.Errorf("stage SKILL.md: %w", err)
+
+		// Generate SKILL.md for skill packages or CLI packages that bundle a skill
+		if pkgType == manifest.TypeSkill || (pkgType == manifest.TypeCLI && meta.bundlesSkill) {
+			fm := &manifest.SkillFrontmatter{
+				Name:         skillName,
+				Description:  meta.description,
+				Triggers:     meta.triggers,
+				Invocable:    meta.invocable,
+				ArgumentHint: meta.argHint,
+			}
+			skillContent, err := manifest.RenderSkillMD(fm, meta.body)
+			if err != nil {
+				return err
+			}
+			if err := stg.WriteFile("SKILL.md", skillContent, 0o644); err != nil {
+				return fmt.Errorf("stage SKILL.md: %w", err)
+			}
 		}
 
 		if err := stg.Commit(dest); err != nil {
@@ -212,9 +285,11 @@ Examples:
 			}
 		}
 
-		// 13. Link to all detected agents
-		if linkErr := installer.LinkSkillToAgents(dest, skillName, fullName, ""); linkErr != nil {
-			output.Warn("Agent linking: %v", linkErr)
+		// 13. Link to all detected agents (if package has a skill component)
+		if pkgType == manifest.TypeSkill || (pkgType == manifest.TypeCLI && meta.bundlesSkill) {
+			if _, linkErr := installer.LinkSkillToAgents(dest, skillName, fullName, ""); linkErr != nil {
+				output.Warn("Agent linking: %v", linkErr)
+			}
 		}
 
 		// 14. Output
@@ -287,6 +362,7 @@ func parseInitSource(input initInput) (initMeta, error) {
 			name:      filepath.Base(cwd),
 			version:   "0.1.0",
 			invocable: true,
+			// pkgType left empty — will be prompted in promptMetadata
 		}, nil
 
 	case initFromFile:
@@ -308,6 +384,7 @@ func metaFromFrontmatter(fm *manifest.SkillFrontmatter, body, fallbackName strin
 		version:   "0.1.0",
 		invocable: true,
 		body:      body,
+		pkgType:   manifest.TypeSkill, // file/dir mode defaults to skill
 	}
 
 	if fm != nil {
@@ -366,12 +443,56 @@ func parseDirSource(dirPath string) (initMeta, error) {
 			name:        shortName,
 			description: m.Description,
 			version:     m.Version,
+			pkgType:     m.Type,
 		}
 		if m.Keywords != nil {
 			meta.triggers = m.Keywords
 		}
 		if m.Skill != nil && m.Skill.UserInvocable != nil {
 			meta.invocable = *m.Skill.UserInvocable
+		}
+
+		// Preserve CLI fields from existing ctx.yaml
+		if m.CLI != nil {
+			meta.binary = m.CLI.Binary
+			meta.verify = m.CLI.Verify
+			meta.authHint = m.CLI.Auth
+		}
+		if m.Install != nil {
+			switch {
+			case m.Install.Brew != "":
+				meta.installMethod = "brew"
+				meta.installPkg = m.Install.Brew
+			case m.Install.Npm != "":
+				meta.installMethod = "npm"
+				meta.installPkg = m.Install.Npm
+			case m.Install.Pip != "":
+				meta.installMethod = "pip"
+				meta.installPkg = m.Install.Pip
+			case m.Install.Gem != "":
+				meta.installMethod = "gem"
+				meta.installPkg = m.Install.Gem
+			case m.Install.Cargo != "":
+				meta.installMethod = "cargo"
+				meta.installPkg = m.Install.Cargo
+			case m.Install.Script != "":
+				meta.installMethod = "script"
+				meta.installPkg = m.Install.Script
+			case m.Install.Source != "":
+				meta.installMethod = "binary"
+				meta.installPkg = m.Install.Source
+			}
+		}
+		if m.Skill != nil && m.Type == manifest.TypeCLI {
+			meta.bundlesSkill = true
+		}
+
+		// Preserve MCP fields from existing ctx.yaml
+		if m.MCP != nil {
+			meta.transport = m.MCP.Transport
+			meta.command = m.MCP.Command
+			meta.mcpArgs = m.MCP.Args
+			meta.mcpURL = m.MCP.URL
 		}
 
 		// Read SKILL.md frontmatter + body to preserve fields like argument-hint
@@ -432,6 +553,174 @@ func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	meta.version, err = p.Text("Version", meta.version)
 	if err != nil {
 		return meta, err
+	}
+
+	// Package type selection (only for from-scratch mode where type isn't pre-set)
+	if meta.pkgType == "" {
+		typeIdx, err := p.Select("Package type", []string{"skill", "cli", "mcp"}, 0)
+		if err != nil {
+			return meta, err
+		}
+		types := []manifest.PackageType{manifest.TypeSkill, manifest.TypeCLI, manifest.TypeMCP}
+		meta.pkgType = types[typeIdx]
+	}
+
+	// Type-specific prompts
+	switch meta.pkgType {
+	case manifest.TypeCLI:
+		meta, err = promptCLIMeta(p, meta)
+	case manifest.TypeMCP:
+		meta, err = promptMCPMeta(p, meta)
+	}
+	if err != nil {
+		return meta, err
+	}
+
+	return meta, nil
+}
+
+// installMethods defines the available CLI install methods.
+var installMethods = []struct {
+	key   string
+	label string
+}{
+	{"brew", "brew (Homebrew formula/tap)"},
+	{"npm", "npm (npm package)"},
+	{"pip", "pip (Python package)"},
+	{"gem", "gem (Ruby gem)"},
+	{"cargo", "cargo (Rust crate)"},
+	{"script", "script (curl | sh URL)"},
+	{"binary", "binary (direct download URL)"},
+}
+
+// promptCLIMeta prompts for CLI-specific metadata.
+func promptCLIMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
+	var err error
+
+	if meta.binary == "" {
+		meta.binary = meta.name
+	}
+	meta.binary, err = p.Text("Binary name", meta.binary)
+	if err != nil {
+		return meta, err
+	}
+
+	defaultVerify := meta.binary + " --version"
+	if meta.verify == "" {
+		meta.verify = defaultVerify
+	}
+	meta.verify, err = p.Text("Verify command", meta.verify)
+	if err != nil {
+		return meta, err
+	}
+
+	// Install method selection
+	labels := make([]string, len(installMethods))
+	for i, m := range installMethods {
+		labels[i] = m.label
+	}
+	methodIdx, err := p.Select("Install method", labels, 0)
+	if err != nil {
+		return meta, err
+	}
+	meta.installMethod = installMethods[methodIdx].key
+
+	// Prompt for the package identifier based on chosen method
+	var pkgLabel string
+	switch meta.installMethod {
+	case "brew":
+		pkgLabel = "Brew formula/tap"
+	case "npm":
+		pkgLabel = "npm package"
+	case "pip":
+		pkgLabel = "pip package"
+	case "gem":
+		pkgLabel = "gem name"
+	case "cargo":
+		pkgLabel = "cargo crate"
+	case "script":
+		pkgLabel = "Script URL (https://)"
+	case "binary":
+		pkgLabel = "Binary download URL (https://)"
+	}
+	meta.installPkg, err = p.Text(pkgLabel, meta.installPkg)
+	if err != nil {
+		return meta, err
+	}
+
+	// Auth hint
+	meta.authHint, err = p.Text("Auth setup hint (leave empty if not needed)", meta.authHint)
+	if err != nil {
+		return meta, err
+	}
+
+	// Bundles a skill?
+	meta.bundlesSkill, err = p.Confirm("Bundles a SKILL.md?", false)
+	if err != nil {
+		return meta, err
+	}
+
+	return meta, nil
+}
+
+// buildInstallSpec creates a manifest InstallSpec from the chosen method and package.
+func buildInstallSpec(method, pkg string) *manifest.InstallSpec {
+	spec := &manifest.InstallSpec{}
+	switch method {
+	case "brew":
+		spec.Brew = pkg
+	case "npm":
+		spec.Npm = pkg
+	case "pip":
+		spec.Pip = pkg
+	case "gem":
+		spec.Gem = pkg
+	case "cargo":
+		spec.Cargo = pkg
+	case "script":
+		spec.Script = pkg
+	case "binary":
+		spec.Source = pkg
+	}
+	return spec
+}
+
+// promptMCPMeta prompts for MCP-specific metadata.
+func promptMCPMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
+	var err error
+
+	transports := []string{"stdio", "sse", "http", "streamable-http"}
+	transportIdx, err := p.Select("Transport", transports, 0)
+	if err != nil {
+		return meta, err
+	}
+	meta.transport = transports[transportIdx]
+
+	if meta.transport == "stdio" {
+		meta.command, err = p.Text("Command", meta.command)
+		if err != nil {
+			return meta, err
+		}
+		argsStr, err := p.Text("Arguments (comma-separated)", "")
+		if err != nil {
+			return meta, err
+		}
+		if argsStr != "" {
+			for _, arg := range strings.Split(argsStr, ",") {
+				arg = strings.TrimSpace(arg)
+				if arg != "" {
+					meta.mcpArgs = append(meta.mcpArgs, arg)
+				}
+			}
+		}
+	} else {
+		meta.mcpURL, err = p.Text("Server URL (https://...)", meta.mcpURL)
+		if err != nil {
+			return meta, err
+		}
+		if meta.mcpURL != "" && !strings.HasPrefix(meta.mcpURL, "https://") && !strings.HasPrefix(meta.mcpURL, "http://") {
+			return meta, fmt.Errorf("server URL must start with https:// or http://")
+		}
 	}
 
 	return meta, nil

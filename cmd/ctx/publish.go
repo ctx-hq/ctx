@@ -8,6 +8,8 @@ import (
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/prompt"
+	"github.com/ctx-hq/ctx/internal/publishcheck"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
@@ -79,6 +81,37 @@ Examples:
 				"validation failed: "+errs[0],
 				"Fix errors and try again",
 			)
+		}
+
+		// Validate install methods for CLI packages
+		var checkResults []publishcheck.CheckResult
+		if m.Type == manifest.TypeCLI && m.Install != nil && !flagForce {
+			checkResults = publishcheck.Check(cmd.Context(), m)
+			issues := 0
+			for _, r := range checkResults {
+				if !r.OK {
+					output.Warn("install.%s: %s — %s", r.Method, r.Pkg, r.Error)
+					issues++
+				}
+			}
+			if issues > 0 {
+				return output.ErrUsageHint(
+					fmt.Sprintf("%d install method(s) failed validation", issues),
+					"Fix your ctx.yaml or use --force to publish anyway",
+				)
+			}
+		}
+
+		// Pre-publish checklist (TTY only)
+		if !flagYes {
+			checklist := publishcheck.FormatChecklist(m, checkResults)
+			fmt.Fprintln(os.Stderr, checklist)
+			p := prompt.DefaultPrompter()
+			confirmed, pErr := p.Confirm("Publish?", true)
+			if pErr != nil || !confirmed {
+				output.Info("Cancelled.")
+				return nil
+			}
 		}
 
 		// Check auth

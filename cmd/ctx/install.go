@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
@@ -108,6 +110,15 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		return nil
 	}
 
+	// Collect state for tracking
+	pkgDir := filepath.Dir(result.InstallPath)
+	state := &installstate.PackageState{
+		FullName:    result.FullName,
+		Version:     result.Version,
+		Type:        result.Type,
+		InstalledAt: time.Now().UTC(),
+	}
+
 	switch manifest.PackageType(result.Type) {
 	case manifest.TypeCLI:
 		// Script installs require explicit user confirmation
@@ -119,24 +130,52 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 				return fmt.Errorf("script installation cancelled by user")
 			}
 		}
-		if err := installer.InstallCLI(cmd.Context(), &m); err != nil {
+		cliState, err := installer.InstallCLI(cmd.Context(), &m)
+		if err != nil {
 			return fmt.Errorf("CLI install: %w", err)
 		}
+		state.CLI = cliState
+
 		// CLI packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			if linkErr != nil {
+				output.Warn("Skill linking: %v", linkErr)
+			}
+			state.Skills = skillStates
 		}
+
+		// Show auth hint
+		if m.CLI != nil && m.CLI.Auth != "" {
+			output.Warn(m.CLI.Auth)
+		}
+
 	case manifest.TypeSkill:
-		return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+		skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+		if linkErr != nil {
+			output.Warn("Skill linking: %v", linkErr)
+		}
+		state.Skills = skillStates
+
 	case manifest.TypeMCP:
-		if err := installer.LinkMCPToAgents(&m); err != nil {
+		mcpStates, err := installer.LinkMCPToAgents(&m)
+		if err != nil {
 			output.Warn("MCP config: %v", err)
 		}
+		state.MCP = mcpStates
 		// MCP packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			return installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(result.InstallPath, m.ShortName(), result.FullName, caller)
+			if linkErr != nil {
+				output.Warn("Skill linking: %v", linkErr)
+			}
+			state.Skills = skillStates
 		}
 	}
+
+	// Save installation state for repair/uninstall
+	_ = state.Save(pkgDir) // best effort
+
 	return nil
 }
 

@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ctx-hq/ctx/internal/adapter"
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
@@ -208,7 +210,16 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		return fmt.Errorf("package %s is not installed", fullName)
 	}
 
-	// 1. Clean up links first (symlinks, MCP configs)
+	// 1. Use state.json to uninstall CLI via the original adapter
+	state, _ := installstate.Load(pkgDir)
+	if state != nil && state.CLI != nil && state.CLI.Adapter != "" {
+		a, aErr := adapter.FindByName(state.CLI.Adapter)
+		if aErr == nil {
+			_ = a.Uninstall(ctx, state.CLI.AdapterPkg) // best effort
+		}
+	}
+
+	// 2. Clean up links (symlinks, MCP configs)
 	links, linkErr := LoadLinks()
 	if linkErr == nil {
 		entries := links.Remove(fullName)
@@ -216,7 +227,7 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		_ = links.Save() // best effort
 	}
 
-	// 2. Remove entire package directory (all versions + current symlink)
+	// 3. Remove entire package directory (all versions + current symlink + state.json)
 	if err := os.RemoveAll(pkgDir); err != nil {
 		return fmt.Errorf("remove package dir: %w", err)
 	}

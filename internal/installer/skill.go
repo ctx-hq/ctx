@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 
 	"github.com/ctx-hq/ctx/internal/agent"
+	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // LinkSkillToAgents links an installed skill to all detected agents and records
 // the links in the LinkRegistry for later cleanup. If caller is non-empty, that
 // agent is linked first and marked as the invoking agent.
-func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
+// Returns the list of skill states for tracking in state.json.
+func LinkSkillToAgents(installDir, skillName, fullName, caller string) ([]installstate.SkillState, error) {
 	agents := agent.DetectAll()
 
 	links, linkErr := LoadLinks()
@@ -20,6 +22,7 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 	}
 
 	linked := make(map[string]bool)
+	var skillStates []installstate.SkillState
 
 	// Link caller agent first if specified
 	if caller != "" {
@@ -27,16 +30,19 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 		if err != nil {
 			output.Warn("Caller agent %q not recognized: %v", caller, err)
 		} else {
+			target := filepath.Join(a.SkillsDir(), skillName)
 			if err := a.InstallSkill(installDir, skillName); err != nil {
 				output.Warn("Failed to link to %s: %v", a.Name(), err)
+				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			} else {
 				output.PrintDim("  Linked to: %s (caller)", a.Name())
 				links.Add(fullName, LinkEntry{
 					Agent:  a.Name(),
 					Type:   LinkSymlink,
 					Source: installDir,
-					Target: filepath.Join(a.SkillsDir(), skillName),
+					Target: target,
 				})
+				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "ok"})
 				linked[a.Name()] = true
 			}
 		}
@@ -47,8 +53,10 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 		if linked[a.Name()] {
 			continue
 		}
+		target := filepath.Join(a.SkillsDir(), skillName)
 		if err := a.InstallSkill(installDir, skillName); err != nil {
 			output.Warn("Failed to link to %s: %v", a.Name(), err)
+			skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			continue
 		}
 		output.PrintDim("  Linked to: %s", a.Name())
@@ -57,8 +65,9 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 			Agent:  a.Name(),
 			Type:   LinkSymlink,
 			Source: installDir,
-			Target: filepath.Join(a.SkillsDir(), skillName),
+			Target: target,
 		})
+		skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "ok"})
 		linked[a.Name()] = true
 	}
 
@@ -67,7 +76,7 @@ func LinkSkillToAgents(installDir, skillName, fullName, caller string) error {
 	}
 
 	_ = links.Save() // best effort
-	return nil
+	return skillStates, nil
 }
 
 // UnlinkSkillFromAgents removes a skill from all detected agents.
