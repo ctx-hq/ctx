@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/ctx-hq/ctx/compare/v0.19.0...v0.19.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* **installer:** support YAML manifest parsing from registry ([f67cf97](https://github.com/ctx-hq/ctx/commit/f67cf9708205bb9a9bf3c44752faf32588160941))
+
 ## [0.19.0](https://github.com/ctx-hq/ctx/compare/v0.18.0...v0.19.0) (2026-03-30)
 
 
