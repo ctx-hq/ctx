@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/ctx-hq/ctx/compare/v0.19.2...v0.20.0) (2026-03-30)
+
+
+### Features
+
+* **output:** add --verbose global flag with context-based diagnostic logging ([ca0a38a](https://github.com/ctx-hq/ctx/commit/ca0a38a30c717f9ce2ef16fe20c4ea7162cd7c62))
+
 ## [0.19.2](https://github.com/ctx-hq/ctx/compare/v0.19.1...v0.19.2) (2026-03-30)
 
 
