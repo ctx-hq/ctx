@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/ctx-hq/ctx/compare/v0.17.1...v0.17.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* **init:** fix post-init breadcrumb push path and align docs with skill requirement ([7df4cf3](https://github.com/ctx-hq/ctx/commit/7df4cf3ed3a74128c9b450ab1c0c32cd45988daf))
+
 ## [0.17.1](https://github.com/ctx-hq/ctx/compare/v0.17.0...v0.17.1) (2026-03-30)
 
 
