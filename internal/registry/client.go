@@ -465,3 +465,130 @@ func parseError(resp *http.Response) error {
 	}
 	return &APIError{StatusCode: resp.StatusCode, Msg: msg}
 }
+
+// --- Transfer APIs ---
+
+// InitiateTransfer starts a package transfer to another scope.
+func (c *Client) InitiateTransfer(ctx context.Context, fullName, to, message string) (*TransferRequest, error) {
+	path := fmt.Sprintf("/v1/packages/%s/transfer", url.PathEscape(fullName))
+	body := map[string]string{"to": to}
+	if message != "" {
+		body["message"] = message
+	}
+	var result TransferRequest
+	if err := c.post(ctx, path, body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CancelTransfer cancels a pending package transfer.
+func (c *Client) CancelTransfer(ctx context.Context, fullName string) error {
+	path := fmt.Sprintf("/v1/packages/%s/transfer", url.PathEscape(fullName))
+	return c.doDelete(ctx, path)
+}
+
+// ListMyTransfers lists incoming transfer requests.
+func (c *Client) ListMyTransfers(ctx context.Context) ([]TransferRequest, error) {
+	var result struct {
+		Transfers []TransferRequest `json:"transfers"`
+	}
+	if err := c.get(ctx, "/v1/me/transfers", &result); err != nil {
+		return nil, err
+	}
+	return result.Transfers, nil
+}
+
+// AcceptTransfer accepts a transfer request.
+func (c *Client) AcceptTransfer(ctx context.Context, transferID string) error {
+	return c.post(ctx, "/v1/me/transfers/"+url.PathEscape(transferID)+"/accept", nil, nil)
+}
+
+// DeclineTransfer declines a transfer request.
+func (c *Client) DeclineTransfer(ctx context.Context, transferID string) error {
+	return c.post(ctx, "/v1/me/transfers/"+url.PathEscape(transferID)+"/decline", nil, nil)
+}
+
+// --- Rename APIs ---
+
+// RenamePackage renames a package within the same scope.
+func (c *Client) RenamePackage(ctx context.Context, fullName, newName, confirm string) (*RenameResult, error) {
+	path := fmt.Sprintf("/v1/packages/%s/rename", url.PathEscape(fullName))
+	var result RenameResult
+	if err := c.doJSON(ctx, "PATCH", path, map[string]string{"new_name": newName, "confirm": confirm}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// RenameOrg renames an organization.
+func (c *Client) RenameOrg(ctx context.Context, orgName, newName, confirm string) (*RenameResult, error) {
+	path := fmt.Sprintf("/v1/orgs/%s/rename", url.PathEscape(orgName))
+	var result RenameResult
+	if err := c.doJSON(ctx, "PATCH", path, map[string]string{"new_name": newName, "confirm": confirm}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// RenameUser renames the current user.
+func (c *Client) RenameUser(ctx context.Context, newUsername, confirm string) (*RenameResult, error) {
+	var result RenameResult
+	if err := c.doJSON(ctx, "PATCH", "/v1/me/rename", map[string]string{"new_username": newUsername, "confirm": confirm}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// --- Notification APIs ---
+
+// ListNotifications lists user notifications.
+func (c *Client) ListNotifications(ctx context.Context, unreadOnly bool) ([]Notification, error) {
+	var result struct {
+		Notifications []Notification `json:"notifications"`
+	}
+	path := "/v1/me/notifications"
+	if unreadOnly {
+		path += "?unread_only=true"
+	}
+	if err := c.get(ctx, path, &result); err != nil {
+		return nil, err
+	}
+	return result.Notifications, nil
+}
+
+// MarkNotificationRead marks a notification as read.
+func (c *Client) MarkNotificationRead(ctx context.Context, id string) error {
+	return c.doPatch(ctx, "/v1/me/notifications/"+url.PathEscape(id), map[string]bool{"read": true})
+}
+
+// DismissNotification dismisses a notification.
+func (c *Client) DismissNotification(ctx context.Context, id string) error {
+	return c.doDelete(ctx, "/v1/me/notifications/"+url.PathEscape(id))
+}
+
+// --- Org Lifecycle APIs ---
+
+// ArchiveOrg archives an organization (freeze publishing).
+func (c *Client) ArchiveOrg(ctx context.Context, name string) error {
+	return c.post(ctx, "/v1/orgs/"+url.PathEscape(name)+"/archive", nil, nil)
+}
+
+// UnarchiveOrg unarchives an organization.
+func (c *Client) UnarchiveOrg(ctx context.Context, name string) error {
+	return c.post(ctx, "/v1/orgs/"+url.PathEscape(name)+"/unarchive", nil, nil)
+}
+
+// LeaveOrg leaves an organization.
+func (c *Client) LeaveOrg(ctx context.Context, name string) error {
+	return c.post(ctx, "/v1/orgs/"+url.PathEscape(name)+"/leave", nil, nil)
+}
+
+// DissolveOrg dissolves an organization.
+func (c *Client) DissolveOrg(ctx context.Context, name, action, transferTo, confirm string) error {
+	body := map[string]string{"action": action, "confirm": confirm}
+	if transferTo != "" {
+		body["transfer_to"] = transferTo
+	}
+	return c.post(ctx, "/v1/orgs/"+url.PathEscape(name)+"/dissolve", body, nil)
+}

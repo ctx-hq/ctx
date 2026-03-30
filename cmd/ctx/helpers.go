@@ -6,6 +6,9 @@ import (
 
 	"github.com/ctx-hq/ctx/internal/auth"
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/spf13/cobra"
 )
 
 // getToken returns the current auth token from keychain or config fallback.
@@ -18,6 +21,24 @@ func getToken() string {
 		return ""
 	}
 	return token
+}
+
+// authedRegistry returns a Writer and authenticated registry Client.
+// It checks online status, auth token, and loads config in one call.
+func authedRegistry(cmd *cobra.Command) (*output.Writer, *registry.Client, error) {
+	if err := requireOnline(); err != nil {
+		return nil, nil, err
+	}
+	w := getWriter(cmd)
+	token := getToken()
+	if token == "" {
+		return nil, nil, output.ErrAuth("not logged in")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading config: %w", err)
+	}
+	return w, registry.New(cfg.RegistryURL(), token), nil
 }
 
 // requireOnline returns an error if offline mode is active (via --offline flag

@@ -326,9 +326,10 @@ var orgDeleteCmd = &cobra.Command{
 		}
 
 		if !flagYes {
-			output.Warn("This will permanently delete organization @%s", args[0])
-			output.Info("Use --yes to confirm")
-			return nil
+			return output.ErrUsageHint(
+				fmt.Sprintf("this will permanently delete organization @%s", args[0]),
+				"Run with --yes to confirm",
+			)
 		}
 
 		cfg, err := config.Load()
@@ -348,11 +349,162 @@ var orgDeleteCmd = &cobra.Command{
 	},
 }
 
+var orgArchiveCmd = &cobra.Command{
+	Use:   "archive <name>",
+	Short: "Archive an organization (freeze publishing)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		w, reg, err := authedRegistry(cmd)
+		if err != nil {
+			return err
+		}
+
+		if err := reg.ArchiveOrg(cmd.Context(), args[0]); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"archived": args[0]},
+			output.WithSummary("Archived organization @"+args[0]),
+		)
+	},
+}
+
+var orgUnarchiveCmd = &cobra.Command{
+	Use:   "unarchive <name>",
+	Short: "Unarchive an organization",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		w, reg, err := authedRegistry(cmd)
+		if err != nil {
+			return err
+		}
+
+		if err := reg.UnarchiveOrg(cmd.Context(), args[0]); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"unarchived": args[0]},
+			output.WithSummary("Unarchived organization @"+args[0]),
+		)
+	},
+}
+
+var orgLeaveCmd = &cobra.Command{
+	Use:   "leave <name>",
+	Short: "Leave an organization",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		w, reg, err := authedRegistry(cmd)
+		if err != nil {
+			return err
+		}
+
+		if err := reg.LeaveOrg(cmd.Context(), args[0]); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"left": args[0]},
+			output.WithSummary("Left organization @"+args[0]),
+		)
+	},
+}
+
+var orgRenameCmd = &cobra.Command{
+	Use:   "rename <old-name> <new-name>",
+	Short: "Rename an organization",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		w, reg, err := authedRegistry(cmd)
+		if err != nil {
+			return err
+		}
+
+		if !flagYes {
+			return output.ErrUsageHint(
+				fmt.Sprintf("this will rename organization @%s to @%s", args[0], args[1]),
+				"Run with --yes to confirm",
+			)
+		}
+
+		result, err := reg.RenameOrg(cmd.Context(), args[0], args[1], args[0])
+		if err != nil {
+			return err
+		}
+
+		return w.OK(result,
+			output.WithSummary(fmt.Sprintf("Renamed organization @%s → @%s", args[0], args[1])),
+		)
+	},
+}
+
+var orgDissolveAction string
+var orgDissolveTransferTo string
+
+var orgDissolveCmd = &cobra.Command{
+	Use:   "dissolve <name>",
+	Short: "Dissolve an organization",
+	Long: `Dissolve an organization. Requires --yes to confirm.
+
+Use --action to specify what happens to packages:
+  delete      Delete all packages (default)
+  transfer    Transfer packages to another scope (requires --transfer-to)
+
+Examples:
+  ctx org dissolve myteam --yes
+  ctx org dissolve myteam --action transfer --transfer-to @alice --yes`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		w, reg, err := authedRegistry(cmd)
+		if err != nil {
+			return err
+		}
+
+		switch orgDissolveAction {
+		case "delete":
+			// ok
+		case "transfer":
+			if orgDissolveTransferTo == "" {
+				return output.ErrUsageHint(
+					"--transfer-to is required when using --action transfer",
+					"Example: ctx org dissolve myteam --action transfer --transfer-to @alice --yes",
+				)
+			}
+		default:
+			return output.ErrUsageHint(
+				fmt.Sprintf("unknown action %q", orgDissolveAction),
+				"Valid actions: delete, transfer",
+			)
+		}
+
+		if !flagYes {
+			return output.ErrUsageHint(
+				fmt.Sprintf("this will permanently dissolve organization @%s", args[0]),
+				"Run with --yes to confirm",
+			)
+		}
+
+		if err := reg.DissolveOrg(cmd.Context(), args[0], orgDissolveAction, orgDissolveTransferTo, args[0]); err != nil {
+			return err
+		}
+
+		return w.OK(
+			map[string]string{"dissolved": args[0]},
+			output.WithSummary("Dissolved organization @"+args[0]),
+		)
+	},
+}
+
 func init() {
 	orgCreateCmd.Flags().StringVar(&orgDisplayName, "display-name", "", "Display name for the organization")
 	orgAddCmd.Flags().String("role", "member", "Member role (owner, admin, member)")
 
 	orgInviteCmd.Flags().String("role", "member", "Member role (owner, admin, member)")
+
+	orgDissolveCmd.Flags().StringVar(&orgDissolveAction, "action", "delete", "Action for packages (delete, transfer)")
+	orgDissolveCmd.Flags().StringVar(&orgDissolveTransferTo, "transfer-to", "", "Target scope for package transfer (with --action transfer)")
 
 	orgCmd.AddCommand(orgCreateCmd)
 	orgCmd.AddCommand(orgInfoCmd)
@@ -364,5 +516,10 @@ func init() {
 	orgCmd.AddCommand(orgInviteCmd)
 	orgCmd.AddCommand(orgInvitationsCmd)
 	orgCmd.AddCommand(orgCancelInviteCmd)
+	orgCmd.AddCommand(orgArchiveCmd)
+	orgCmd.AddCommand(orgUnarchiveCmd)
+	orgCmd.AddCommand(orgLeaveCmd)
+	orgCmd.AddCommand(orgRenameCmd)
+	orgCmd.AddCommand(orgDissolveCmd)
 	rootCmd.AddCommand(orgCmd)
 }

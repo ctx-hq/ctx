@@ -226,3 +226,34 @@ type SyncProfileMeta struct {
 	LastPushDevice  string `json:"last_push_device,omitempty"`
 	LastPullDevice  string `json:"last_pull_device,omitempty"`
 }
+
+// TransferRequest represents a package transfer request.
+type TransferRequest struct {
+	ID        string `json:"id"`
+	Package   string `json:"package"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Status    string `json:"status"`
+	Message   string `json:"message,omitempty"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+// Notification represents a user notification.
+type Notification struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Read      bool   `json:"read"`
+	CreatedAt string `json:"created_at"`
+}
+
+// RenameResult represents the result of a rename operation.
+type RenameResult struct {
+	OldName         string `json:"old_name,omitempty"`
+	NewName         string `json:"new_name,omitempty"`
+	OldUsername     string `json:"old_username,omitempty"`
+	NewUsername     string `json:"new_username,omitempty"`
+	PackagesUpdated int    `json:"packages_updated,omitempty"`
+}
