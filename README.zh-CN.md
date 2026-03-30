@@ -219,6 +219,10 @@ version: "2.1.0"
 type: mcp
 description: "GitHub MCP 服务器"
 
+skill:
+  entry: "skills/github-mcp/SKILL.md"
+  origin: native
+
 mcp:
   transport: stdio
   command: npx
@@ -239,6 +243,10 @@ name: "@community/ripgrep"
 version: "14.1.0"
 type: cli
 description: "快速正则搜索工具"
+
+skill:
+  entry: "skills/ripgrep/SKILL.md"
+  origin: native
 
 cli:
   binary: rg

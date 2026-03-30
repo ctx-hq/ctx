@@ -75,13 +75,13 @@ var stagingExcludes = []string{
 type pushMode int
 
 const (
-	pushModeScan pushMode = iota // no args → scan ~/.ctx/skills/
+	pushModeScan pushMode = iota // no args → push current directory
 	pushModeDir                  // explicit directory
 	pushModeName                 // resolve by skill name
 	pushModeFile                 // single .md file
 )
 
-// skillEntry is a discovered skill in ~/.ctx/skills/.
+// skillEntry is a discovered skill (from scan or explicit path).
 type skillEntry struct {
 	FullName string
 	Dir      string
@@ -104,21 +104,20 @@ var pushCmd = &cobra.Command{
 	Short: "Push skills to the registry as private packages",
 	Long: `Push skills to the registry as private, mutable packages.
 
-Without arguments, scans ~/.ctx/skills/ for modified or unpushed skills
-and offers to push them interactively.
+Without arguments, pushes the current directory (must contain ctx.yaml).
 
-With a name argument, resolves the skill from ~/.ctx/skills/ by short name.
 With a path argument, pushes the specified directory or .md file.
+With a name argument, resolves the skill from ~/.ctx/skills/ by short name.
 
 Examples:
-  ctx push                    Scan and push modified skills (interactive)
-  ctx push gc                 Push skill by name
+  ctx push                    Push current directory
+  ctx push .                  Push current directory (explicit)
+  ctx push ./my-skill         Push a specific directory
+  ctx push gc.md              Push a single .md file
+  ctx push gc                 Push skill by name (from ~/.ctx/skills/)
   ctx push --all              Push all modified skills without confirmation
   ctx push --status           Show push status of all skills
   ctx push --dry-run          Preview what would be pushed
-  ctx push .                  Push current directory
-  ctx push ./my-skill         Push a specific directory
-  ctx push gc.md              Push a single .md file
   ctx push gc.md --bump patch Bump version and push`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

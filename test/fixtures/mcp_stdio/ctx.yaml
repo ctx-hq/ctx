@@ -3,6 +3,9 @@ version: "2.1.0"
 type: mcp
 description: "GitHub MCP server for repository operations"
 keywords: [github, git, mcp]
+skill:
+  entry: "skills/github-mcp/SKILL.md"
+  origin: native
 mcp:
   transport: stdio
   command: npx

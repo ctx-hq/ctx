@@ -5,6 +5,9 @@ description: "Fast regex-based search tool, better alternative to grep"
 keywords: [search, grep, regex, cli]
 license: MIT
 repository: "https://github.com/BurntSushi/ripgrep"
+skill:
+  entry: "skills/ripgrep/SKILL.md"
+  origin: native
 cli:
   binary: rg
   verify: "rg --version"

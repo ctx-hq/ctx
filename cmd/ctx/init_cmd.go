@@ -265,7 +265,7 @@ Examples:
 			output.WithSummary(fmt.Sprintf("Created %s (%s)", fullName, meta.version)),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "edit", Command: "edit " + skillAbsPath, Description: "Edit skill content"},
-				output.Breadcrumb{Action: "publish", Command: "ctx push " + fullName, Description: "Publish to registry"},
+				output.Breadcrumb{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
 			),
 		)
 	},
