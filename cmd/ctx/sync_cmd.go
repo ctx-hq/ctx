@@ -74,6 +74,10 @@ var syncExportCmd = &cobra.Command{
 			opts = append(opts, output.WithNotice(fmt.Sprintf("%d packages have no remote source. Run 'ctx push' in their directories to make them syncable.", unsyncable)))
 		}
 
+		opts = append(opts, output.WithBreadcrumbs(
+			output.Breadcrumb{Action: "push", Command: "ctx sync push", Description: "Upload profile to registry"},
+		))
+
 		return w.OK(result, opts...)
 	},
 }
@@ -182,6 +186,10 @@ var syncPullCmd = &cobra.Command{
 		return w.OK(
 			map[string]interface{}{"restored": restored, "skipped": skipped},
 			output.WithSummary(fmt.Sprintf("Restored %d/%d packages", restored, len(resp.Profile.Packages))),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "list", Command: "ctx ls", Description: "List installed packages"},
+				output.Breadcrumb{Action: "doctor", Command: "ctx doctor", Description: "Verify installation health"},
+			),
 		)
 	},
 }
@@ -221,6 +229,10 @@ var syncStatusCmd = &cobra.Command{
 				"Synced %d packages (%d syncable)",
 				resp.Meta.PackageCount, resp.Meta.SyncableCount,
 			)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "pull", Command: "ctx sync pull", Description: "Restore on this device"},
+				output.Breadcrumb{Action: "push", Command: "ctx sync push", Description: "Upload latest state"},
+			),
 		)
 	},
 }

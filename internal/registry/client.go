@@ -34,6 +34,11 @@ func New(baseURL, token string) *Client {
 
 // Search searches packages.
 func (c *Client) Search(ctx context.Context, query string, pkgType string, platform string, limit int) (*SearchResult, error) {
+	return c.SearchWithOffset(ctx, query, pkgType, platform, limit, 0)
+}
+
+// SearchWithOffset searches the registry with pagination support.
+func (c *Client) SearchWithOffset(ctx context.Context, query string, pkgType string, platform string, limit int, offset int) (*SearchResult, error) {
 	params := url.Values{"q": {query}}
 	if pkgType != "" {
 		params.Set("type", pkgType)
@@ -43,6 +48,9 @@ func (c *Client) Search(ctx context.Context, query string, pkgType string, platf
 	}
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if offset > 0 {
+		params.Set("offset", fmt.Sprintf("%d", offset))
 	}
 
 	var result SearchResult

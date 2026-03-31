@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"sync"
+
+	"golang.org/x/term"
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/tui/component"
+	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
 )
 
@@ -110,6 +116,34 @@ Examples:
 			)
 		}
 
+		// Phase 2.5: Let user select which packages to update (TTY + multiple packages + not --yes)
+		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+		if isTTY && !flagYes && !w.IsMachine() && len(needsUpdate) > 1 && len(args) == 0 {
+			items := make([]component.MultiSelectorItem, len(needsUpdate))
+			for i, t := range needsUpdate {
+				items[i] = component.MultiSelectorItem{
+					Label:    fmt.Sprintf("%s  %s → %s", t.entry.FullName, t.entry.Version, t.newVersion),
+					Selected: true,
+				}
+			}
+			selected, selectErr := inline.SelectFromItems(items, "Select packages to update:")
+			if selectErr != nil {
+				return selectErr
+			}
+			if len(selected) == 0 {
+				return w.OK([]any{}, output.WithSummary("no packages selected for update"))
+			}
+			if len(selected) < len(needsUpdate) {
+				filtered := make([]updateTarget, 0, len(selected))
+				for _, idx := range selected {
+					if idx >= 0 && idx < len(needsUpdate) {
+						filtered = append(filtered, needsUpdate[idx])
+					}
+				}
+				needsUpdate = filtered
+			}
+		}
+
 		// Phase 3: Parallel download with bounded concurrency
 		type updateResult struct {
 			FullName   string `json:"full_name"`
@@ -122,52 +156,76 @@ Examples:
 		}
 
 		results := make([]updateResult, len(needsUpdate))
-		sem := make(chan struct{}, maxParallelDownloads)
-		var wg sync.WaitGroup
 
-		for idx, target := range needsUpdate {
-			wg.Add(1)
-			go func(i int, t updateTarget) {
-				defer wg.Done()
-				sem <- struct{}{}        // acquire
-				defer func() { <-sem }() // release
+		downloadAll := func(_ context.Context, report func(float64)) error {
+			sem := make(chan struct{}, maxParallelDownloads)
+			var wg sync.WaitGroup
+			var completed int64
+			var mu sync.Mutex
 
-				res, m, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
-				if err != nil {
-					results[i] = updateResult{
-						FullName:   t.entry.FullName,
-						OldVersion: t.entry.Version,
-						NewVersion: t.entry.Version,
-						Updated:    false,
-						Error:      err.Error(),
+			for idx, target := range needsUpdate {
+				wg.Add(1)
+				go func(i int, t updateTarget) {
+					defer wg.Done()
+					sem <- struct{}{}        // acquire
+					defer func() { <-sem }() // release
+
+					res, m, err := inst.InstallFiles(cmd.Context(), t.entry.FullName+"@"+t.newVersion)
+					if err != nil {
+						results[i] = updateResult{
+							FullName:   t.entry.FullName,
+							OldVersion: t.entry.Version,
+							NewVersion: t.entry.Version,
+							Updated:    false,
+							Error:      err.Error(),
+						}
+					} else {
+						r := updateResult{
+							FullName:   t.entry.FullName,
+							OldVersion: t.entry.Version,
+							NewVersion: res.Version,
+							Updated:    res.Version != t.entry.Version,
+						}
+						if m != nil {
+							r.postInstall = &installer.InstallResult{
+								FullName:    res.FullName,
+								Version:     res.Version,
+								Type:        string(m.Type),
+								InstallPath: inst.CurrentLink(res.FullName),
+								Source:      res.Source,
+							}
+						}
+						results[i] = r
 					}
-					return
-				}
 
-				r := updateResult{
-					FullName:   t.entry.FullName,
-					OldVersion: t.entry.Version,
-					NewVersion: res.Version,
-					Updated:    res.Version != t.entry.Version,
-				}
-				if m != nil {
-					r.postInstall = &installer.InstallResult{
-						FullName:    res.FullName,
-						Version:     res.Version,
-						Type:        string(m.Type),
-						InstallPath: inst.CurrentLink(res.FullName),
-						Source:      res.Source,
-					}
-				}
-				results[i] = r
-			}(idx, target)
+					mu.Lock()
+					completed++
+					report(float64(completed) / float64(len(needsUpdate)))
+					mu.Unlock()
+				}(idx, target)
+			}
+			wg.Wait()
+			return nil
 		}
-		wg.Wait()
+
+		if isTTY && !flagYes && !w.IsMachine() {
+			if progressErr := inline.RunWithProgress(
+				cmd.Context(),
+				fmt.Sprintf("Updating %d package(s)", len(needsUpdate)),
+				downloadAll,
+			); progressErr != nil {
+				return progressErr
+			}
+		} else {
+			if dlErr := downloadAll(cmd.Context(), func(float64) {}); dlErr != nil {
+				return dlErr
+			}
+		}
 
 		// Phase 3.5: Sequential post-install linking (avoids concurrent writes to links.json / agent configs)
 		for _, r := range results {
 			if r.postInstall != nil {
-				if err := runPostInstall(cmd, r.postInstall, ""); err != nil {
+				if err := runPostInstall(cmd, r.postInstall, "", nil); err != nil {
 					output.Warn("Post-install link for %s: %v", r.FullName, err)
 				}
 			}
@@ -193,6 +251,9 @@ Examples:
 
 		return w.OK(results,
 			output.WithSummary(summary),
+			output.WithMeta("checked", len(toCheck)),
+			output.WithMeta("updated", updatedCount),
+			output.WithMeta("failed", failedCount),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "list", Command: "ctx ls", Description: "List installed packages"},
 				output.Breadcrumb{Action: "outdated", Command: "ctx od", Description: "Check for updates"},

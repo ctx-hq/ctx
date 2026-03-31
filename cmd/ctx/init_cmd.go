@@ -10,7 +10,9 @@ import (
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
+	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // initMode describes how ctx init was invoked.
@@ -106,8 +108,10 @@ Examples:
 		var p prompt.Prompter
 		if flagYes {
 			p = prompt.NoopPrompter{}
+		} else if term.IsTerminal(int(os.Stdin.Fd())) {
+			p = inline.NewBubblePrompter()
 		} else {
-			p = prompt.DefaultPrompter()
+			p = prompt.NoopPrompter{}
 		}
 
 		// 6. Interactive metadata prompts

@@ -13,6 +13,7 @@ var (
 	searchType     string
 	searchPlatform string
 	searchLimit    int
+	searchOffset   int
 )
 
 var searchCmd = &cobra.Command{
@@ -45,13 +46,17 @@ Examples:
 		}
 
 		reg := registry.New(cfg.RegistryURL(), getToken())
-		result, err := reg.Search(cmd.Context(), args[0], searchType, searchPlatform, searchLimit)
+		result, err := reg.SearchWithOffset(cmd.Context(), args[0], searchType, searchPlatform, searchLimit, searchOffset)
 		if err != nil {
 			return err
 		}
 
 		return w.OK(result.Packages,
 			output.WithSummary(fmt.Sprintf("%d results", result.Total)),
+			output.WithMeta("total", result.Total),
+			output.WithMeta("limit", searchLimit),
+			output.WithMeta("offset", searchOffset),
+			output.WithMeta("has_more", result.Total > searchOffset+searchLimit),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "info", Command: "ctx info <package>", Description: "View package details"},
 				output.Breadcrumb{Action: "install", Command: "ctx i <package>", Description: "Install a package"},
@@ -64,4 +69,5 @@ func init() {
 	searchCmd.Flags().StringVarP(&searchType, "type", "t", "", "Filter by type (skill, mcp, cli)")
 	searchCmd.Flags().StringVarP(&searchPlatform, "platform", "p", "", "Filter by platform")
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", 20, "Max results")
+	searchCmd.Flags().IntVar(&searchOffset, "offset", 0, "Offset for pagination")
 }

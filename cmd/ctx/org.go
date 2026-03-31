@@ -84,6 +84,10 @@ var orgInfoCmd = &cobra.Command{
 
 		return w.OK(result,
 			output.WithSummary(fmt.Sprintf("@%s — %d members, %d packages", args[0], result.Members, result.Packages)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "packages", Command: "ctx org packages " + args[0], Description: "List org packages"},
+				output.Breadcrumb{Action: "add member", Command: "ctx org add " + args[0] + " <user>", Description: "Add team member"},
+			),
 		)
 	},
 }
@@ -112,7 +116,13 @@ var orgListCmd = &cobra.Command{
 			return err
 		}
 
-		return w.OK(orgs, output.WithSummary(fmt.Sprintf("%d organizations", len(orgs))))
+		return w.OK(orgs,
+			output.WithSummary(fmt.Sprintf("%d organizations", len(orgs))),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "create", Command: "ctx org create <name>", Description: "Create new organization"},
+				output.Breadcrumb{Action: "info", Command: "ctx org info <name>", Description: "View org details"},
+			),
+		)
 	},
 }
 
@@ -137,7 +147,13 @@ var orgPackagesCmd = &cobra.Command{
 			return err
 		}
 
-		return w.OK(pkgs, output.WithSummary(fmt.Sprintf("%d packages in @%s", len(pkgs), args[0])))
+		return w.OK(pkgs,
+			output.WithSummary(fmt.Sprintf("%d packages in @%s", len(pkgs), args[0])),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "publish", Command: "ctx publish", Description: "Publish to @" + args[0]},
+				output.Breadcrumb{Action: "info", Command: "ctx org info " + args[0], Description: "View org details"},
+			),
+		)
 	},
 }
 
@@ -174,6 +190,9 @@ var orgAddCmd = &cobra.Command{
 		return w.OK(
 			map[string]string{"org": args[0], "username": args[1], "role": role},
 			output.WithSummary(fmt.Sprintf("Added %s to @%s as %s", args[1], args[0], role)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "info", Command: "ctx org info " + args[0], Description: "View org details"},
+			),
 		)
 	},
 }
@@ -205,6 +224,9 @@ var orgRemoveCmd = &cobra.Command{
 		return w.OK(
 			map[string]string{"org": args[0], "removed": args[1]},
 			output.WithSummary(fmt.Sprintf("Removed %s from @%s", args[1], args[0])),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "info", Command: "ctx org info " + args[0], Description: "View org details"},
+			),
 		)
 	},
 }
@@ -276,6 +298,9 @@ var orgInvitationsCmd = &cobra.Command{
 
 		return w.OK(invitations,
 			output.WithSummary(fmt.Sprintf("%d invitations for @%s", len(invitations), args[0])),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "invite", Command: "ctx org invite " + args[0] + " <user>", Description: "Send new invitation"},
+			),
 		)
 	},
 }

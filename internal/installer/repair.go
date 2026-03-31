@@ -69,7 +69,7 @@ func Repair(ctx context.Context, m *manifest.Manifest, pkgDir, installPath, full
 			// Symlink is broken — re-link
 			output.Info("Skill link for %s broken, re-linking...", s.Agent)
 			if m != nil {
-				_, _ = LinkSkillToAgents(ctx, installPath, m.ShortName(), fullName, caller)
+				_, _ = LinkSkillToAgents(ctx, installPath, m.ShortName(), fullName, caller, nil)
 			}
 			// Re-check
 			if _, err := os.Stat(s.SymlinkPath); err == nil {

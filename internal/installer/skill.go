@@ -12,11 +12,15 @@ import (
 
 // LinkSkillToAgents links an installed skill to all detected agents and records
 // the links in the LinkRegistry for later cleanup. If caller is non-empty, that
-// agent is linked first and marked as the invoking agent.
+// agent is linked first and marked as the invoking agent. If targetAgents is
+// non-nil, only those agents are linked instead of all detected agents.
 // Returns the list of skill states for tracking in state.json.
-func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, caller string) ([]installstate.SkillState, error) {
+func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, caller string, targetAgents []agent.Agent) ([]installstate.SkillState, error) {
 	output.Verbose(ctx, "linking skill %s to detected agents", skillName)
-	agents := agent.DetectAll()
+	agents := targetAgents
+	if agents == nil {
+		agents = agent.DetectAll()
+	}
 
 	links, linkErr := LoadLinks()
 	if linkErr != nil {

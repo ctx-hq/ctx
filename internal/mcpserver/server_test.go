@@ -62,8 +62,8 @@ func TestHandleToolsList(t *testing.T) {
 		t.Fatal("tools is not an array")
 	}
 
-	if len(tools) != 4 {
-		t.Errorf("expected 4 tools, got %d", len(tools))
+	if len(tools) != 9 {
+		t.Errorf("expected 9 tools, got %d", len(tools))
 	}
 
 	// Verify tool names
@@ -71,7 +71,7 @@ func TestHandleToolsList(t *testing.T) {
 	for _, tool := range tools {
 		names[tool["name"].(string)] = true
 	}
-	for _, expected := range []string{"ctx_search", "ctx_install", "ctx_info", "ctx_list"} {
+	for _, expected := range []string{"ctx_search", "ctx_install", "ctx_info", "ctx_list", "ctx_remove", "ctx_update", "ctx_outdated", "ctx_doctor", "ctx_agents"} {
 		if !names[expected] {
 			t.Errorf("missing tool: %s", expected)
 		}

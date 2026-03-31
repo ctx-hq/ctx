@@ -95,7 +95,13 @@ Examples:
 			summary = fmt.Sprintf("removed %d version(s), freed %s", totalRemoved, formatBytes(totalFreed))
 		}
 
-		return w.OK(results, output.WithSummary(summary))
+		return w.OK(results,
+			output.WithSummary(summary),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "list", Command: "ctx ls", Description: "List installed packages"},
+				output.Breadcrumb{Action: "update", Command: "ctx update", Description: "Update packages to latest"},
+			),
+		)
 	},
 }
 

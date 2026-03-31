@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"time"
 
+	"golang.org/x/term"
+
+	"github.com/ctx-hq/ctx/internal/agent"
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/installstate"
@@ -14,6 +18,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/prompt"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
 )
 
@@ -45,14 +50,48 @@ Examples:
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 
-		output.Info("Resolving %s...", args[0])
-		result, err := inst.Install(cmd.Context(), args[0])
+		// Install with progress bar when TTY is available
+		var result *installer.InstallResult
+		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+		if isTTY && !flagYes && !w.IsMachine() {
+			err = inline.RunWithProgress(cmd.Context(), "Installing "+args[0], func(_ context.Context, report func(float64)) error {
+				report(0.1)
+				r, installErr := inst.Install(cmd.Context(), args[0])
+				if installErr != nil {
+					return installErr
+				}
+				result = r
+				report(1.0)
+				return nil
+			})
+		} else {
+			output.Info("Resolving %s...", args[0])
+			result, err = inst.Install(cmd.Context(), args[0])
+		}
 		if err != nil {
 			return err
 		}
 
+		// Resolve caller: --caller flag takes precedence, fallback to CTX_CALLER env
+		caller := flagCaller
+		if caller == "" {
+			caller = os.Getenv("CTX_CALLER")
+		}
+
+		// Agent selection: let user pick target agents when TTY and not --yes
+		var selectedAgents []agent.Agent
+		if isTTY && !flagYes && !w.IsMachine() && caller == "" {
+			agents := agent.DetectAll()
+			if len(agents) > 1 {
+				selected, selectErr := inline.SelectAgents(agents)
+				if selectErr == nil && selected != nil {
+					selectedAgents = selected
+				}
+			}
+		}
+
 		// Run type-specific post-install actions (linking)
-		if err := runPostInstall(cmd, result, flagCaller); err != nil {
+		if err := runPostInstall(cmd, result, caller, selectedAgents); err != nil {
 			output.Warn("Post-install: %v", err)
 		}
 
@@ -79,6 +118,8 @@ Examples:
 
 		opts := []output.ResponseOption{
 			output.WithSummary(result.FullName + "@" + result.Version + " " + action),
+			output.WithMeta("type", result.Type),
+			output.WithMeta("source", result.Source),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "info", Command: "ctx info " + result.FullName, Description: "View package details"},
 				output.Breadcrumb{Action: "list", Command: "ctx ls", Description: "List installed packages"},
@@ -97,7 +138,7 @@ func init() {
 }
 
 // runPostInstall performs type-specific actions after a package is installed.
-func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller string) error {
+func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller string, targetAgents []agent.Agent) error {
 	// Load the manifest from the installed package
 	manifestPath := filepath.Join(result.InstallPath, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
@@ -146,7 +187,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 		// CLI packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 			if linkErr != nil {
 				output.Warn("Skill linking: %v", linkErr)
 			}
@@ -159,7 +200,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		}
 
 	case manifest.TypeSkill:
-		skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
+		skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 		if linkErr != nil {
 			output.Warn("Skill linking: %v", linkErr)
 		}
@@ -173,7 +214,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		state.MCP = mcpStates
 		// MCP packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
-			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller)
+			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 			if linkErr != nil {
 				output.Warn("Skill linking: %v", linkErr)
 			}

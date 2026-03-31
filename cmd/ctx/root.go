@@ -65,8 +65,9 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 			return err
 		}
 
-		// Verbose is silently ignored when quiet or agent mode is active
-		verbose := flagVerbose && !flagQuiet && !flagAgent
+		// Verbose is silently ignored when quiet mode is active.
+		// Agent mode allows verbose for structured diagnostic output.
+		verbose := flagVerbose && !flagQuiet
 
 		// Create Writer and attach to context
 		w := output.NewWriter(output.WithFormat(format))

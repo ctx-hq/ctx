@@ -463,7 +463,7 @@ func ResolveFormat(jsonFlag, quietFlag, styledFlag, mdFlag, idsFlag, countFlag, 
 	case countFlag:
 		return FormatCount, nil
 	case agentFlag:
-		return FormatQuiet, nil // agent mode = quiet + JSON errors
+		return FormatQuiet, nil // agent mode = quiet (bare data JSON) for backwards compatibility
 	default:
 		return FormatAuto, nil
 	}

@@ -51,6 +51,7 @@ var listCmd = &cobra.Command{
 
 		return w.OK(entries,
 			output.WithSummary(fmt.Sprintf("%d packages installed", len(entries))),
+			output.WithMeta("total", len(entries)),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "info", Command: "ctx info <package>", Description: "View package details"},
 				output.Breadcrumb{Action: "update", Command: "ctx up", Description: "Update all packages"},

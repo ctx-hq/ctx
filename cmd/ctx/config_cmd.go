@@ -70,7 +70,12 @@ var configListCmd = &cobra.Command{
 			settings["network_mode"] = "online"
 		}
 
-		return w.OK(settings)
+		return w.OK(settings,
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "set", Command: "ctx config set <key> <value>", Description: "Change a setting"},
+				output.Breadcrumb{Action: "doctor", Command: "ctx doctor", Description: "Check environment health"},
+			),
+		)
 	},
 }
 
@@ -105,7 +110,11 @@ var configGetCmd = &cobra.Command{
 			return w.Err(output.ErrUsage(fmt.Sprintf("unknown config key: %s", key)))
 		}
 
-		return w.OK(map[string]any{key: value})
+		return w.OK(map[string]any{key: value},
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "list", Command: "ctx config list", Description: "View all settings"},
+			),
+		)
 	},
 }
 
@@ -150,7 +159,12 @@ var configSetCmd = &cobra.Command{
 			return w.Err(output.ErrUsage(fmt.Sprintf("failed to save config: %v", err)))
 		}
 
-		return w.OK(map[string]any{"set": key, "value": value})
+		return w.OK(map[string]any{"set": key, "value": value},
+			output.WithSummary(fmt.Sprintf("Set %s = %s", key, value)),
+			output.WithBreadcrumbs(
+				output.Breadcrumb{Action: "list", Command: "ctx config list", Description: "View all settings"},
+			),
+		)
 	},
 }
 
