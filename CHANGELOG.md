@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/ctx-hq/ctx/compare/v0.23.0...v0.23.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **skill:** include refactored description truncation in patch release ([e07bd3d](https://github.com/ctx-hq/ctx/commit/e07bd3d64f1b43d752d757afe399022c163965ea))
+
 ## [0.23.0](https://github.com/ctx-hq/ctx/compare/v0.22.2...v0.23.0) (2026-03-31)
 
 
