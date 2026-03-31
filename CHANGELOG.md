@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/ctx-hq/ctx/compare/v0.22.2...v0.23.0) (2026-03-31)
+
+
+### Features
+
+* **mcp:** make skill optional for MCP packages, improve test diagnostics ([3f91943](https://github.com/ctx-hq/ctx/commit/3f9194383535e00109bedca3a651d25c1013a2fa))
+
 ## [0.22.2](https://github.com/ctx-hq/ctx/compare/v0.22.1...v0.22.2) (2026-03-31)
 
 
