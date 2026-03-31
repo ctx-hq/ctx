@@ -209,6 +209,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 	case manifest.TypeMCP:
 		// Prompt for required env vars that are not yet stored
+		var missingEnvVars []string // collected inside the block, read after it
 		if m.MCP != nil && len(m.MCP.Env) > 0 {
 			store, loadErr := secrets.Load()
 			if loadErr != nil {
@@ -233,8 +234,11 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 					if promptErr == nil && val != "" {
 						store.Set(m.Name, e.Name, val)
 						changed = true
+						continue
 					}
 				}
+				// Still missing after prompt attempt (skipped, empty, or non-TTY)
+				missingEnvVars = append(missingEnvVars, e.Name)
 			}
 			if changed {
 				_ = store.Save()
@@ -247,16 +251,32 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		}
 		state.MCP = mcpStates
 
-		// Hint about testing
-		output.PrintDim("  Tip: Run 'ctx mcp test %s' to verify the server", m.ShortName())
-		// MCP packages may bundle a SKILL.md — link it to agents
+		// MCP packages may bundle a SKILL.md — link silently (MCP config already printed agent list)
 		if hasSkillMD(result.InstallPath) {
-			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
+			quietCtx := context.WithValue(cmd.Context(), installer.QuietLinkKey, true)
+			skillStates, linkErr := installer.LinkSkillToAgents(quietCtx, result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 			if linkErr != nil {
 				output.Warn("Skill linking: %v", linkErr)
 			}
 			state.Skills = skillStates
 		}
+
+		// Post-install guidance
+		output.PrintDim("")
+		if len(missingEnvVars) > 0 {
+			output.Warn("Required environment variables not set:")
+			for _, name := range missingEnvVars {
+				output.PrintDim("    %s", name)
+			}
+			output.Info("Set them with:")
+			for _, name := range missingEnvVars {
+				output.PrintDim("    ctx mcp env set %s %s=<value>", m.Name, name)
+			}
+			output.Info("Then re-link to agents:")
+			output.PrintDim("    ctx install %s", m.Name)
+			output.PrintDim("")
+		}
+		output.PrintDim("  Next: ctx mcp test %s", m.ShortName())
 	}
 
 	// Save installation state for repair/uninstall

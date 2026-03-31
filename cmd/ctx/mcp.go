@@ -137,9 +137,13 @@ func printTestResult(w *output.Writer, name string, result *mcpclient.TestResult
 		output.PrintDim("  %s %s%s%s", icon, step.Name, detail, elapsed)
 	}
 
+	const stderrPrefix = "  stderr: "
 	summary := fmt.Sprintf("%s: %s (%s)", name, result.Status, result.Duration.Round(time.Millisecond))
 	if result.Stderr != "" {
-		output.PrintDim("  stderr: %s", strings.TrimSpace(result.Stderr))
+		stderr := truncateStderr(result.Stderr, 5, len(stderrPrefix))
+		if stderr != "" {
+			output.PrintDim("%s%s", stderrPrefix, stderr)
+		}
 	}
 
 	return w.OK(result,
@@ -355,6 +359,45 @@ func manifestToConnectOpts(m *manifest.Manifest, timeout time.Duration) mcpclien
 	}
 
 	return opts
+}
+
+// stderrNoisePatterns lists substrings used to filter noisy stderr lines
+// (e.g. Docker pull progress) from MCP server test output.
+var stderrNoisePatterns = []string{
+	": Pulling fs layer",
+	": Waiting",
+	": Download complete",
+	": Pull complete",
+	": Verifying Checksum",
+}
+
+// truncateStderr returns the last maxLines non-empty lines of stderr output.
+// Lines are indented by prefixLen spaces for alignment. Returns empty string
+// if stderr is all whitespace.
+func truncateStderr(stderr string, maxLines, prefixLen int) string {
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	// Filter out empty lines and docker pull progress noise
+	var meaningful []string
+outer:
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		for _, pattern := range stderrNoisePatterns {
+			if strings.Contains(line, pattern) {
+				continue outer
+			}
+		}
+		meaningful = append(meaningful, line)
+	}
+	if len(meaningful) == 0 {
+		return ""
+	}
+	if len(meaningful) > maxLines {
+		meaningful = meaningful[len(meaningful)-maxLines:]
+	}
+	return strings.Join(meaningful, "\n"+strings.Repeat(" ", prefixLen))
 }
 
 func maskValue(v string) string {

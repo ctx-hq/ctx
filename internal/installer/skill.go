@@ -10,12 +10,20 @@ import (
 	"github.com/ctx-hq/ctx/internal/output"
 )
 
+// quietLinkKey suppresses "Linked to:" output when set in context.
+type quietLinkKeyType struct{}
+
+// QuietLinkKey can be set in context to suppress skill linking output.
+// Use context.WithValue(ctx, installer.QuietLinkKey, true).
+var QuietLinkKey = quietLinkKeyType{}
+
 // LinkSkillToAgents links an installed skill to all detected agents and records
 // the links in the LinkRegistry for later cleanup. If caller is non-empty, that
 // agent is linked first and marked as the invoking agent. If targetAgents is
 // non-nil, only those agents are linked instead of all detected agents.
 // Returns the list of skill states for tracking in state.json.
 func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, caller string, targetAgents []agent.Agent) ([]installstate.SkillState, error) {
+	quiet, _ := ctx.Value(QuietLinkKey).(bool)
 	output.Verbose(ctx, "linking skill %s to detected agents", skillName)
 	agents := targetAgents
 	if agents == nil {
@@ -41,7 +49,9 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 				output.Warn("Failed to link to %s: %v", a.Name(), err)
 				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			} else {
-				output.PrintDim("  Linked to: %s (caller)", a.Name())
+				if !quiet {
+					output.PrintDim("  Linked to: %s (caller)", a.Name())
+				}
 				links.Add(fullName, LinkEntry{
 					Agent:  a.Name(),
 					Type:   LinkSymlink,
@@ -65,7 +75,9 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 			skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			continue
 		}
-		output.PrintDim("  Linked to: %s", a.Name())
+		if !quiet {
+			output.PrintDim("  Linked to: %s", a.Name())
+		}
 
 		links.Add(fullName, LinkEntry{
 			Agent:  a.Name(),

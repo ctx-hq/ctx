@@ -28,8 +28,15 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.
 	if len(m.MCP.Env) > 0 {
 		cfg.Env = make(map[string]string)
 		for _, e := range m.MCP.Env {
-			if e.Default != "" {
-				cfg.Env[e.Name] = e.Default
+			// Always include required vars so agents know the key exists.
+			// Use "<required>" placeholder when no default is set, to avoid
+			// passing an empty string to the MCP server at runtime.
+			if e.Required || e.Default != "" {
+				v := e.Default
+				if v == "" && e.Required {
+					v = "<required>"
+				}
+				cfg.Env[e.Name] = v
 			}
 		}
 	}

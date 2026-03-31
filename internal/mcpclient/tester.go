@@ -161,19 +161,8 @@ func validateTools(actual []ToolInfo, declared []string) StepResult {
 		parts = append(parts, fmt.Sprintf("undeclared: %v", extra))
 	}
 	step.Status = "fail"
-	step.Detail = joinParts(parts)
+	step.Detail = strings.Join(parts, "; ")
 	return step
-}
-
-func joinParts(parts []string) string {
-	var b strings.Builder
-	for i, p := range parts {
-		if i > 0 {
-			b.WriteString("; ")
-		}
-		b.WriteString(p)
-	}
-	return b.String()
 }
 
 func formatConnectDetail(opts ConnectOptions) string {
@@ -181,7 +170,7 @@ func formatConnectDetail(opts ConnectOptions) string {
 		return fmt.Sprintf("HTTP %s", opts.URL)
 	}
 	if len(opts.Args) > 0 {
-		return fmt.Sprintf("%s %s", opts.Command, joinParts(opts.Args))
+		return fmt.Sprintf("%s %s", opts.Command, strings.Join(opts.Args, " "))
 	}
 	return opts.Command
 }
