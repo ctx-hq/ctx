@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.0](https://github.com/ctx-hq/ctx/compare/v0.21.1...v0.22.0) (2026-03-31)
+
+
+### Features
+
+* add MCP client, protocol layer, secrets management and agent-native enhancements ([5642375](https://github.com/ctx-hq/ctx/commit/5642375a785d76334fe067d3d781645b1d200a59))
+* **tui:** rewrite TUI as dual-pane browser with mode-switching architecture ([3a580f8](https://github.com/ctx-hq/ctx/commit/3a580f869d07542c71d60200770647c12b9a421e))
+
 ## [0.21.1](https://github.com/ctx-hq/ctx/compare/v0.21.0...v0.21.1) (2026-03-31)
 
 
