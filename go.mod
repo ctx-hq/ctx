@@ -33,6 +33,4 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 )
 
-// TODO: Remove once charm.land/bubbles/v2 is publicly released.
-// bubbletea/v2 and lipgloss/v2 are published, but bubbles/v2 is not yet.
-replace charm.land/bubbles/v2 => ../refs/bubbles
+replace charm.land/bubbles/v2 => github.com/charmbracelet/bubbles/v2 v2.1.0
