@@ -69,12 +69,44 @@ func runMCPTestSingle(ctx context.Context, w *output.Writer, inst *installer.Ins
 	}
 
 	opts := manifestToConnectOpts(m, mcpTestTimeout)
-	result, err := mcpclient.RunTest(ctx, opts, m.MCP.Tools)
+	result, err := runTestWithProgress(ctx, m.ShortName(), opts, m.MCP.Tools)
 	if err != nil {
 		return err
 	}
-
 	return printTestResult(w, m.ShortName(), result)
+}
+
+// runTestWithProgress wraps mcpclient.RunTest with a progress indicator.
+func runTestWithProgress(ctx context.Context, name string, opts mcpclient.ConnectOptions, tools []string) (*mcpclient.TestResult, error) {
+	type testOut struct {
+		result *mcpclient.TestResult
+		err    error
+	}
+	ch := make(chan testOut, 1)
+	go func() {
+		r, e := mcpclient.RunTest(ctx, opts, tools)
+		ch <- testOut{r, e}
+	}()
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	dots := 0
+	output.PrintDim("  Connecting to %s...", name)
+
+	for {
+		select {
+		case out := <-ch:
+			fmt.Fprint(os.Stderr, "\r\033[K")
+			return out.result, out.err
+		case <-ticker.C:
+			dots++
+			fmt.Fprintf(os.Stderr, "\r\033[K")
+			output.PrintDim("  Waiting for server to respond... (%ds)", dots*3)
+			if dots >= 3 {
+				ticker.Stop()
+			}
+		}
+	}
 }
 
 func runMCPTestAll(ctx context.Context, w *output.Writer, inst *installer.Installer) error {
@@ -103,7 +135,7 @@ func runMCPTestAll(ctx context.Context, w *output.Writer, inst *installer.Instal
 		}
 
 		opts := manifestToConnectOpts(m, mcpTestTimeout)
-		result, err := mcpclient.RunTest(ctx, opts, m.MCP.Tools)
+		result, err := runTestWithProgress(ctx, m.ShortName(), opts, m.MCP.Tools)
 		if err != nil {
 			output.Warn("Skipping %s: %v", e.FullName, err)
 			continue
@@ -143,6 +175,28 @@ func printTestResult(w *output.Writer, name string, result *mcpclient.TestResult
 		stderr := truncateStderr(result.Stderr, 5, len(stderrPrefix))
 		if stderr != "" {
 			output.PrintDim("%s%s", stderrPrefix, stderr)
+		}
+	}
+
+	// Actionable hints on failure
+	if result.Status == "fail" {
+		for _, step := range result.Steps {
+			if step.Status != "fail" {
+				continue
+			}
+			if strings.Contains(step.Detail, "INITIALIZATION_TIMEOUT") {
+				fmt.Fprintln(os.Stderr)
+				output.Warn("Server did not respond in time. Possible causes:")
+				output.PrintDim("    1. First run — npx/docker still downloading (try: --timeout %s)", mcpTestTimeout*2)
+				output.PrintDim("    2. Missing auth — server needs credentials (e.g. az login, API key)")
+				output.PrintDim("    3. Server error — run manually to see output:")
+				output.PrintDim("       %s", formatManualCommand(result))
+			} else if strings.Contains(step.Detail, "PROCESS_SPAWN_ERROR") {
+				fmt.Fprintln(os.Stderr)
+				output.Warn("Could not start the server. Is the command installed?")
+				output.PrintDim("    Run manually: %s", formatManualCommand(result))
+			}
+			break
 		}
 	}
 
@@ -400,6 +454,14 @@ outer:
 	return strings.Join(meaningful, "\n"+strings.Repeat(" ", prefixLen))
 }
 
+// formatManualCommand returns a copy-pasteable command from the test result.
+func formatManualCommand(result *mcpclient.TestResult) string {
+	if result.Command != "" {
+		return result.Command
+	}
+	return "(command not available)"
+}
+
 func maskValue(v string) string {
 	if len(v) <= 4 {
 		return "****"
@@ -408,7 +470,7 @@ func maskValue(v string) string {
 }
 
 func init() {
-	mcpTestCmd.Flags().DurationVar(&mcpTestTimeout, "timeout", 10*time.Second, "Test timeout")
+	mcpTestCmd.Flags().DurationVar(&mcpTestTimeout, "timeout", 120*time.Second, "Test timeout")
 	mcpEnvListCmd.Flags().BoolVar(&mcpEnvShowSecrets, "show", false, "Show actual values (default: masked)")
 
 	mcpEnvCmd.AddCommand(mcpEnvSetCmd, mcpEnvListCmd, mcpEnvDeleteCmd)

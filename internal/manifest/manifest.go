@@ -74,11 +74,18 @@ func Validate(m *Manifest) []string {
 		errs = append(errs, "description must be 1024 characters or less")
 	}
 
-	// All types require a skill section — agents need instructions to use any package.
-	if m.Skill == nil || m.Skill.Entry == "" {
-		errs = append(errs, "skill section with entry is required (agents need instructions)")
-	} else if filepath.IsAbs(m.Skill.Entry) || strings.Contains(filepath.Clean(m.Skill.Entry), "..") {
-		errs = append(errs, "skill.entry must be a relative path within the project (no absolute paths or ..)")
+	// Skill section: required for skill/cli types, optional for MCP.
+	// MCP servers are self-describing via tools/list, so SKILL.md is optional
+	// (but recommended for providing additional context to agents).
+	if m.Type != TypeMCP {
+		if m.Skill == nil || m.Skill.Entry == "" {
+			errs = append(errs, "skill section with entry is required (agents need instructions)")
+		}
+	}
+	if m.Skill != nil && m.Skill.Entry != "" {
+		if filepath.IsAbs(m.Skill.Entry) || strings.Contains(filepath.Clean(m.Skill.Entry), "..") {
+			errs = append(errs, "skill.entry must be a relative path within the project (no absolute paths or ..)")
+		}
 	}
 
 	// Type-specific validation
@@ -172,21 +179,18 @@ func Scaffold(pkgType PackageType, scope, name string) *Manifest {
 		Description: fmt.Sprintf("A %s package", pkgType),
 	}
 
-	// All types include a skill section — agents need instructions.
-	m.Skill = &SkillSpec{Entry: "SKILL.md"}
-
 	switch pkgType {
 	case TypeSkill:
-		// skill section already set above
+		m.Skill = &SkillSpec{Entry: "SKILL.md"}
 	case TypeMCP:
-		m.Skill.Entry = fmt.Sprintf("skills/%s/SKILL.md", name)
+		// MCP servers are self-describing — skill is optional
 		m.MCP = &MCPSpec{
 			Transport: "stdio",
 			Command:   "node",
 			Args:      []string{"dist/index.js"},
 		}
 	case TypeCLI:
-		m.Skill.Entry = fmt.Sprintf("skills/%s/SKILL.md", name)
+		m.Skill = &SkillSpec{Entry: fmt.Sprintf("skills/%s/SKILL.md", name)}
 		m.CLI = &CLISpec{
 			Binary: name,
 			Verify: fmt.Sprintf("%s --version", name),

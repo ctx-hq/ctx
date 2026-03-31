@@ -26,24 +26,26 @@ type ConnectOptions struct {
 	Args      []string          // (stdio) arguments
 	Env       map[string]string // (stdio) extra env vars
 	URL       string            // (http) endpoint URL
-	Timeout   time.Duration     // overall timeout; 0 means 10s default
+	Timeout   time.Duration     // overall timeout; 0 means 120s default
 }
 
 func (o *ConnectOptions) timeout() time.Duration {
 	if o.Timeout > 0 {
 		return o.Timeout
 	}
-	return 10 * time.Second
+	return 120 * time.Second
 }
 
 // Client is a connected MCP client. Call Close when done.
 type Client struct {
-	stdin   io.WriteCloser
-	stdout  *bufio.Reader
-	stderr  *bytes.Buffer
-	cmd     *exec.Cmd
-	httpURL string
-	nextID  atomic.Int64
+	stdin    io.WriteCloser
+	stdout   *bufio.Reader
+	stderr   *bytes.Buffer
+	cmd      *exec.Cmd
+	waitDone chan struct{} // closed when cmd.Wait() returns
+	waitErr  error        // result of cmd.Wait()
+	httpURL  string
+	nextID   atomic.Int64
 }
 
 // MCPProtocolVersion is the MCP protocol version this client supports.
@@ -109,12 +111,19 @@ func connectStdio(ctx context.Context, opts ConnectOptions) (*Client, error) {
 		}
 	}
 
-	return &Client{
-		stdin:  stdinPipe,
-		stdout: bufio.NewReader(stdoutPipe),
-		stderr: &stderr,
-		cmd:    cmd,
-	}, nil
+	c := &Client{
+		stdin:    stdinPipe,
+		stdout:   bufio.NewReader(stdoutPipe),
+		stderr:   &stderr,
+		cmd:      cmd,
+		waitDone: make(chan struct{}),
+	}
+	// Monitor process lifecycle in background
+	go func() {
+		c.waitErr = cmd.Wait()
+		close(c.waitDone)
+	}()
+	return c, nil
 }
 
 func connectHTTP(opts ConnectOptions) (*Client, error) {
@@ -179,14 +188,13 @@ func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 func (c *Client) Close() error {
 	if c.cmd != nil {
 		_ = c.stdin.Close()
-		// Give the process a moment to exit gracefully
-		done := make(chan error, 1)
-		go func() { done <- c.cmd.Wait() }()
+		// Wait for the process — it's already being waited on by the background goroutine
 		select {
-		case <-done:
+		case <-c.waitDone:
+			// Already exited
 		case <-time.After(3 * time.Second):
 			_ = c.cmd.Process.Kill()
-			<-done
+			<-c.waitDone
 		}
 	}
 	return nil
@@ -232,7 +240,7 @@ func (c *Client) callStdio(ctx context.Context, method string, params any) (any,
 		return nil, &MCPError{Code: ErrConnectionFailed, Message: "write request", Detail: err.Error()}
 	}
 
-	// Read response with timeout
+	// Read response — also monitor for early process exit
 	type readResult struct {
 		body []byte
 		err  error
@@ -243,28 +251,50 @@ func (c *Client) callStdio(ctx context.Context, method string, params any) (any,
 		ch <- readResult{body, err}
 	}()
 
+	// Wait for response, context cancellation, or process exit
+	var r readResult
 	select {
 	case <-ctx.Done():
 		return nil, &MCPError{Code: ErrInitializationTimeout, Message: "context cancelled", Detail: ctx.Err().Error()}
-	case r := <-ch:
-		if r.err != nil {
-			detail := r.err.Error()
-			if stderr := c.Stderr(); stderr != "" {
-				detail += "\nstderr: " + strings.TrimSpace(stderr)
+	case <-c.waitDone:
+		// Process exited — give the reader a moment to deliver any buffered response
+		select {
+		case r = <-ch:
+			// Got a response (possibly just before exit)
+		case <-time.After(100 * time.Millisecond):
+			detail := "server process exited before responding"
+			if c.waitErr != nil {
+				detail += ": " + c.waitErr.Error()
 			}
-			return nil, &MCPError{Code: ErrConnectionFailed, Message: "read response", Detail: detail}
+			if stderr := c.Stderr(); stderr != "" {
+				lines := strings.Split(strings.TrimSpace(stderr), "\n")
+				if len(lines) > 5 {
+					lines = lines[len(lines)-5:]
+				}
+				detail += "\n" + strings.Join(lines, "\n")
+			}
+			return nil, &MCPError{Code: ErrProcessSpawnError, Message: "process exited", Detail: detail}
 		}
-
-		var resp mcpproto.Response
-		if err := json.Unmarshal(r.body, &resp); err != nil {
-			return nil, &MCPError{Code: ErrProtocolError, Message: "unmarshal response", Detail: err.Error()}
-		}
-		if resp.Error != nil {
-			detail, _ := json.Marshal(resp.Error)
-			return nil, &MCPError{Code: ErrProtocolError, Message: "server error", Detail: string(detail)}
-		}
-		return resp.Result, nil
+	case r = <-ch:
 	}
+
+	if r.err != nil {
+		detail := r.err.Error()
+		if stderr := c.Stderr(); stderr != "" {
+			detail += "\nstderr: " + strings.TrimSpace(stderr)
+		}
+		return nil, &MCPError{Code: ErrConnectionFailed, Message: "read response", Detail: detail}
+	}
+
+	var resp mcpproto.Response
+	if err := json.Unmarshal(r.body, &resp); err != nil {
+		return nil, &MCPError{Code: ErrProtocolError, Message: "unmarshal response", Detail: err.Error()}
+	}
+	if resp.Error != nil {
+		detail, _ := json.Marshal(resp.Error)
+		return nil, &MCPError{Code: ErrProtocolError, Message: "server error", Detail: string(detail)}
+	}
+	return resp.Result, nil
 }
 
 func (c *Client) callHTTP(ctx context.Context, method string, params any) (any, error) {

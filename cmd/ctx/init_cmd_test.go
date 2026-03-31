@@ -658,22 +658,31 @@ func TestScaffold_AllTypesHaveSkill(t *testing.T) {
 	for _, tt := range []struct {
 		pkgType       manifest.PackageType
 		expectedEntry string
+		skillOptional bool
 	}{
-		{manifest.TypeSkill, "SKILL.md"},
-		{manifest.TypeCLI, "skills/test-pkg/SKILL.md"},
-		{manifest.TypeMCP, "skills/test-pkg/SKILL.md"},
+		{manifest.TypeSkill, "SKILL.md", false},
+		{manifest.TypeCLI, "skills/test-pkg/SKILL.md", false},
+		{manifest.TypeMCP, "", true}, // MCP: skill is optional
 	} {
 		m := manifest.Scaffold(tt.pkgType, "local", "test-pkg")
-		if m.Skill == nil {
-			t.Errorf("%s: Skill should not be nil", tt.pkgType)
-			continue
-		}
-		if m.Skill.Entry != tt.expectedEntry {
-			t.Errorf("%s: Skill.Entry = %q, want %q", tt.pkgType, m.Skill.Entry, tt.expectedEntry)
-		}
-		errs := manifest.Validate(m)
-		if len(errs) > 0 {
-			t.Errorf("%s: validation errors: %v", tt.pkgType, errs)
+		if tt.skillOptional {
+			// MCP: Skill may be nil, that's OK
+			errs := manifest.Validate(m)
+			if len(errs) > 0 {
+				t.Errorf("%s: validation errors: %v", tt.pkgType, errs)
+			}
+		} else {
+			if m.Skill == nil {
+				t.Errorf("%s: Skill should not be nil", tt.pkgType)
+				continue
+			}
+			if m.Skill.Entry != tt.expectedEntry {
+				t.Errorf("%s: Skill.Entry = %q, want %q", tt.pkgType, m.Skill.Entry, tt.expectedEntry)
+			}
+			errs := manifest.Validate(m)
+			if len(errs) > 0 {
+				t.Errorf("%s: validation errors: %v", tt.pkgType, errs)
+			}
 		}
 	}
 }

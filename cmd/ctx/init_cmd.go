@@ -61,6 +61,11 @@ type initMeta struct {
 	mcpURL    string
 }
 
+var (
+	flagInitType string // --type skill|mcp|cli
+	flagInitName string // --name @scope/name
+)
+
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
 	Short: "Initialize a ctx package (skill, CLI, or MCP)",
@@ -102,6 +107,30 @@ Examples:
 		meta, err := parseInitSource(input)
 		if err != nil {
 			return err
+		}
+
+		// Apply --type flag (overrides detected/default type)
+		if flagInitType != "" {
+			pt := manifest.PackageType(flagInitType)
+			if !pt.Valid() {
+				return output.ErrUsage(fmt.Sprintf("--type must be skill, mcp, or cli (got %q)", flagInitType))
+			}
+			meta.pkgType = pt
+		}
+
+		// Apply --name flag (overrides scope + name + default description)
+		if flagInitName != "" {
+			s, n := manifest.ParseFullName(flagInitName)
+			if s != "" {
+				scope = s
+			}
+			if n != "" {
+				meta.name = n
+				// Update default description to match the actual package name
+				if meta.description == "" || strings.HasPrefix(meta.description, "A ") {
+					meta.description = fmt.Sprintf("A %s package", n)
+				}
+			}
 		}
 
 		// 5. Create prompter
@@ -190,15 +219,18 @@ Examples:
 		m.Description = meta.description
 
 		// Determine skill entry path
-		skillEntry := m.Skill.Entry // default from Scaffold
+		var skillEntry string
+		if m.Skill != nil {
+			skillEntry = m.Skill.Entry
+		}
 		if meta.skillEntry != "" {
 			skillEntry = meta.skillEntry
 		}
-		m.Skill.Entry = skillEntry
 
 		switch pkgType {
 		case manifest.TypeSkill:
 			m.Keywords = meta.triggers
+			m.Skill.Entry = skillEntry
 			m.Skill.UserInvocable = &meta.invocable
 
 		case manifest.TypeCLI:
@@ -208,6 +240,7 @@ Examples:
 				Auth:   meta.authHint,
 			}
 			m.Install = buildInstallSpec(meta.installMethod, meta.installPkg)
+			m.Skill.Entry = skillEntry
 			m.Skill.Origin = "native"
 
 		case manifest.TypeMCP:
@@ -217,7 +250,14 @@ Examples:
 				Args:      meta.mcpArgs,
 				URL:       meta.mcpURL,
 			}
-			m.Skill.Origin = "native"
+			// MCP servers are self-describing; SKILL.md is optional
+			if skillEntry != "" {
+				if m.Skill == nil {
+					m.Skill = &manifest.SkillSpec{}
+				}
+				m.Skill.Entry = skillEntry
+				m.Skill.Origin = "native"
+			}
 		}
 
 		errs := manifest.Validate(m)
@@ -239,38 +279,45 @@ Examples:
 		}
 
 		// 11. Generate SKILL.md if it doesn't already exist at the entry path
-		skillAbsPath := filepath.Join(outDir, skillEntry)
-		if _, statErr := os.Stat(skillAbsPath); os.IsNotExist(statErr) {
-			// Create parent directories for nested skill paths (e.g., skills/fizzy/)
-			if err := os.MkdirAll(filepath.Dir(skillAbsPath), 0o755); err != nil {
-				return fmt.Errorf("create skill directory: %w", err)
-			}
-			fm := &manifest.SkillFrontmatter{
-				Name:         skillName,
-				Description:  meta.description,
-				Triggers:     meta.triggers,
-				Invocable:    meta.invocable,
-				ArgumentHint: meta.argHint,
-			}
-			skillContent, err := manifest.RenderSkillMD(fm, meta.body)
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(skillAbsPath, skillContent, 0o644); err != nil {
-				return fmt.Errorf("write SKILL.md: %w", err)
+		if skillEntry != "" {
+			skillAbsPath := filepath.Join(outDir, skillEntry)
+			if _, statErr := os.Stat(skillAbsPath); os.IsNotExist(statErr) {
+				// Create parent directories for nested skill paths (e.g., skills/fizzy/)
+				if err := os.MkdirAll(filepath.Dir(skillAbsPath), 0o755); err != nil {
+					return fmt.Errorf("create skill directory: %w", err)
+				}
+				fm := &manifest.SkillFrontmatter{
+					Name:         skillName,
+					Description:  meta.description,
+					Triggers:     meta.triggers,
+					Invocable:    meta.invocable,
+					ArgumentHint: meta.argHint,
+				}
+				skillContent, err := manifest.RenderSkillMD(fm, meta.body)
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(skillAbsPath, skillContent, 0o644); err != nil {
+					return fmt.Errorf("write SKILL.md: %w", err)
+				}
 			}
 		}
 
 		output.Success("Created %s in %s", fullName, outDir)
 
 		// 12. Output
+		breadcrumbs := []output.Breadcrumb{
+			{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
+		}
+		if skillEntry != "" {
+			breadcrumbs = append([]output.Breadcrumb{
+				{Action: "edit", Command: "edit " + filepath.Join(outDir, skillEntry), Description: "Edit skill content"},
+			}, breadcrumbs...)
+		}
 		return w.OK(
 			map[string]string{"name": fullName, "version": meta.version, "path": outDir},
 			output.WithSummary(fmt.Sprintf("Created %s (%s)", fullName, meta.version)),
-			output.WithBreadcrumbs(
-				output.Breadcrumb{Action: "edit", Command: "edit " + skillAbsPath, Description: "Edit skill content"},
-				output.Breadcrumb{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
-			),
+			output.WithBreadcrumbs(breadcrumbs...),
 		)
 	},
 }
@@ -347,10 +394,12 @@ func parseInitSource(input initInput) (initMeta, error) {
 		if err != nil {
 			return initMeta{}, fmt.Errorf("get working directory: %w", err)
 		}
+		dirName := filepath.Base(cwd)
 		return initMeta{
-			name:      filepath.Base(cwd),
-			version:   "0.1.0",
-			invocable: true,
+			name:        dirName,
+			description: fmt.Sprintf("A %s package", dirName),
+			version:     "0.1.0",
+			invocable:   true,
 			// pkgType left empty — will be prompted in promptMetadata
 		}, nil
 
@@ -716,6 +765,11 @@ func findAllSkillMD(dirPath string) []string {
 	return results
 }
 
+func init() {
+	initCmd.Flags().StringVar(&flagInitType, "type", "", "Package type: skill, mcp, or cli")
+	initCmd.Flags().StringVar(&flagInitName, "name", "", "Full package name (@scope/name)")
+}
+
 // promptMCPMeta prompts for MCP-specific metadata.
 func promptMCPMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	var err error
@@ -728,7 +782,11 @@ func promptMCPMeta(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	meta.transport = transports[transportIdx]
 
 	if meta.transport == "stdio" {
-		meta.command, err = p.Text("Command", meta.command)
+		defaultCmd := meta.command
+		if defaultCmd == "" {
+			defaultCmd = "npx"
+		}
+		meta.command, err = p.Text("Command", defaultCmd)
 		if err != nil {
 			return meta, err
 		}

@@ -16,6 +16,7 @@ type TestResult struct {
 	Tools      []ToolInfo      // from tools/list, nil on failure
 	Duration   time.Duration   // total test duration
 	Stderr     string          // captured stderr (stdio only)
+	Command    string          // copy-pasteable command to run manually
 }
 
 // StepResult describes the outcome of one test step.
@@ -36,7 +37,9 @@ type StepResult struct {
 // remaining steps are recorded as "skip".
 func RunTest(ctx context.Context, opts ConnectOptions, declaredTools []string) (*TestResult, error) {
 	start := time.Now()
-	result := &TestResult{}
+	result := &TestResult{
+		Command: formatConnectDetail(opts),
+	}
 
 	// Apply overall timeout
 	timeout := opts.timeout()
