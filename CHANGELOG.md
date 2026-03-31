@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/ctx-hq/ctx/compare/v0.22.0...v0.22.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **upgrade:** show friendly message instead of error when version check fails ([00f9e3b](https://github.com/ctx-hq/ctx/commit/00f9e3b81b8b1cdcad56149ec2f11999a7ad3b5c))
+
 ## [0.22.0](https://github.com/ctx-hq/ctx/compare/v0.21.1...v0.22.0) (2026-03-31)
 
 
