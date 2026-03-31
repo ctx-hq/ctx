@@ -69,7 +69,7 @@ func FetchLatestVersion() string {
 }
 
 func fetchLatestVersion() string {
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo), nil)
 	if err != nil {
 		return ""

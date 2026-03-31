@@ -21,11 +21,17 @@ var upgradeCmd = &cobra.Command{
 
 		output.Info("Checking for updates...")
 		latest := selfupdate.FetchLatestVersion()
-		if latest == "" {
-			return fmt.Errorf("could not determine latest version")
-		}
 
 		current := Version
+		if latest == "" {
+			// Could not reach GitHub API — show current version instead of failing.
+			output.Success("ctx %s (unable to check for updates, try again later)", current)
+			return w.OK(map[string]string{
+				"version": current,
+				"status":  "check_failed",
+			}, output.WithSummary(fmt.Sprintf("ctx %s — update check unavailable", current)))
+		}
+
 		if selfupdate.IsUpToDate(latest, current) {
 			output.Success("ctx %s is already the latest version", current)
 			return w.OK(map[string]string{
