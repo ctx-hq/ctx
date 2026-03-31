@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/ctx-hq/ctx/compare/v0.21.0...v0.21.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **build:** replace local bubbles/v2 path with GitHub module reference ([f1ca16f](https://github.com/ctx-hq/ctx/commit/f1ca16f6675e88cdb5ecfda7c57064a0ca1b9c56))
+
 ## [0.21.0](https://github.com/ctx-hq/ctx/compare/v0.20.0...v0.21.0) (2026-03-31)
 
 
