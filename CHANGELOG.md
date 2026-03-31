@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/ctx-hq/ctx/compare/v0.22.1...v0.22.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **mcp:** improve post-install env var guidance and stderr output ([eb8d8e4](https://github.com/ctx-hq/ctx/commit/eb8d8e47abf43e3e4302f4c1d13371399ccabab9))
+
 ## [0.22.1](https://github.com/ctx-hq/ctx/compare/v0.22.0...v0.22.1) (2026-03-31)
 
 
