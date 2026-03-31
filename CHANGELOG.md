@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/ctx-hq/ctx/compare/v0.20.0...v0.21.0) (2026-03-31)
+
+
+### Features
+
+* add interactive TUI and expand MCP server toolset ([ee6ae8f](https://github.com/ctx-hq/ctx/commit/ee6ae8f28143978660aa4ed1346f178a015dc276))
+
 ## [0.20.0](https://github.com/ctx-hq/ctx/compare/v0.19.2...v0.20.0) (2026-03-30)
 
 
