@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
@@ -74,6 +76,9 @@ Examples:
 				return fmt.Errorf("write %s: %w", manifest.FileName, writeErr)
 			}
 		}
+
+		// Auto-enrich missing metadata from git/filesystem
+		autoEnrichManifest(m, dir)
 
 		errs := manifest.Validate(m)
 		if len(errs) > 0 {
@@ -174,4 +179,39 @@ Examples:
 			),
 		)
 	},
+}
+
+// autoEnrichManifest fills in missing optional metadata fields from
+// git configuration and filesystem detection. It modifies m in place.
+// Fields that already have values are never overwritten.
+func autoEnrichManifest(m *manifest.Manifest, dir string) {
+	if m.Author == "" {
+		if author := gitutil.Author(dir); author != "" {
+			m.Author = author
+			output.Info("Auto-detected author: %s", author)
+		}
+	}
+	if m.Repository == "" {
+		if repo := gitutil.RemoteURL(dir); repo != "" {
+			m.Repository = repo
+			output.Info("Auto-detected repository: %s", repo)
+		}
+	}
+	if m.License == "" {
+		if lr := license.Detect(dir); lr.SPDX != "" {
+			m.License = lr.SPDX
+			output.Info("Auto-detected license: %s", lr.SPDX)
+		}
+	}
+
+	// Soft warnings for missing recommended fields
+	if m.Repository == "" {
+		output.Warn("No repository URL detected (add to ctx.yaml or configure git remote)")
+	}
+	if m.License == "" {
+		output.Warn("No license detected (add LICENSE file or set license in ctx.yaml)")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "README.md")); os.IsNotExist(err) {
+		output.Warn("No README.md found (recommended for package documentation)")
+	}
 }

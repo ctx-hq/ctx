@@ -131,6 +131,12 @@ type PlatformInstall struct {
 func (m *Manifest) PackageFiles() []string {
 	files := []string{"ctx.yaml", "README.md"}
 
+	// LICENSE candidates — CopyFiles silently skips missing paths.
+	files = append(files,
+		"LICENSE", "LICENSE.md", "LICENSE.txt",
+		"LICENCE", "LICENCE.md", "LICENCE.txt",
+	)
+
 	if m.Skill != nil && m.Skill.Entry != "" {
 		entry := filepath.Clean(m.Skill.Entry)
 		// Include the skill entry's parent directory (contains SKILL.md + scripts/, references/, assets/)

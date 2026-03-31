@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ctx-hq/ctx/internal/manifest"
@@ -76,6 +77,52 @@ func TestPublishResolveFlow_ResolveRequestStructure(t *testing.T) {
 	}
 	if constraint != "^1.0.0" {
 		t.Errorf("constraint = %q, want %q", constraint, "^1.0.0")
+	}
+}
+
+func TestPublishResolveFlow_ManifestWithMetadata(t *testing.T) {
+	m := &manifest.Manifest{
+		Name:        "@test/metadata-flow",
+		Version:     "1.0.0",
+		Type:        manifest.TypeCLI,
+		Description: "CLI with full metadata",
+		Author:      "Test Author",
+		License:     "MIT",
+		Repository:  "https://github.com/test/metadata-flow",
+		Skill: &manifest.SkillSpec{
+			Entry:  "skills/test/SKILL.md",
+			Origin: "native",
+		},
+		CLI: &manifest.CLISpec{
+			Binary: "testbin",
+			Verify: "testbin --version",
+		},
+	}
+
+	// Validate passes with metadata fields
+	errs := manifest.Validate(m)
+	if len(errs) > 0 {
+		t.Errorf("manifest with metadata should be valid, got: %v", errs)
+	}
+
+	// Marshal roundtrip preserves metadata
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	m2, err := manifest.Parse(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if m2.Author != "Test Author" {
+		t.Errorf("roundtrip Author = %q, want %q", m2.Author, "Test Author")
+	}
+	if m2.License != "MIT" {
+		t.Errorf("roundtrip License = %q, want %q", m2.License, "MIT")
+	}
+	if m2.Repository != "https://github.com/test/metadata-flow" {
+		t.Errorf("roundtrip Repository = %q, want %q", m2.Repository, "https://github.com/test/metadata-flow")
 	}
 }
 

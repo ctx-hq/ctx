@@ -481,6 +481,46 @@ func TestMarshalRoundtripCLIWithSkill(t *testing.T) {
 	}
 }
 
+func TestPackageFilesIncludesLicense(t *testing.T) {
+	tests := []struct {
+		name string
+		m    Manifest
+	}{
+		{
+			name: "skill",
+			m:    Manifest{Type: TypeSkill, Skill: &SkillSpec{Entry: "SKILL.md"}},
+		},
+		{
+			name: "cli",
+			m:    Manifest{Type: TypeCLI, Skill: &SkillSpec{Entry: "skills/test/SKILL.md"}, CLI: &CLISpec{Binary: "test"}},
+		},
+		{
+			name: "mcp",
+			m:    Manifest{Type: TypeMCP, MCP: &MCPSpec{Transport: "stdio", Command: "node"}},
+		},
+	}
+
+	licenseCandidates := map[string]bool{
+		"LICENSE": true, "LICENSE.md": true, "LICENSE.txt": true,
+		"LICENCE": true, "LICENCE.md": true, "LICENCE.txt": true,
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := tt.m.PackageFiles()
+			found := 0
+			for _, f := range files {
+				if licenseCandidates[f] {
+					found++
+				}
+			}
+			if found != len(licenseCandidates) {
+				t.Errorf("PackageFiles() contains %d license candidates, want %d", found, len(licenseCandidates))
+			}
+		})
+	}
+}
+
 func TestMarshalRoundtrip(t *testing.T) {
 	m := Scaffold(TypeMCP, "test", "server")
 	m.MCP = &MCPSpec{Transport: "stdio", Command: "node"}

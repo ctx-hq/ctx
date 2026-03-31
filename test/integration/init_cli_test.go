@@ -2,9 +2,13 @@ package integration
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
@@ -285,5 +289,103 @@ func TestInitDoesNotOverwriteExistingSkillMD(t *testing.T) {
 	}
 	if loaded.Version != "0.2.0" {
 		t.Errorf("version = %q, want 0.2.0", loaded.Version)
+	}
+}
+
+// TestInitAutoDetectsGitMetadata verifies that gitutil detects author and repository
+// from a real git repo.
+func TestInitAutoDetectsGitMetadata(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.name", "Init Test User")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "remote", "add", "origin", "git@github.com:testorg/testrepo.git")
+
+	author := gitutil.Author(dir)
+	if author != "Init Test User" {
+		t.Errorf("Author() = %q, want %q", author, "Init Test User")
+	}
+
+	repo := gitutil.RemoteURL(dir)
+	if repo != "https://github.com/testorg/testrepo" {
+		t.Errorf("RemoteURL() = %q, want %q", repo, "https://github.com/testorg/testrepo")
+	}
+}
+
+// TestInitAutoDetectsLicense verifies that license detection works in a directory
+// with a LICENSE file.
+func TestInitAutoDetectsLicense(t *testing.T) {
+	dir := t.TempDir()
+	mitText := "MIT License\n\nCopyright (c) 2026 Test\n\nPermission is hereby granted, free of charge..."
+	if err := os.WriteFile(filepath.Join(dir, "LICENSE"), []byte(mitText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := license.Detect(dir)
+	if result.SPDX != "MIT" {
+		t.Errorf("Detect().SPDX = %q, want %q", result.SPDX, "MIT")
+	}
+	if result.FilePath != "LICENSE" {
+		t.Errorf("Detect().FilePath = %q, want %q", result.FilePath, "LICENSE")
+	}
+}
+
+// TestInitMetadataRoundtrip verifies that author/license/repository survive
+// manifest write → load roundtrip.
+func TestInitMetadataRoundtrip(t *testing.T) {
+	m := manifest.Scaffold(manifest.TypeCLI, "test", "meta-tool")
+	m.Version = "0.1.0"
+	m.Description = "Tool with metadata"
+	m.Author = "Jane Doe"
+	m.License = "Apache-2.0"
+	m.Repository = "https://github.com/jane/meta-tool"
+	m.CLI = &manifest.CLISpec{Binary: "meta-tool"}
+	m.Skill = &manifest.SkillSpec{Entry: "skills/meta-tool/SKILL.md"}
+
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := manifest.LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if loaded.Author != "Jane Doe" {
+		t.Errorf("Author = %q, want %q", loaded.Author, "Jane Doe")
+	}
+	if loaded.License != "Apache-2.0" {
+		t.Errorf("License = %q, want %q", loaded.License, "Apache-2.0")
+	}
+	if loaded.Repository != "https://github.com/jane/meta-tool" {
+		t.Errorf("Repository = %q, want %q", loaded.Repository, "https://github.com/jane/meta-tool")
+	}
+
+	// Verify YAML content includes these fields
+	yamlStr := string(data)
+	for _, field := range []string{"author:", "license:", "repository:"} {
+		if !strings.Contains(yamlStr, field) {
+			t.Errorf("marshaled YAML missing %q", field)
+		}
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
 }

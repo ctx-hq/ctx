@@ -50,6 +50,21 @@ func FormatChecklist(m *manifest.Manifest, results []CheckResult) string {
 		}
 	}
 
+	// Metadata fields
+	if m.Author != "" {
+		b.WriteString(check(true, "Author", m.Author))
+	}
+	if m.License != "" {
+		b.WriteString(check(true, "License", m.License))
+	}
+	if m.Repository != "" {
+		repo := m.Repository
+		if len(repo) > 60 {
+			repo = repo[:57] + "..."
+		}
+		b.WriteString(check(true, "Repository", repo))
+	}
+
 	// Install method results
 	for _, r := range results {
 		if r.OK {

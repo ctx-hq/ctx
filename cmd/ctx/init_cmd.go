@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
@@ -59,6 +61,11 @@ type initMeta struct {
 	command   string
 	mcpArgs   []string
 	mcpURL    string
+
+	// Auto-detected metadata
+	author     string
+	license    string
+	repository string
 }
 
 var (
@@ -196,6 +203,15 @@ Examples:
 				previewRows = append(previewRows, []string{"URL:", meta.mcpURL})
 			}
 		}
+		if meta.author != "" {
+			previewRows = append(previewRows, []string{"Author:", meta.author})
+		}
+		if meta.license != "" {
+			previewRows = append(previewRows, []string{"License:", meta.license})
+		}
+		if meta.repository != "" {
+			previewRows = append(previewRows, []string{"Repository:", meta.repository})
+		}
 		previewRows = append(previewRows, []string{"Directory:", outDir})
 		output.Table(previewRows)
 		fmt.Fprintln(os.Stderr) // blank line after table
@@ -217,6 +233,9 @@ Examples:
 		m := manifest.Scaffold(pkgType, scope, skillName)
 		m.Version = meta.version
 		m.Description = meta.description
+		m.Author = meta.author
+		m.License = meta.license
+		m.Repository = meta.repository
 
 		// Determine skill entry path
 		var skillEntry string
@@ -395,13 +414,20 @@ func parseInitSource(input initInput) (initMeta, error) {
 			return initMeta{}, fmt.Errorf("get working directory: %w", err)
 		}
 		dirName := filepath.Base(cwd)
-		return initMeta{
+		meta := initMeta{
 			name:        dirName,
 			description: fmt.Sprintf("A %s package", dirName),
 			version:     "0.1.0",
 			invocable:   true,
 			// pkgType left empty — will be prompted in promptMetadata
-		}, nil
+		}
+		// Auto-detect metadata from git and filesystem
+		meta.author = gitutil.Author(cwd)
+		meta.repository = gitutil.RemoteURL(cwd)
+		if lr := license.Detect(cwd); lr.SPDX != "" {
+			meta.license = lr.SPDX
+		}
+		return meta, nil
 
 	case initFromFile:
 		return parseFileSource(input.sourcePath)
@@ -462,12 +488,16 @@ func parseFileSource(filePath string) (initMeta, error) {
 	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 
 	fm, body, parseErr := manifest.ParseSkillMD(strings.NewReader(string(data)))
+	var meta initMeta
 	if parseErr != nil {
-		// Malformed frontmatter YAML — treat file content as body with no frontmatter
-		return metaFromFrontmatter(nil, string(data), baseName), nil
+		meta = metaFromFrontmatter(nil, string(data), baseName)
+	} else {
+		meta = metaFromFrontmatter(fm, body, baseName)
 	}
 
-	return metaFromFrontmatter(fm, body, baseName), nil
+	// Auto-detect metadata from the file's parent directory
+	autoDetectMeta(&meta, filepath.Dir(filePath))
+	return meta, nil
 }
 
 // parseDirSource reads an existing directory and extracts metadata.
@@ -546,6 +576,12 @@ func parseDirSource(dirPath string) (initMeta, error) {
 			}
 		}
 
+		// Preserve existing manifest values, then fill gaps via auto-detect
+		meta.author = m.Author
+		meta.repository = m.Repository
+		meta.license = m.License
+		autoDetectMeta(&meta, dirPath)
+
 		if len(meta.triggers) == 0 {
 			meta.triggers = []string{"/" + slugify(meta.name)}
 		}
@@ -561,12 +597,31 @@ func parseDirSource(dirPath string) (initMeta, error) {
 		if err == nil {
 			meta := metaFromFrontmatter(fm, body, dirName)
 			meta.skillEntry = found[0]
+			autoDetectMeta(&meta, dirPath)
 			return meta, nil
 		}
 	}
 
 	// Nothing found — scaffold from directory name
-	return metaFromFrontmatter(nil, "", dirName), nil
+	meta := metaFromFrontmatter(nil, "", dirName)
+	autoDetectMeta(&meta, dirPath)
+	return meta, nil
+}
+
+// autoDetectMeta fills in author, repository, and license from git/filesystem
+// if they are not already set.
+func autoDetectMeta(meta *initMeta, dir string) {
+	if meta.author == "" {
+		meta.author = gitutil.Author(dir)
+	}
+	if meta.repository == "" {
+		meta.repository = gitutil.RemoteURL(dir)
+	}
+	if meta.license == "" {
+		if lr := license.Detect(dir); lr.SPDX != "" {
+			meta.license = lr.SPDX
+		}
+	}
 }
 
 // readAndParseSkillMD opens a SKILL.md file and returns frontmatter and body.
@@ -599,6 +654,20 @@ func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	}
 
 	meta.version, err = p.Text("Version", meta.version)
+	if err != nil {
+		return meta, err
+	}
+
+	// Auto-detected metadata prompts
+	meta.author, err = p.Text("Author", meta.author)
+	if err != nil {
+		return meta, err
+	}
+	meta.license, err = p.Text("License (SPDX)", meta.license)
+	if err != nil {
+		return meta, err
+	}
+	meta.repository, err = p.Text("Repository URL", meta.repository)
 	if err != nil {
 		return meta, err
 	}
