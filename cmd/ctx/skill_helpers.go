@@ -106,7 +106,7 @@ func extractDescription(body string) string {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		return truncate(line, 200)
+		return truncate(line, 100)
 	}
 	return ""
 }
