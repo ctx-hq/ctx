@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
-	"strings"
+
+	"github.com/ctx-hq/ctx/internal/mcpproto"
 )
 
 // Server implements a minimal MCP server over stdio.
@@ -39,27 +39,17 @@ func (s *Server) Serve(ctx context.Context) error {
 	writer := bufio.NewWriter(os.Stdout)
 
 	for {
-		// Read Content-Length header
-		contentLen, err := readContentLength(reader)
+		body, err := mcpproto.ReadMessage(reader)
 		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
-			return fmt.Errorf("read header: %w", err)
+			return fmt.Errorf("read message: %w", err)
 		}
 
-		// Read exactly contentLen bytes of JSON body
-		body := make([]byte, contentLen)
-		if _, err := io.ReadFull(reader, body); err != nil {
-			if err := writeFramedError(writer, nil, -32700, "Failed to read message body"); err != nil {
-				return fmt.Errorf("write error frame: %w", err)
-			}
-			continue
-		}
-
-		var req JSONRPCRequest
+		var req mcpproto.Request
 		if err := json.Unmarshal(body, &req); err != nil {
-			if err := writeFramedError(writer, nil, -32700, "Parse error"); err != nil {
+			if err := mcpproto.WriteFramedError(writer, nil, -32700, "Parse error"); err != nil {
 				return fmt.Errorf("write error frame: %w", err)
 			}
 			continue
@@ -70,79 +60,16 @@ func (s *Server) Serve(ctx context.Context) error {
 			continue // notifications don't produce a response
 		}
 
-		data, err := json.Marshal(resp)
-		if err != nil {
-			return fmt.Errorf("marshal response: %w", err)
-		}
-		if err := writeFrame(writer, data); err != nil {
-			return fmt.Errorf("write frame: %w", err)
+		if err := mcpproto.WriteMessage(writer, resp); err != nil {
+			return fmt.Errorf("write response: %w", err)
 		}
 	}
 }
 
-// readContentLength reads the "Content-Length: N\r\n\r\n" header from the reader.
-func readContentLength(r *bufio.Reader) (int, error) {
-	// Read lines until we find Content-Length, then consume the blank line separator
-	var contentLen int
-	foundHeader := false
-
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return 0, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-
-		if line == "" {
-			// Empty line = end of headers
-			if !foundHeader {
-				continue // skip leading blank lines
-			}
-			break
-		}
-
-		if strings.HasPrefix(line, "Content-Length:") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
-			n, err := strconv.Atoi(val)
-			if err != nil {
-				return 0, fmt.Errorf("invalid Content-Length %q: %w", val, err)
-			}
-			contentLen = n
-			foundHeader = true
-		}
-	}
-
-	if !foundHeader {
-		return 0, fmt.Errorf("missing Content-Length header")
-	}
-	return contentLen, nil
-}
-
-// writeFrame writes a JSON-RPC message with Content-Length framing.
-func writeFrame(w *bufio.Writer, data []byte) error {
-	if _, err := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(data)); err != nil {
-		return err
-	}
-	if _, err := w.Write(data); err != nil {
-		return err
-	}
-	return w.Flush()
-}
-
-// writeFramedError writes a JSON-RPC error response with Content-Length framing.
-func writeFramedError(w *bufio.Writer, id any, code int, message string) error {
-	resp := errorResponse(id, code, message)
-	data, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	return writeFrame(w, data)
-}
-
-func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+func (s *Server) handleRequest(ctx context.Context, req *mcpproto.Request) *mcpproto.Response {
 	switch req.Method {
 	case "initialize":
-		return &JSONRPCResponse{
+		return &mcpproto.Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: map[string]any{
@@ -167,7 +94,7 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 				tools = append(tools, def)
 			}
 		}
-		return &JSONRPCResponse{
+		return &mcpproto.Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result:  map[string]any{"tools": tools},
@@ -179,17 +106,17 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 			Arguments json.RawMessage `json:"arguments"`
 		}
 		if err := json.Unmarshal(req.Params, &params); err != nil {
-			return errorResponse(req.ID, -32602, "Invalid params")
+			return mcpproto.ErrorResponse(req.ID, -32602, "Invalid params")
 		}
 
 		handler, ok := s.tools[params.Name]
 		if !ok {
-			return errorResponse(req.ID, -32601, fmt.Sprintf("Unknown tool: %s", params.Name))
+			return mcpproto.ErrorResponse(req.ID, -32601, fmt.Sprintf("Unknown tool: %s", params.Name))
 		}
 
 		result, err := handler(ctx, params.Arguments)
 		if err != nil {
-			return &JSONRPCResponse{
+			return &mcpproto.Response{
 				JSONRPC: "2.0",
 				ID:      req.ID,
 				Result: map[string]any{
@@ -202,7 +129,7 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 		}
 
 		text, _ := json.MarshalIndent(result, "", "  ")
-		return &JSONRPCResponse{
+		return &mcpproto.Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: map[string]any{
@@ -213,30 +140,6 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 		}
 
 	default:
-		return errorResponse(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
+		return mcpproto.ErrorResponse(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
 	}
 }
-
-// JSON-RPC types
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type JSONRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id,omitempty"`
-	Result  any    `json:"result,omitempty"`
-	Error   any    `json:"error,omitempty"`
-}
-
-func errorResponse(id any, code int, message string) *JSONRPCResponse {
-	return &JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error:   map[string]any{"code": code, "message": message},
-	}
-}
-

@@ -17,6 +17,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
 	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/secrets"
 	"github.com/ctx-hq/ctx/internal/resolver"
 	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
@@ -207,11 +208,47 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		state.Skills = skillStates
 
 	case manifest.TypeMCP:
+		// Prompt for required env vars that are not yet stored
+		if m.MCP != nil && len(m.MCP.Env) > 0 {
+			store, loadErr := secrets.Load()
+			if loadErr != nil {
+				store = secrets.New()
+			}
+			isTTYForEnv := term.IsTerminal(int(os.Stdin.Fd()))
+			changed := false
+			for _, e := range m.MCP.Env {
+				if !e.Required {
+					continue
+				}
+				if _, ok := store.Get(m.Name, e.Name); ok {
+					continue
+				}
+				if isTTYForEnv && !flagYes {
+					p := prompt.DefaultPrompter()
+					label := e.Name
+					if e.Description != "" {
+						label += " (" + e.Description + ")"
+					}
+					val, promptErr := p.Text(label, e.Default)
+					if promptErr == nil && val != "" {
+						store.Set(m.Name, e.Name, val)
+						changed = true
+					}
+				}
+			}
+			if changed {
+				_ = store.Save()
+			}
+		}
+
 		mcpStates, err := installer.LinkMCPToAgents(cmd.Context(), &m)
 		if err != nil {
 			output.Warn("MCP config: %v", err)
 		}
 		state.MCP = mcpStates
+
+		// Hint about testing
+		output.PrintDim("  Tip: Run 'ctx mcp test %s' to verify the server", m.ShortName())
 		// MCP packages may bundle a SKILL.md — link it to agents
 		if hasSkillMD(result.InstallPath) {
 			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
@@ -223,7 +260,9 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 	}
 
 	// Save installation state for repair/uninstall
-	_ = state.Save(pkgDir) // best effort
+	if err := state.Save(pkgDir); err != nil {
+		output.Warn("Failed to save install state: %v", err)
+	}
 
 	return nil
 }

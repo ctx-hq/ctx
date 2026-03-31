@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/ctx-hq/ctx/internal/mcpproto"
 )
 
 func TestHandleInitialize(t *testing.T) {
 	s := New()
-	req := &JSONRPCRequest{
+	req := &mcpproto.Request{
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "initialize",
@@ -41,7 +43,7 @@ func TestHandleInitialize(t *testing.T) {
 
 func TestHandleToolsList(t *testing.T) {
 	s := New()
-	req := &JSONRPCRequest{
+	req := &mcpproto.Request{
 		JSONRPC: "2.0",
 		ID:      2,
 		Method:  "tools/list",
@@ -80,7 +82,7 @@ func TestHandleToolsList(t *testing.T) {
 
 func TestHandleUnknownMethod(t *testing.T) {
 	s := New()
-	req := &JSONRPCRequest{
+	req := &mcpproto.Request{
 		JSONRPC: "2.0",
 		ID:      3,
 		Method:  "unknown/method",
@@ -101,7 +103,7 @@ func TestHandleToolsCallUnknown(t *testing.T) {
 		"name":      "nonexistent_tool",
 		"arguments": map[string]any{},
 	})
-	req := &JSONRPCRequest{
+	req := &mcpproto.Request{
 		JSONRPC: "2.0",
 		ID:      4,
 		Method:  "tools/call",
@@ -119,7 +121,7 @@ func TestHandleToolsCallUnknown(t *testing.T) {
 
 func TestNotificationNoResponse(t *testing.T) {
 	s := New()
-	req := &JSONRPCRequest{
+	req := &mcpproto.Request{
 		JSONRPC: "2.0",
 		Method:  "notifications/initialized",
 	}

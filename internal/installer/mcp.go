@@ -8,6 +8,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/installstate"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/secrets"
 )
 
 // LinkMCPToAgents configures an MCP server in all detected agents and records
@@ -27,7 +28,21 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.
 	if len(m.MCP.Env) > 0 {
 		cfg.Env = make(map[string]string)
 		for _, e := range m.MCP.Env {
-			cfg.Env[e.Name] = e.Default
+			if e.Default != "" {
+				cfg.Env[e.Name] = e.Default
+			}
+		}
+	}
+
+	// Overlay with stored secrets (API keys, tokens, etc.)
+	if store, err := secrets.Load(); err != nil {
+		output.Warn("load secrets: %v", err)
+	} else {
+		for k, v := range store.List(m.Name) {
+			if cfg.Env == nil {
+				cfg.Env = make(map[string]string)
+			}
+			cfg.Env[k] = v
 		}
 	}
 

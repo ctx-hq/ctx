@@ -105,6 +105,7 @@ var agentConstructors = []struct {
 	{"kilo", func() Agent { return newSimpleAgent("kilo", ".kilo-code") }},
 	{"pear", func() Agent { return newSimpleAgent("pear", ".pear-ai") }},
 	{"junie", func() Agent { return newSimpleAgent("junie", ".junie") }},
+	{"openelf", NewOpenELFAgent},
 	{"aider", func() Agent { return newSimpleAgent("aider", ".aider") }},
 	{"generic", NewGenericAgent},
 }
