@@ -9,16 +9,15 @@ import (
 	"github.com/ctx-hq/ctx/internal/tui"
 )
 
-// statusClearMsg is sent to clear the status bar center text.
+// statusClearMsg clears the status bar center text.
 type statusClearMsg struct{}
 
 // StatusBarModel is a full-width status bar with left, center, and right sections.
 type StatusBarModel struct {
-	left       string
-	center     string
-	right      string
-	width      int
-	clearTimer bool
+	left   string
+	center string
+	right  string
+	width  int
 }
 
 // NewStatusBar creates a new empty status bar.
@@ -61,7 +60,6 @@ func (m StatusBarModel) Update(msg tea.Msg) (StatusBarModel, tea.Cmd) {
 	switch msg.(type) {
 	case statusClearMsg:
 		m.center = ""
-		m.clearTimer = false
 	}
 	return m, nil
 }

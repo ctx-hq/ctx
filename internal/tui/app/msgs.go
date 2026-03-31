@@ -1,4 +1,4 @@
-// Package app provides the root TUI model and tab implementations for ctx.
+// Package app provides the root TUI model for ctx.
 package app
 
 import (
@@ -42,9 +42,23 @@ type doctorResultMsg struct {
 	Result *doctor.Result
 }
 
-// switchTabMsg requests switching to a specific tab.
-type switchTabMsg struct {
-	Tab int
+// filesLoadedMsg is sent when package files have been listed.
+type filesLoadedMsg struct {
+	Files []FileInfo
+	Err   error
+}
+
+// fileContentMsg is sent when a file's content has been read.
+type fileContentMsg struct {
+	Name    string
+	Content string
+	Err     error
+}
+
+// renderedContentMsg is sent when file content has been rendered (glamour/syntax highlight).
+type renderedContentMsg struct {
+	Key     string // cache key: "dir:filename"
+	Content string
 }
 
 // statusMsg sets the status bar text.
