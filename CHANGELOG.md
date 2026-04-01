@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.2](https://github.com/ctx-hq/ctx/compare/v0.24.1...v0.24.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* **registry:** align CLI types with API ownership model (publisher → owner) ([2aa10a6](https://github.com/ctx-hq/ctx/commit/2aa10a6d78baf82f12eab1fc1c06505a650f7fdd))
+
 ## [0.24.1](https://github.com/ctx-hq/ctx/compare/v0.24.0...v0.24.1) (2026-04-01)
 
 
