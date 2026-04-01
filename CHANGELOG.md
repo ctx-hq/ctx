@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1](https://github.com/ctx-hq/ctx/compare/v0.24.0...v0.24.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **publish:** include root-level reference files in skill packages and read SKILL.md in init ([37864ab](https://github.com/ctx-hq/ctx/commit/37864ab927325bc1ac3d6772f2f1c934cef27bad))
+
 ## [0.24.0](https://github.com/ctx-hq/ctx/compare/v0.23.1...v0.24.0) (2026-04-01)
 
 
