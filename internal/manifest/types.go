@@ -10,19 +10,21 @@ import (
 type PackageType string
 
 const (
-	TypeSkill PackageType = "skill"
-	TypeMCP   PackageType = "mcp"
-	TypeCLI   PackageType = "cli"
+	TypeSkill      PackageType = "skill"
+	TypeMCP        PackageType = "mcp"
+	TypeCLI        PackageType = "cli"
+	TypeWorkspace  PackageType = "workspace"
+	TypeCollection PackageType = "collection"
 )
 
 func (t PackageType) Valid() bool {
-	return t == TypeSkill || t == TypeMCP || t == TypeCLI
+	return t == TypeSkill || t == TypeMCP || t == TypeCLI || t == TypeWorkspace || t == TypeCollection
 }
 
 // Manifest represents a parsed ctx.yaml file.
 type Manifest struct {
 	Name        string      `yaml:"name" json:"name"`
-	Version     string      `yaml:"version" json:"version"`
+	Version     string      `yaml:"version,omitempty" json:"version,omitempty"`
 	Type        PackageType `yaml:"type" json:"type"`
 	Description string      `yaml:"description" json:"description"`
 	Author      string      `yaml:"author,omitempty" json:"author,omitempty"`
@@ -34,6 +36,9 @@ type Manifest struct {
 	Skill *SkillSpec `yaml:"skill,omitempty" json:"skill,omitempty"`
 	MCP   *MCPSpec   `yaml:"mcp,omitempty" json:"mcp,omitempty"`
 	CLI   *CLISpec   `yaml:"cli,omitempty" json:"cli,omitempty"`
+
+	Workspace  *WorkspaceSpec      `yaml:"workspace,omitempty" json:"workspace,omitempty"`
+	Collection *CollectionManifest `yaml:"collection,omitempty" json:"collection,omitempty"`
 
 	Source       *SourceSpec        `yaml:"source,omitempty" json:"source,omitempty"`
 	Install      *InstallSpec      `yaml:"install,omitempty" json:"install,omitempty"`
@@ -123,6 +128,34 @@ type PlatformInstall struct {
 	Brew   string `yaml:"brew,omitempty" json:"brew,omitempty"`
 	Npm    string `yaml:"npm,omitempty" json:"npm,omitempty"`
 	Binary string `yaml:"binary,omitempty" json:"binary,omitempty"`
+}
+
+// WorkspaceSpec defines a monorepo workspace containing multiple packages.
+type WorkspaceSpec struct {
+	Members     []string           `yaml:"members" json:"members"`                           // glob patterns: ["skills/*", "engineering/*"]
+	Exclude     []string           `yaml:"exclude,omitempty" json:"exclude,omitempty"`        // exclude patterns: ["docs", "scripts"]
+	Defaults    *WorkspaceDefaults `yaml:"defaults,omitempty" json:"defaults,omitempty"`      // inherited by members
+	Collections []CollectionSpec   `yaml:"collections,omitempty" json:"collections,omitempty"` // named sub-groups
+}
+
+// WorkspaceDefaults holds default values inherited by workspace members.
+type WorkspaceDefaults struct {
+	Scope      string `yaml:"scope,omitempty" json:"scope,omitempty"`
+	Author     string `yaml:"author,omitempty" json:"author,omitempty"`
+	License    string `yaml:"license,omitempty" json:"license,omitempty"`
+	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
+}
+
+// CollectionSpec defines a named sub-group of workspace members.
+type CollectionSpec struct {
+	Name        string   `yaml:"name" json:"name"`
+	Description string   `yaml:"description" json:"description"`
+	Members     []string `yaml:"members" json:"members"` // skill short names or globs
+}
+
+// CollectionManifest is the manifest for a published collection package.
+type CollectionManifest struct {
+	Members []string `yaml:"members" json:"members"` // full names: ["@scope/skill1", "@scope/skill2"]
 }
 
 // PackageFiles returns the list of files/directories that should be included

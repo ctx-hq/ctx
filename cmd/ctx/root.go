@@ -126,5 +126,6 @@ func init() {
 		visibilityCmd,
 		enrichCmd,
 		whoamiCmd,
+		workspaceCmd,
 	)
 }

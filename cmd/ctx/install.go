@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -23,7 +24,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var flagCaller string
+var (
+	flagCaller string
+	flagPick   bool
+)
 
 var installCmd = &cobra.Command{
 	Use:     "install <package[@version]>",
@@ -35,7 +39,9 @@ Examples:
   ctx install @hong/my-skill           Install latest version
   ctx install @hong/my-skill@^1.0      Install with constraint
   ctx install @mcp/github@2.1.0        Install exact version
-  ctx install github:user/repo         Install from GitHub directly`,
+  ctx install github:user/repo         Install from GitHub directly
+  ctx install @baoyu/skills            Install a collection (all members)
+  ctx install @baoyu/skills --pick     Install selected members from collection`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := requireOnline(); err != nil {
@@ -71,6 +77,12 @@ Examples:
 		}
 		if err != nil {
 			return err
+		}
+
+		// Collection expansion: if the installed package is a collection,
+		// install all member packages.
+		if collectionManifest := loadCollectionManifest(result); collectionManifest != nil {
+			return installCollection(cmd, result, collectionManifest, inst, w)
 		}
 
 		// Resolve caller: --caller flag takes precedence, fallback to CTX_CALLER env
@@ -136,6 +148,7 @@ Examples:
 
 func init() {
 	installCmd.Flags().StringVar(&flagCaller, "caller", "", "Agent that invoked this install (e.g., claude, cursor)")
+	installCmd.Flags().BoolVar(&flagPick, "pick", false, "Interactively select members from a collection")
 }
 
 // runPostInstall performs type-specific actions after a package is installed.
@@ -317,4 +330,102 @@ func reloadHint(pkgType string) string {
 	default:
 		return ""
 	}
+}
+
+// loadCollectionManifest checks if an install result is a collection package
+// and returns its manifest if so. Returns nil for non-collection packages.
+func loadCollectionManifest(result *installer.InstallResult) *manifest.Manifest {
+	manifestPath := filepath.Join(result.InstallPath, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	if m.Type != manifest.TypeCollection || m.Collection == nil || len(m.Collection.Members) == 0 {
+		return nil
+	}
+	return &m
+}
+
+// installCollection installs all members of a collection package.
+func installCollection(cmd *cobra.Command, result *installer.InstallResult, m *manifest.Manifest, inst *installer.Installer, w *output.Writer) error {
+	members := m.Collection.Members
+
+	// Interactive pick mode: let user select which members to install.
+	if flagPick {
+		isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+		if isTTY {
+			p := prompt.DefaultPrompter()
+			var selected []string
+			for _, member := range members {
+				ok, pErr := p.Confirm("Install "+member+"?", true)
+				if pErr != nil {
+					return pErr
+				}
+				if ok {
+					selected = append(selected, member)
+				}
+			}
+			if len(selected) == 0 {
+				output.Info("No members selected.")
+				return nil
+			}
+			members = selected
+		}
+	}
+
+	output.Info("Installing %d member(s) from collection %s...", len(members), result.FullName)
+
+	caller := flagCaller
+	if caller == "" {
+		caller = os.Getenv("CTX_CALLER")
+	}
+
+	// Agent selection: let user pick target agents once for all members.
+	var selectedAgents []agent.Agent
+	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+	if isTTY && !flagYes && !w.IsMachine() && caller == "" {
+		agents := agent.DetectAll()
+		if len(agents) > 1 {
+			selected, selectErr := inline.SelectAgents(agents)
+			if selectErr == nil && selected != nil {
+				selectedAgents = selected
+			}
+		}
+	}
+
+	var installed int
+	var failed int
+	for i, memberName := range members {
+		output.Info("[%d/%d] Installing %s...", i+1, len(members), memberName)
+
+		memberResult, installErr := inst.Install(cmd.Context(), memberName)
+		if installErr != nil {
+			output.Warn("Failed to install %s: %v", memberName, installErr)
+			failed++
+			continue
+		}
+
+		// Run post-install for each member.
+		if postErr := runPostInstall(cmd, memberResult, caller, selectedAgents); postErr != nil {
+			output.Warn("Post-install %s: %v", memberName, postErr)
+		}
+
+		installed++
+	}
+
+	summary := fmt.Sprintf("Installed %d/%d members from %s", installed, len(members), result.FullName)
+	if failed > 0 {
+		summary += fmt.Sprintf(" (%d failed)", failed)
+	}
+
+	return w.OK(map[string]interface{}{
+		"collection": result.FullName,
+		"installed":  installed,
+		"failed":     failed,
+		"total":      len(members),
+	}, output.WithSummary(summary))
 }

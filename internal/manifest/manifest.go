@@ -56,7 +56,12 @@ func Validate(m *Manifest) []string {
 		errs = append(errs, fmt.Sprintf("name %q must match @scope/name format (lowercase, alphanumeric, hyphens)", m.Name))
 	}
 
-	if m.Version == "" {
+	// Workspace type doesn't require version (it's not published itself).
+	if m.Type == TypeWorkspace {
+		if m.Version != "" && !semverRegex.MatchString(m.Version) {
+			errs = append(errs, fmt.Sprintf("version %q must be valid semver (e.g. 1.0.0)", m.Version))
+		}
+	} else if m.Version == "" {
 		errs = append(errs, "version is required")
 	} else if !semverRegex.MatchString(m.Version) {
 		errs = append(errs, fmt.Sprintf("version %q must be valid semver (e.g. 1.0.0)", m.Version))
@@ -65,7 +70,7 @@ func Validate(m *Manifest) []string {
 	if m.Type == "" {
 		errs = append(errs, "type is required")
 	} else if !m.Type.Valid() {
-		errs = append(errs, fmt.Sprintf("type %q must be one of: skill, mcp, cli", m.Type))
+		errs = append(errs, fmt.Sprintf("type %q must be one of: skill, mcp, cli, workspace, collection", m.Type))
 	}
 
 	if m.Description == "" {
@@ -77,7 +82,8 @@ func Validate(m *Manifest) []string {
 	// Skill section: required for skill/cli types, optional for MCP.
 	// MCP servers are self-describing via tools/list, so SKILL.md is optional
 	// (but recommended for providing additional context to agents).
-	if m.Type != TypeMCP {
+	// Workspace and collection types don't have skill sections.
+	if m.Type != TypeMCP && m.Type != TypeWorkspace && m.Type != TypeCollection {
 		if m.Skill == nil || m.Skill.Entry == "" {
 			errs = append(errs, "skill section with entry is required (agents need instructions)")
 		}
@@ -90,6 +96,38 @@ func Validate(m *Manifest) []string {
 
 	// Type-specific validation
 	switch m.Type {
+	case TypeWorkspace:
+		if m.Workspace == nil {
+			errs = append(errs, "workspace section is required for type=workspace")
+		} else {
+			if len(m.Workspace.Members) == 0 {
+				errs = append(errs, "workspace.members must have at least one glob pattern")
+			}
+			for _, c := range m.Workspace.Collections {
+				if c.Name == "" {
+					errs = append(errs, "workspace.collections[].name is required")
+				}
+				if len(c.Members) == 0 {
+					errs = append(errs, fmt.Sprintf("workspace.collections[%q].members must not be empty", c.Name))
+				}
+			}
+		}
+		if m.Skill != nil || m.MCP != nil || m.CLI != nil {
+			errs = append(errs, "workspace type cannot have skill, mcp, or cli sections")
+		}
+	case TypeCollection:
+		if m.Collection == nil || len(m.Collection.Members) == 0 {
+			errs = append(errs, "collection.members is required for type=collection")
+		} else {
+			for _, member := range m.Collection.Members {
+				if !nameRegex.MatchString(member) {
+					errs = append(errs, fmt.Sprintf("collection member %q must be @scope/name format", member))
+				}
+			}
+		}
+		if m.Skill != nil || m.MCP != nil || m.CLI != nil {
+			errs = append(errs, "collection type cannot have skill, mcp, or cli sections")
+		}
 	case TypeSkill:
 		// no extra fields beyond skill section
 	case TypeMCP:

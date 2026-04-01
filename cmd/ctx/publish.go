@@ -60,6 +60,17 @@ Examples:
 			return err
 		}
 
+		// Workspace mode: publish all members.
+		if m.Type == manifest.TypeWorkspace {
+			if !flagPublishAll && flagPublishFilter == "" {
+				return output.ErrUsageHint(
+					"cannot publish a workspace directly",
+					"Use --all to publish all members, or --filter to publish matching members",
+				)
+			}
+			return publishWorkspace(cmd, dir, w)
+		}
+
 		// Apply version bump if --bump is set
 		if flagBump != "" {
 			bumped, bumpErr := manifest.BumpVersion(m.Version, flagBump)
@@ -181,27 +192,177 @@ Examples:
 	},
 }
 
+// publishWorkspace publishes all (or filtered) workspace members sequentially.
+func publishWorkspace(cmd *cobra.Command, dir string, w *output.Writer) error {
+	ws, err := manifest.LoadWorkspace(dir)
+	if err != nil {
+		return err
+	}
+
+	// Check auth once before the loop.
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	token := getToken()
+	if token == "" {
+		return output.ErrAuth("not logged in")
+	}
+	reg := registry.New(cfg.RegistryURL(), token)
+
+	// Apply filter if specified.
+	members := ws.Members
+	if flagPublishFilter != "" {
+		var filtered []*manifest.WorkspaceMember
+		for _, m := range members {
+			matched, _ := filepath.Match(flagPublishFilter, filepath.Base(m.Dir))
+			matchedRel, _ := filepath.Match(flagPublishFilter, m.RelDir)
+			_, shortName := manifest.ParseFullName(m.Manifest.Name)
+			matchedName, _ := filepath.Match(flagPublishFilter, shortName)
+			if matched || matchedRel || matchedName {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) == 0 {
+			return output.ErrUsageHint(
+				fmt.Sprintf("no members matched filter %q", flagPublishFilter),
+				"Use 'ctx workspace list' to see available members",
+			)
+		}
+		members = filtered
+	}
+
+	output.Info("Publishing %d member(s) from workspace %s...", len(members), ws.Root.Name)
+
+	var published int
+	var failed int
+	for i, member := range members {
+		output.Info("")
+		output.Info("[%d/%d] Publishing %s@%s...", i+1, len(members), member.Manifest.Name, member.Manifest.Version)
+
+		// Publish each member by invoking the existing publish flow.
+		pubErr := publishSingleMember(cmd, member, reg)
+		if pubErr != nil {
+			failed++
+			output.Warn("Failed: %v", pubErr)
+			if !flagPublishContinueOnErr {
+				return fmt.Errorf("publish %s failed: %w (use --continue-on-error to skip failures)", member.Manifest.Name, pubErr)
+			}
+			continue
+		}
+		published++
+	}
+
+	output.Info("")
+	if failed > 0 {
+		output.Warn("Published %d/%d members (%d failed)", published, len(members), failed)
+	} else {
+		output.Info("Published %d member(s) from workspace %s", published, ws.Root.Name)
+	}
+
+	return nil
+}
+
+// publishSingleMember publishes a single workspace member.
+func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, reg *registry.Client) error {
+	m := member.Manifest
+	dir := member.Dir
+
+	// Auto-enrich (quiet mode: skip warnings already shown or redundant in batch)
+	autoEnrichManifestQuiet(m, dir)
+
+	errs := manifest.Validate(m)
+	if len(errs) > 0 {
+		return output.ErrUsageHint(
+			"validation failed: "+errs[0],
+			"Fix errors and try again",
+		)
+	}
+
+	// Marshal manifest
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	// Stage package files
+	stg, stgErr := staging.New("ctx-publish-")
+	if stgErr != nil {
+		return stgErr
+	}
+	defer stg.Rollback()
+
+	if cpErr := stg.CopyFiles(dir, m.PackageFiles()); cpErr != nil {
+		return fmt.Errorf("stage package files: %w", cpErr)
+	}
+
+	if m.SkillEntryNeedsNormalize() {
+		if err := stg.NormalizeSkillEntry(m.Skill.Entry); err != nil {
+			return fmt.Errorf("normalize skill entry: %w", err)
+		}
+	}
+
+	if wErr := stg.WriteFile(manifest.FileName, data, 0o644); wErr != nil {
+		return fmt.Errorf("stage manifest: %w", wErr)
+	}
+
+	archive, archErr := stg.TarGz()
+	if archErr != nil {
+		return fmt.Errorf("create archive: %w", archErr)
+	}
+	defer func() { _ = archive.Close() }()
+
+	result, err := reg.Publish(cmd.Context(), data, archive)
+	if err != nil {
+		return err
+	}
+
+	output.Success("Published %s@%s", result.FullName, result.Version)
+	return nil
+}
+
 // autoEnrichManifest fills in missing optional metadata fields from
 // git configuration and filesystem detection. It modifies m in place.
 // Fields that already have values are never overwritten.
 func autoEnrichManifest(m *manifest.Manifest, dir string) {
+	enrichManifest(m, dir, false)
+}
+
+// autoEnrichManifestQuiet is like autoEnrichManifest but suppresses
+// per-field warnings. Used in workspace batch publish to avoid noisy
+// repeated warnings for every member.
+func autoEnrichManifestQuiet(m *manifest.Manifest, dir string) {
+	enrichManifest(m, dir, true)
+}
+
+func enrichManifest(m *manifest.Manifest, dir string, quiet bool) {
 	if m.Author == "" {
 		if author := gitutil.Author(dir); author != "" {
 			m.Author = author
-			output.Info("Auto-detected author: %s", author)
+			if !quiet {
+				output.Info("Auto-detected author: %s", author)
+			}
 		}
 	}
 	if m.Repository == "" {
 		if repo := gitutil.RemoteURL(dir); repo != "" {
 			m.Repository = repo
-			output.Info("Auto-detected repository: %s", repo)
+			if !quiet {
+				output.Info("Auto-detected repository: %s", repo)
+			}
 		}
 	}
 	if m.License == "" {
 		if lr := license.Detect(dir); lr.SPDX != "" {
 			m.License = lr.SPDX
-			output.Info("Auto-detected license: %s", lr.SPDX)
+			if !quiet {
+				output.Info("Auto-detected license: %s", lr.SPDX)
+			}
 		}
+	}
+
+	if quiet {
+		return
 	}
 
 	// Soft warnings for missing recommended fields

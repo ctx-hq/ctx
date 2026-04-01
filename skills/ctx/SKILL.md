@@ -30,6 +30,12 @@ triggers:
   - who am i
   - check auth
   - check login status
+  - ctx workspace
+  - workspace init
+  - monorepo skills
+  - publish all skills
+  - install collection
+  - multi-skill repo
 invocable: true
 argument-hint: "[command] [args...]"
 ---
@@ -114,6 +120,13 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx login` | | Authenticate via GitHub |
 | `ctx whoami` | | Show current authenticated user |
 | `ctx skill install` | | Install ctx's own skill to agents |
+| `ctx workspace list` | `ctx ws ls` | List workspace members |
+| `ctx workspace init` | `ctx ws init` | Initialize workspace from existing repo |
+| `ctx workspace validate` | `ctx ws val` | Validate all workspace members |
+| `ctx publish --all` | | Publish all workspace members |
+| `ctx publish --filter <glob>` | | Publish matching workspace members |
+| `ctx install <collection>` | | Install all skills in a collection |
+| `ctx install <collection> --pick` | | Interactive skill selection from collection |
 
 ## Global Flags
 
@@ -199,6 +212,27 @@ ctx prune --keep 2            # Clean old versions, keep 2 most recent
 ### Diagnose Issues
 ```bash
 ctx dr                        # Check agents, registry, links
+```
+
+### Workspace (Monorepo) Management
+```bash
+# Initialize workspace from existing multi-skill repo
+cd my-skills-repo/
+ctx workspace init --scan "skills/*" --scope "@myname"
+ctx workspace init --scan "*" --exclude "docs,scripts" --scope "@team"  # Root-level skills
+ctx workspace init --scan "marketing/*,engineering/*" --scope "@org"     # Nested hierarchy
+ctx workspace list                        # List discovered skills
+ctx workspace validate                    # Check all members
+
+# Publish all skills + auto-create collections
+ctx publish --all                         # Publish all members
+ctx publish --filter "baoyu-trans*"       # Publish matching only
+ctx publish --all --continue-on-error     # Skip failures
+
+# Consumer: install individual or collection
+ctx install @myname/translate             # Single skill
+ctx install @myname/skills                # All skills in collection
+ctx install @myname/skills --pick         # Choose interactively
 ```
 
 ## Package Types

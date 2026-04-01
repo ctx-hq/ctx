@@ -521,6 +521,246 @@ func TestPackageFilesIncludesLicense(t *testing.T) {
 	}
 }
 
+func TestParseWorkspace(t *testing.T) {
+	input := `
+name: "@baoyu/skills"
+type: workspace
+description: "Baoyu's skill collection"
+workspace:
+  members:
+    - "skills/*"
+  exclude:
+    - "docs"
+  defaults:
+    scope: "@baoyu"
+    author: "Jim Liu"
+    license: MIT
+  collections:
+    - name: document-skills
+      description: "Document processing"
+      members: [xlsx, docx, pdf]
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m.Type != TypeWorkspace {
+		t.Errorf("Type = %q, want workspace", m.Type)
+	}
+	if m.Workspace == nil {
+		t.Fatal("Workspace is nil")
+	}
+	if len(m.Workspace.Members) != 1 || m.Workspace.Members[0] != "skills/*" {
+		t.Errorf("Workspace.Members = %v, want [skills/*]", m.Workspace.Members)
+	}
+	if len(m.Workspace.Exclude) != 1 || m.Workspace.Exclude[0] != "docs" {
+		t.Errorf("Workspace.Exclude = %v, want [docs]", m.Workspace.Exclude)
+	}
+	if m.Workspace.Defaults == nil || m.Workspace.Defaults.Scope != "@baoyu" {
+		t.Errorf("Workspace.Defaults.Scope = %v", m.Workspace.Defaults)
+	}
+	if len(m.Workspace.Collections) != 1 {
+		t.Fatalf("Collections count = %d, want 1", len(m.Workspace.Collections))
+	}
+	c := m.Workspace.Collections[0]
+	if c.Name != "document-skills" {
+		t.Errorf("Collection.Name = %q", c.Name)
+	}
+	if len(c.Members) != 3 {
+		t.Errorf("Collection.Members = %v, want 3 items", c.Members)
+	}
+}
+
+func TestParseCollection(t *testing.T) {
+	input := `
+name: "@baoyu/skills"
+version: "1.0.0"
+type: collection
+description: "All Baoyu skills"
+collection:
+  members:
+    - "@baoyu/translate"
+    - "@baoyu/comic"
+    - "@baoyu/infographic"
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m.Type != TypeCollection {
+		t.Errorf("Type = %q, want collection", m.Type)
+	}
+	if m.Collection == nil {
+		t.Fatal("Collection is nil")
+	}
+	if len(m.Collection.Members) != 3 {
+		t.Errorf("Collection.Members count = %d, want 3", len(m.Collection.Members))
+	}
+}
+
+func TestValidateWorkspace_Valid(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+		Workspace: &WorkspaceSpec{
+			Members: []string{"skills/*"},
+		},
+	}
+	errs := Validate(&m)
+	if len(errs) != 0 {
+		t.Errorf("Validate() returned errors: %v", errs)
+	}
+}
+
+func TestValidateWorkspace_MissingMembers(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+		Workspace:   &WorkspaceSpec{},
+	}
+	errs := Validate(&m)
+	if len(errs) != 1 {
+		t.Errorf("Validate() returned %d errors, want 1: %v", len(errs), errs)
+	}
+}
+
+func TestValidateWorkspace_MissingSection(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+	}
+	errs := Validate(&m)
+	if len(errs) != 1 {
+		t.Errorf("Validate() returned %d errors, want 1: %v", len(errs), errs)
+	}
+}
+
+func TestValidateWorkspace_NoVersionRequired(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+		Workspace: &WorkspaceSpec{
+			Members: []string{"skills/*"},
+		},
+	}
+	errs := Validate(&m)
+	if len(errs) != 0 {
+		t.Errorf("Workspace should not require version, got errors: %v", errs)
+	}
+}
+
+func TestValidateWorkspace_RejectsSkillSection(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+		Workspace:   &WorkspaceSpec{Members: []string{"*"}},
+		Skill:       &SkillSpec{Entry: "SKILL.md"},
+	}
+	errs := Validate(&m)
+	hasErr := false
+	for _, e := range errs {
+		if strings.Contains(e, "cannot have skill") {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Errorf("expected error about skill section on workspace, got: %v", errs)
+	}
+}
+
+func TestValidateCollection_Valid(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Version:     "1.0.0",
+		Type:        TypeCollection,
+		Description: "Test collection",
+		Collection:  &CollectionManifest{Members: []string{"@test/alpha", "@test/beta"}},
+	}
+	errs := Validate(&m)
+	if len(errs) != 0 {
+		t.Errorf("Validate() returned errors: %v", errs)
+	}
+}
+
+func TestValidateCollection_InvalidMemberName(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Version:     "1.0.0",
+		Type:        TypeCollection,
+		Description: "Test collection",
+		Collection:  &CollectionManifest{Members: []string{"BadName"}},
+	}
+	errs := Validate(&m)
+	if len(errs) != 1 {
+		t.Errorf("Validate() returned %d errors, want 1: %v", len(errs), errs)
+	}
+}
+
+func TestValidateCollection_EmptyMembers(t *testing.T) {
+	m := Manifest{
+		Name:        "@test/skills",
+		Version:     "1.0.0",
+		Type:        TypeCollection,
+		Description: "Test collection",
+	}
+	errs := Validate(&m)
+	hasErr := false
+	for _, e := range errs {
+		if strings.Contains(e, "collection.members") {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Errorf("expected collection.members error, got: %v", errs)
+	}
+}
+
+func TestMarshalRoundtripWorkspace(t *testing.T) {
+	m := &Manifest{
+		Name:        "@test/skills",
+		Type:        TypeWorkspace,
+		Description: "Test workspace",
+		Workspace: &WorkspaceSpec{
+			Members: []string{"skills/*"},
+			Exclude: []string{"docs"},
+			Defaults: &WorkspaceDefaults{
+				Scope:  "@test",
+				Author: "Test Author",
+			},
+			Collections: []CollectionSpec{
+				{Name: "docs", Description: "Document skills", Members: []string{"xlsx", "pdf"}},
+			},
+		},
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error: %v", err)
+	}
+
+	m2, err := Parse(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m2.Type != TypeWorkspace {
+		t.Errorf("roundtrip Type = %q, want workspace", m2.Type)
+	}
+	if m2.Workspace == nil {
+		t.Fatal("roundtrip Workspace is nil")
+	}
+	if len(m2.Workspace.Members) != 1 {
+		t.Errorf("roundtrip Members = %v", m2.Workspace.Members)
+	}
+	if len(m2.Workspace.Collections) != 1 {
+		t.Errorf("roundtrip Collections = %v", m2.Workspace.Collections)
+	}
+}
+
 func TestMarshalRoundtrip(t *testing.T) {
 	m := Scaffold(TypeMCP, "test", "server")
 	m.MCP = &MCPSpec{Transport: "stdio", Command: "node"}
