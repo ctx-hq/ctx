@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/spf13/cobra"
@@ -148,6 +150,20 @@ Examples:
 				manifest.ApplyDefaults(m, &manifest.WorkspaceDefaults{Scope: flagWsScope})
 			}
 
+			// Auto-enrich: fill author, repository, license from git/filesystem.
+			// Uses workspace root for git info (individual skill dirs rarely have their own .git).
+			if m.Author == "" {
+				m.Author = gitutil.Author(absRoot)
+			}
+			if m.Repository == "" {
+				m.Repository = gitutil.RemoteURL(absRoot)
+			}
+			if m.License == "" {
+				if lr := license.Detect(absRoot); lr.SPDX != "" {
+					m.License = lr.SPDX
+				}
+			}
+
 			data, marshalErr := manifest.Marshal(m)
 			if marshalErr != nil {
 				return marshalErr
@@ -179,10 +195,22 @@ Examples:
 			},
 		}
 
+		// Populate workspace defaults from git/filesystem.
+		defaults := &manifest.WorkspaceDefaults{}
 		if flagWsScope != "" {
-			rootManifest.Workspace.Defaults = &manifest.WorkspaceDefaults{
-				Scope: flagWsScope,
-			}
+			defaults.Scope = flagWsScope
+		}
+		if author := gitutil.Author(absRoot); author != "" {
+			defaults.Author = author
+		}
+		if repo := gitutil.RemoteURL(absRoot); repo != "" {
+			defaults.Repository = repo
+		}
+		if lr := license.Detect(absRoot); lr.SPDX != "" {
+			defaults.License = lr.SPDX
+		}
+		if defaults.Scope != "" || defaults.Author != "" || defaults.Repository != "" || defaults.License != "" {
+			rootManifest.Workspace.Defaults = defaults
 		}
 
 		if len(collections) > 0 {
