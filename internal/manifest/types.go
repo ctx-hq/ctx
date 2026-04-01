@@ -177,8 +177,10 @@ func (m *Manifest) PackageFiles() []string {
 		if dir != "." {
 			files = append(files, dir)
 		} else {
-			// Skill at root — include actual entry file and conventional skill subdirectories
-			files = append(files, entry, "scripts", "references", "assets")
+			// Skill at root — include actual entry file, conventional subdirectories,
+			// and known .md files. (README.md and LICENSE variants already added above.)
+			files = append(files, entry, "scripts", "references", "assets", "agents",
+				"EXTEND.md")
 		}
 	}
 

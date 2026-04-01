@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Dir represents an atomic staging directory.
@@ -89,31 +90,61 @@ func (d *Dir) CopyFrom(src string) error {
 
 // CopyFiles copies only the specified files/directories from src into the staging directory.
 // Paths are relative to src. Missing paths are silently skipped.
+// Glob patterns (e.g., "*.md") are expanded against src.
 func (d *Dir) CopyFiles(src string, paths []string) error {
 	if d.cleaned {
 		return fmt.Errorf("staging directory already cleaned up")
 	}
 	for _, p := range paths {
-		srcPath := filepath.Join(src, p)
-		info, err := os.Stat(srcPath)
-		if err != nil {
-			continue // skip missing paths
+		// Expand glob patterns.
+		if containsGlobChar(p) {
+			matches, err := filepath.Glob(filepath.Join(src, p))
+			if err != nil || len(matches) == 0 {
+				continue
+			}
+			for _, match := range matches {
+				rel, relErr := filepath.Rel(src, match)
+				if relErr != nil {
+					continue
+				}
+				if err := d.copySingle(src, rel); err != nil {
+					return err
+				}
+			}
+			continue
 		}
-		dstPath := filepath.Join(d.Path, p)
-		if info.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return fmt.Errorf("copy %s: %w", p, err)
-			}
-		} else {
-			if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
-				return fmt.Errorf("create parent for %s: %w", p, err)
-			}
-			if err := copyFile(srcPath, dstPath, info.Mode()); err != nil {
-				return fmt.Errorf("copy %s: %w", p, err)
-			}
+
+		if err := d.copySingle(src, p); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (d *Dir) copySingle(src, p string) error {
+	srcPath := filepath.Join(src, p)
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return nil // skip missing paths
+	}
+	dstPath := filepath.Join(d.Path, p)
+	if info.IsDir() {
+		if err := copyDir(srcPath, dstPath); err != nil {
+			return fmt.Errorf("copy %s: %w", p, err)
+		}
+	} else {
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+			return fmt.Errorf("create parent for %s: %w", p, err)
+		}
+		if err := copyFile(srcPath, dstPath, info.Mode()); err != nil {
+			return fmt.Errorf("copy %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
+func containsGlobChar(s string) bool {
+	return strings.ContainsAny(s, "*?[")
 }
 
 // NormalizeSkillEntry copies the given skill entry file to root SKILL.md

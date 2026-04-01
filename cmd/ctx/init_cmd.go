@@ -414,6 +414,20 @@ func parseInitSource(input initInput) (initMeta, error) {
 			return initMeta{}, fmt.Errorf("get working directory: %w", err)
 		}
 		dirName := filepath.Base(cwd)
+
+		// Check if SKILL.md exists in cwd — if so, read frontmatter for metadata.
+		skillPath := filepath.Join(cwd, "SKILL.md")
+		if _, statErr := os.Stat(skillPath); statErr == nil {
+			fm, body, readErr := readAndParseSkillMD(skillPath)
+			if readErr != nil {
+				return initMeta{}, fmt.Errorf("parse SKILL.md: %w", readErr)
+			}
+			meta := metaFromFrontmatter(fm, body, dirName)
+			meta.skillEntry = "SKILL.md"
+			autoDetectMeta(&meta, cwd)
+			return meta, nil
+		}
+
 		meta := initMeta{
 			name:        dirName,
 			description: fmt.Sprintf("A %s package", dirName),
