@@ -245,7 +245,7 @@ ctx install @myname/skills --pick         # Choose interactively
 
 - **public**: Discoverable via search, anyone can install
 - **unlisted**: Not in search, but installable with full name
-- **private**: Only publisher (or org members) can install, requires auth
+- **private**: Only the owner (or org members) can install, requires auth
 - **private + access grant**: Only specified users can access (`ctx access grant` for per-user ACL)
 
 ## Trust Tiers

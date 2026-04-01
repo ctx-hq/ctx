@@ -66,9 +66,17 @@ type PackageInfo struct {
 	Version     string `json:"version"`
 	Downloads   int    `json:"downloads"`
 	Repository  string `json:"repository,omitempty"`
+	OwnerSlug   string `json:"owner_slug,omitempty"`
 }
 
 // PackageDetail is the full package metadata.
+// OwnerInfo represents the package owner (user, org, or system).
+type OwnerInfo struct {
+	Slug      string `json:"slug"`
+	Kind      string `json:"kind"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
 type PackageDetail struct {
 	PackageInfo
 	License    string           `json:"license,omitempty"`
@@ -77,6 +85,7 @@ type PackageDetail struct {
 	Homepage   string           `json:"homepage,omitempty"`
 	Author     string           `json:"author,omitempty"`
 	Visibility string           `json:"visibility,omitempty"`
+	Owner      *OwnerInfo       `json:"owner,omitempty"`
 	Versions   []VersionSummary `json:"versions,omitempty"`
 	CreatedAt  FlexTime         `json:"created_at"`
 	UpdatedAt  FlexTime         `json:"updated_at"`
