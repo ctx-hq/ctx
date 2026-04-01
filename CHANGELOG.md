@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0](https://github.com/ctx-hq/ctx/compare/v0.23.1...v0.24.0) (2026-04-01)
+
+
+### Features
+
+* **publish:** auto-detect git metadata and LICENSE for package manifest ([3d2fc2d](https://github.com/ctx-hq/ctx/commit/3d2fc2daba3391908da724cb0050479d9193b2c6))
+* **workspace:** add workspace and collection package types for multi-skill repos ([8619d86](https://github.com/ctx-hq/ctx/commit/8619d86f5310e6ab4fdd4cee3389fe21b5442fef))
+
 ## [0.23.1](https://github.com/ctx-hq/ctx/compare/v0.23.0...v0.23.1) (2026-03-31)
 
 
