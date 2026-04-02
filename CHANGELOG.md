@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/ctx-hq/ctx/compare/v0.25.0...v0.26.0) (2026-04-02)
+
+
+### Features
+
+* end-to-end CLI binary package support — artifact download, batch upload, PATH linking ([9f59f5c](https://github.com/ctx-hq/ctx/commit/9f59f5c7b088c90d69b86a7f1f8fe80b942ba941))
+
 ## [0.25.0](https://github.com/ctx-hq/ctx/compare/v0.24.2...v0.25.0) (2026-04-02)
 
 
