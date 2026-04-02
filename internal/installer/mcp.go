@@ -13,21 +13,34 @@ import (
 
 // LinkMCPToAgents configures an MCP server in all detected agents and records
 // the config entries in the LinkRegistry for later cleanup.
+// transportID selects a named transport from mcp.transports[]; empty uses the default top-level transport.
 // Returns the list of MCP states for tracking in state.json.
-func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.MCPState, error) {
+func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID string) ([]installstate.MCPState, error) {
 	output.Verbose(ctx, "configuring MCP %s in detected agents", m.ShortName())
 	if m.MCP == nil {
 		return nil, fmt.Errorf("package is not an MCP server")
 	}
 
-	cfg := agent.MCPConfig{
-		Command: m.MCP.Command,
-		Args:    m.MCP.Args,
-		URL:     m.MCP.URL,
+	tid := transportID
+
+	cfg, err := buildMCPConfig(m.MCP, tid)
+	if err != nil {
+		return nil, err
 	}
-	if len(m.MCP.Env) > 0 {
+
+	// Build env from the selected transport's env vars
+	envVars := m.MCP.Env
+	if tid != "" {
+		for _, t := range m.MCP.Transports {
+			if t.ID == tid && len(t.Env) > 0 {
+				envVars = t.Env
+				break
+			}
+		}
+	}
+	if len(envVars) > 0 {
 		cfg.Env = make(map[string]string)
-		for _, e := range m.MCP.Env {
+		for _, e := range envVars {
 			// Always include required vars so agents know the key exists.
 			// Use "<required>" placeholder when no default is set, to avoid
 			// passing an empty string to the MCP server at runtime.
@@ -66,13 +79,13 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.
 
 	name := m.ShortName()
 	var mcpStates []installstate.MCPState
+	var configuredNames []string
 	for _, a := range agents {
 		if err := a.AddMCP(name, cfg); err != nil {
 			output.Warn("Failed to configure %s in %s: %v", name, a.Name(), err)
 			mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "missing"})
 			continue
 		}
-		output.PrintDim("  Configured in: %s", a.Name())
 
 		links.Add(m.Name, LinkEntry{
 			Agent:     a.Name(),
@@ -80,11 +93,39 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest) ([]installstate.
 			Source:    m.Name,
 			ConfigKey: name,
 		})
-		mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "ok"})
+		mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "ok", TransportID: tid})
+		configuredNames = append(configuredNames, a.Name())
+	}
+
+	if len(configuredNames) > 0 {
+		output.PrintLinkedAgents(configuredNames)
 	}
 
 	_ = links.Save() // best effort
 	return mcpStates, nil
+}
+
+// buildMCPConfig creates an MCPConfig from the manifest, optionally selecting a named transport.
+// Returns an error if a specific transportID is requested but not found.
+func buildMCPConfig(mcp *manifest.MCPSpec, transportID string) (agent.MCPConfig, error) {
+	if transportID != "" {
+		for _, t := range mcp.Transports {
+			if t.ID == transportID {
+				return agent.MCPConfig{
+					Command: t.Command,
+					Args:    t.Args,
+					URL:     t.URL,
+				}, nil
+			}
+		}
+		return agent.MCPConfig{}, fmt.Errorf("transport %q not found in manifest", transportID)
+	}
+	// Default: use top-level transport
+	return agent.MCPConfig{
+		Command: mcp.Command,
+		Args:    mcp.Args,
+		URL:     mcp.URL,
+	}, nil
 }
 
 // UnlinkMCPFromAgents removes an MCP config from all detected agents.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/initdetect"
 	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
@@ -71,6 +72,7 @@ type initMeta struct {
 var (
 	flagInitType string // --type skill|mcp|cli
 	flagInitName string // --name @scope/name
+	flagInitFrom string // --from npm:pkg|github:owner/repo|docker:image|/path
 )
 
 var initCmd = &cobra.Command{
@@ -81,19 +83,27 @@ var initCmd = &cobra.Command{
 Generates ctx.yaml and SKILL.md in the project directory.
 No files are copied elsewhere — authoring happens locally.
 
-Supports three input modes:
+Supports four input modes:
   1. From scratch       ctx init
   2. From .md file      ctx init gc.md
   3. From directory     ctx init ./my-skill/
+  4. From upstream      ctx init --from npm:@playwright/mcp
 
 Examples:
-  ctx init                     Create a new package interactively
-  ctx init gc.md               Adopt an existing .md file as a skill
-  ctx init ./my-skill/         Initialize from an existing directory
-  ctx init gc.md -y            Non-interactive with defaults`,
+  ctx init                                    Create a new package interactively
+  ctx init gc.md                              Adopt an existing .md file as a skill
+  ctx init ./my-skill/                        Initialize from an existing directory
+  ctx init --from npm:@playwright/mcp         Auto-detect from npm package
+  ctx init --from github:github/github-mcp-server  Auto-detect from GitHub repo
+  ctx init --from docker:ghcr.io/org/image    Auto-detect from Docker image`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
+
+		// --from mode: auto-detect from upstream source
+		if flagInitFrom != "" {
+			return runInitFrom(cmd, w)
+		}
 
 		// 1. Resolve scope
 		scope := resolveScope()
@@ -851,6 +861,95 @@ func findAllSkillMD(dirPath string) []string {
 func init() {
 	initCmd.Flags().StringVar(&flagInitType, "type", "", "Package type: skill, mcp, or cli")
 	initCmd.Flags().StringVar(&flagInitName, "name", "", "Full package name (@scope/name)")
+	initCmd.Flags().StringVar(&flagInitFrom, "from", "", "Auto-detect from upstream (npm:pkg, github:owner/repo, docker:image, /path)")
+}
+
+// runInitFrom handles the --from flag: auto-detect from upstream source and generate ctx.yaml.
+func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
+	detector := initdetect.NewDetector()
+
+	kind, key := initdetect.ParseSource(flagInitFrom)
+	output.Info("Detecting source: %s (%s)", kind, key)
+
+	result, err := detector.Detect(cmd.Context(), flagInitFrom)
+	if err != nil {
+		return fmt.Errorf("detection failed: %w", err)
+	}
+
+	output.PrintDim("  Type: %s", result.PackageType)
+	output.PrintDim("  Name: %s", result.Name)
+	output.PrintDim("  Version: %s", result.Version)
+	if result.License != "" {
+		output.PrintDim("  License: %s", result.License)
+	}
+	if result.MCP != nil {
+		output.PrintDim("  Transport: %s", result.MCP.Transport)
+		if len(result.MCP.Transports) > 0 {
+			output.PrintDim("  Additional transports: %d", len(result.MCP.Transports))
+		}
+		if len(result.MCP.Tools) > 0 {
+			output.PrintDim("  Tools: %d detected", len(result.MCP.Tools))
+		}
+	}
+
+	// Generate manifest
+	m := initdetect.ToManifest(result)
+
+	// Validate
+	errs := manifest.Validate(m)
+	if len(errs) > 0 {
+		output.Warn("Generated manifest has validation issues:")
+		for _, e := range errs {
+			output.PrintDim("  - %s", e)
+		}
+		output.Info("Review and fix the generated ctx.yaml before publishing.")
+	}
+
+	// Write ctx.yaml
+	outPath := filepath.Join(".", manifest.FileName)
+	if _, err := os.Stat(outPath); err == nil {
+		if flagYes {
+			output.Warn("Overwriting existing ctx.yaml (--yes)")
+		} else if term.IsTerminal(int(os.Stdin.Fd())) {
+			p := prompt.DefaultPrompter()
+			overwrite, confirmErr := p.Confirm("ctx.yaml already exists, overwrite?", false)
+			if confirmErr != nil {
+				return confirmErr
+			}
+			if !overwrite {
+				output.Info("Cancelled.")
+				return nil
+			}
+		} else {
+			return fmt.Errorf("ctx.yaml already exists — remove it first or use a different directory")
+		}
+	}
+
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("marshal manifest: %w", err)
+	}
+
+	if err := os.WriteFile(outPath, data, 0o644); err != nil {
+		return fmt.Errorf("write ctx.yaml: %w", err)
+	}
+
+	output.Info("Generated %s", outPath)
+	output.PrintDim("")
+	output.PrintDim("  Next steps:")
+	if m.Type == manifest.TypeMCP {
+		output.PrintDim("    ctx mcp test %s        Verify the MCP server works", m.ShortName())
+	}
+	output.PrintDim("    Review the generated ctx.yaml")
+	output.PrintDim("    ctx publish")
+
+	return w.OK(map[string]interface{}{
+		"file":    outPath,
+		"name":    m.Name,
+		"version": m.Version,
+		"type":    string(m.Type),
+		"source":  flagInitFrom,
+	}, output.WithSummary("Generated "+outPath))
 }
 
 // promptMCPMeta prompts for MCP-specific metadata.

@@ -761,6 +761,363 @@ func TestMarshalRoundtripWorkspace(t *testing.T) {
 	}
 }
 
+func TestParseMCPReference(t *testing.T) {
+	input := `
+name: "@mcp/playwright"
+version: "0.0.70"
+type: mcp
+description: "Browser automation MCP server using Playwright"
+
+upstream:
+  npm: "@playwright/mcp"
+  tracking: npm
+  version_pattern: "*"
+
+mcp:
+  transport: stdio
+  command: npx
+  args: ["-y", "@playwright/mcp@0.0.70"]
+  env:
+    - name: PLAYWRIGHT_MCP_HEADLESS
+      required: false
+      default: "true"
+      description: "Run browser in headless mode"
+  tools:
+    - browser_navigate
+    - browser_click
+  require:
+    bins: [node]
+    min_versions:
+      node: "18.0.0"
+  hooks:
+    post_install:
+      - command: npx
+        args: ["playwright", "install", "chromium"]
+        description: "Install Chromium browser binary"
+        optional: false
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	// Upstream
+	if m.Upstream == nil {
+		t.Fatal("Upstream is nil")
+	}
+	if m.Upstream.NPM != "@playwright/mcp" {
+		t.Errorf("Upstream.NPM = %q, want %q", m.Upstream.NPM, "@playwright/mcp")
+	}
+	if m.Upstream.Tracking != "npm" {
+		t.Errorf("Upstream.Tracking = %q, want %q", m.Upstream.Tracking, "npm")
+	}
+	// Require
+	if m.MCP.Require == nil {
+		t.Fatal("MCP.Require is nil")
+	}
+	if len(m.MCP.Require.Bins) != 1 || m.MCP.Require.Bins[0] != "node" {
+		t.Errorf("MCP.Require.Bins = %v, want [node]", m.MCP.Require.Bins)
+	}
+	if m.MCP.Require.MinVersions["node"] != "18.0.0" {
+		t.Errorf("MCP.Require.MinVersions[node] = %q, want %q", m.MCP.Require.MinVersions["node"], "18.0.0")
+	}
+	// Hooks
+	if m.MCP.Hooks == nil {
+		t.Fatal("MCP.Hooks is nil")
+	}
+	if len(m.MCP.Hooks.PostInstall) != 1 {
+		t.Fatalf("PostInstall count = %d, want 1", len(m.MCP.Hooks.PostInstall))
+	}
+	h := m.MCP.Hooks.PostInstall[0]
+	if h.Command != "npx" {
+		t.Errorf("Hook.Command = %q, want %q", h.Command, "npx")
+	}
+	if len(h.Args) != 3 {
+		t.Errorf("Hook.Args = %v, want 3 args", h.Args)
+	}
+	if h.Optional {
+		t.Error("Hook.Optional should be false")
+	}
+	// Tools
+	if len(m.MCP.Tools) != 2 {
+		t.Errorf("MCP.Tools = %v, want 2", m.MCP.Tools)
+	}
+	// Validation
+	errs := Validate(m)
+	if len(errs) != 0 {
+		t.Errorf("Validate() errors: %v", errs)
+	}
+}
+
+func TestParseMCPMultiTransport(t *testing.T) {
+	input := `
+name: "@mcp/github"
+version: "0.2.0"
+type: mcp
+description: "Connect AI assistants to GitHub"
+
+upstream:
+  github: "github/github-mcp-server"
+  docker: "ghcr.io/github/github-mcp-server"
+  tracking: github-release
+
+mcp:
+  transport: stdio
+  command: docker
+  args: ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server:v0.2.0"]
+  env:
+    - name: GITHUB_PERSONAL_ACCESS_TOKEN
+      required: true
+      description: "GitHub personal access token"
+  require:
+    bins: [docker]
+  transports:
+    - id: stdio-docker
+      label: "Docker (stdio)"
+      transport: stdio
+      command: docker
+      args: ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server:v0.2.0"]
+      require:
+        bins: [docker]
+    - id: remote
+      label: "GitHub Copilot (remote)"
+      transport: streamable-http
+      url: "https://api.githubcopilot.com/mcp/"
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	// Transports
+	if len(m.MCP.Transports) != 2 {
+		t.Fatalf("Transports count = %d, want 2", len(m.MCP.Transports))
+	}
+	t0 := m.MCP.Transports[0]
+	if t0.ID != "stdio-docker" {
+		t.Errorf("Transport[0].ID = %q, want %q", t0.ID, "stdio-docker")
+	}
+	if t0.Transport != "stdio" {
+		t.Errorf("Transport[0].Transport = %q, want %q", t0.Transport, "stdio")
+	}
+	if t0.Command != "docker" {
+		t.Errorf("Transport[0].Command = %q, want %q", t0.Command, "docker")
+	}
+	if t0.Require == nil || len(t0.Require.Bins) != 1 {
+		t.Errorf("Transport[0].Require.Bins = %v", t0.Require)
+	}
+
+	t1 := m.MCP.Transports[1]
+	if t1.ID != "remote" {
+		t.Errorf("Transport[1].ID = %q, want %q", t1.ID, "remote")
+	}
+	if t1.Transport != "streamable-http" {
+		t.Errorf("Transport[1].Transport = %q, want %q", t1.Transport, "streamable-http")
+	}
+	if t1.URL != "https://api.githubcopilot.com/mcp/" {
+		t.Errorf("Transport[1].URL = %q", t1.URL)
+	}
+
+	// Upstream
+	if m.Upstream == nil || m.Upstream.GitHub != "github/github-mcp-server" {
+		t.Errorf("Upstream.GitHub = %v", m.Upstream)
+	}
+	if m.Upstream.Tracking != "github-release" {
+		t.Errorf("Upstream.Tracking = %q", m.Upstream.Tracking)
+	}
+
+	// Validation should pass
+	errs := Validate(m)
+	if len(errs) != 0 {
+		t.Errorf("Validate() errors: %v", errs)
+	}
+}
+
+func TestValidateTransportErrors(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			Name:        "@mcp/test",
+			Version:     "1.0.0",
+			Type:        TypeMCP,
+			Description: "test",
+			MCP: &MCPSpec{
+				Transport: "stdio",
+				Command:   "node",
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		modify  func(*Manifest)
+		wantErr int
+	}{
+		{
+			name: "transport missing id",
+			modify: func(m *Manifest) {
+				m.MCP.Transports = []TransportSpec{{Transport: "stdio", Command: "node"}}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "transport duplicate id",
+			modify: func(m *Manifest) {
+				m.MCP.Transports = []TransportSpec{
+					{ID: "a", Transport: "stdio", Command: "node"},
+					{ID: "a", Transport: "stdio", Command: "docker"},
+				}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "transport invalid type",
+			modify: func(m *Manifest) {
+				m.MCP.Transports = []TransportSpec{{ID: "a", Transport: "invalid"}}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "transport stdio missing command",
+			modify: func(m *Manifest) {
+				m.MCP.Transports = []TransportSpec{{ID: "a", Transport: "stdio"}}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "transport http missing url",
+			modify: func(m *Manifest) {
+				m.MCP.Transports = []TransportSpec{{ID: "a", Transport: "streamable-http"}}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "hook missing command",
+			modify: func(m *Manifest) {
+				m.MCP.Hooks = &MCPHooks{PostInstall: []HookStep{{}}}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "upstream empty sources",
+			modify: func(m *Manifest) {
+				m.Upstream = &UpstreamSpec{}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "upstream invalid tracking",
+			modify: func(m *Manifest) {
+				m.Upstream = &UpstreamSpec{NPM: "@test/pkg", Tracking: "invalid"}
+			},
+			wantErr: 1,
+		},
+		{
+			name: "upstream valid",
+			modify: func(m *Manifest) {
+				m.Upstream = &UpstreamSpec{NPM: "@test/pkg", Tracking: "npm"}
+			},
+			wantErr: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := base()
+			tt.modify(&m)
+			errs := Validate(&m)
+			if len(errs) != tt.wantErr {
+				t.Errorf("Validate() returned %d errors, want %d: %v", len(errs), tt.wantErr, errs)
+			}
+		})
+	}
+}
+
+func TestBackwardsCompatibility(t *testing.T) {
+	// Existing MCP manifests without new fields should still parse and validate fine
+	input := `
+name: "@test/github-mcp"
+version: "2.1.0"
+type: mcp
+description: "GitHub MCP server for repository operations"
+keywords: [github, git, mcp]
+skill:
+  entry: "skills/github-mcp/SKILL.md"
+  origin: native
+mcp:
+  transport: stdio
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    - name: GITHUB_TOKEN
+      required: true
+      description: "GitHub personal access token"
+`
+	m, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m.Upstream != nil {
+		t.Error("Upstream should be nil for old manifest")
+	}
+	if m.MCP.Require != nil {
+		t.Error("MCP.Require should be nil for old manifest")
+	}
+	if m.MCP.Hooks != nil {
+		t.Error("MCP.Hooks should be nil for old manifest")
+	}
+	if len(m.MCP.Transports) != 0 {
+		t.Error("MCP.Transports should be empty for old manifest")
+	}
+	errs := Validate(m)
+	if len(errs) != 0 {
+		t.Errorf("Old manifest should validate: %v", errs)
+	}
+}
+
+func TestMarshalRoundtripMCPReference(t *testing.T) {
+	m := &Manifest{
+		Name:        "@mcp/playwright",
+		Version:     "0.0.70",
+		Type:        TypeMCP,
+		Description: "Browser automation",
+		Upstream:    &UpstreamSpec{NPM: "@playwright/mcp", Tracking: "npm"},
+		MCP: &MCPSpec{
+			Transport: "stdio",
+			Command:   "npx",
+			Args:      []string{"-y", "@playwright/mcp@0.0.70"},
+			Require:   &MCPRequireSpec{Bins: []string{"node"}, MinVersions: map[string]string{"node": "18.0.0"}},
+			Hooks: &MCPHooks{
+				PostInstall: []HookStep{
+					{Command: "npx", Args: []string{"playwright", "install"}, Description: "Install browser"},
+				},
+			},
+			Transports: []TransportSpec{
+				{ID: "default", Transport: "stdio", Command: "npx"},
+			},
+		},
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error: %v", err)
+	}
+
+	m2, err := Parse(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if m2.Upstream == nil || m2.Upstream.NPM != "@playwright/mcp" {
+		t.Errorf("roundtrip Upstream.NPM = %v", m2.Upstream)
+	}
+	if m2.MCP.Require == nil || len(m2.MCP.Require.Bins) != 1 {
+		t.Errorf("roundtrip MCP.Require.Bins = %v", m2.MCP.Require)
+	}
+	if m2.MCP.Hooks == nil || len(m2.MCP.Hooks.PostInstall) != 1 {
+		t.Errorf("roundtrip MCP.Hooks = %v", m2.MCP.Hooks)
+	}
+	if len(m2.MCP.Transports) != 1 || m2.MCP.Transports[0].ID != "default" {
+		t.Errorf("roundtrip MCP.Transports = %v", m2.MCP.Transports)
+	}
+}
+
 func TestMarshalRoundtrip(t *testing.T) {
 	m := Scaffold(TypeMCP, "test", "server")
 	m.MCP = &MCPSpec{Transport: "stdio", Command: "node"}
@@ -780,5 +1137,122 @@ func TestMarshalRoundtrip(t *testing.T) {
 	}
 	if m2.Type != m.Type {
 		t.Errorf("roundtrip Type = %q, want %q", m2.Type, m.Type)
+	}
+}
+
+func TestValidateUpstreamVersionPattern(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			Name:        "@mcp/test",
+			Version:     "1.0.0",
+			Type:        TypeMCP,
+			Description: "test",
+			MCP: &MCPSpec{
+				Transport: "stdio",
+				Command:   "node",
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		pattern string
+		wantErr int
+	}{
+		{"wildcard *", "*", 0},
+		{"semver constraint ^1.0.0", "^1.0.0", 0},
+		{"semver constraint >=2.0.0", ">=2.0.0", 0},
+		{"semver constraint ~1.2.3", "~1.2.3", 0},
+		{"exact semver 1.2.3", "1.2.3", 0},
+		{"invalid pattern", "latest", 1},
+		{"invalid nonsense", "abc.xyz", 1},
+		{"empty (valid — optional field)", "", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := base()
+			m.Upstream = &UpstreamSpec{NPM: "@test/pkg", Tracking: "npm", VersionPattern: tt.pattern}
+			errs := Validate(&m)
+			if len(errs) != tt.wantErr {
+				t.Errorf("Validate() with version_pattern=%q returned %d errors, want %d: %v", tt.pattern, len(errs), tt.wantErr, errs)
+			}
+		})
+	}
+}
+
+func TestValidateCommandSafety(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			Name:        "@mcp/test",
+			Version:     "1.0.0",
+			Type:        TypeMCP,
+			Description: "test",
+			MCP: &MCPSpec{
+				Transport: "stdio",
+				Command:   "node",
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		command string
+		wantErr bool
+	}{
+		{"normal command", "npx", false},
+		{"path command", "node", false},
+		{"pipe injection", "node | cat /etc/passwd", true},
+		{"semicolon injection", "node; rm -rf /", true},
+		{"backtick injection", "node `whoami`", true},
+		{"dollar injection", "node $HOME", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := base()
+			m.MCP.Command = tt.command
+			errs := Validate(&m)
+			hasMetacharErr := false
+			for _, e := range errs {
+				if strings.Contains(e, "metacharacters") {
+					hasMetacharErr = true
+				}
+			}
+			if tt.wantErr && !hasMetacharErr {
+				t.Errorf("expected metacharacter error for command %q, got: %v", tt.command, errs)
+			}
+			if !tt.wantErr && hasMetacharErr {
+				t.Errorf("unexpected metacharacter error for command %q: %v", tt.command, errs)
+			}
+		})
+	}
+}
+
+func TestValidateHookCommandSafety(t *testing.T) {
+	m := Manifest{
+		Name:        "@mcp/test",
+		Version:     "1.0.0",
+		Type:        TypeMCP,
+		Description: "test",
+		MCP: &MCPSpec{
+			Transport: "stdio",
+			Command:   "node",
+			Hooks: &MCPHooks{
+				PostInstall: []HookStep{
+					{Command: "echo; rm -rf /"},
+				},
+			},
+		},
+	}
+	errs := Validate(&m)
+	hasErr := false
+	for _, e := range errs {
+		if strings.Contains(e, "metacharacters") {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Errorf("expected metacharacter error for hook command, got: %v", errs)
 	}
 }

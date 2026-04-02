@@ -1,0 +1,52 @@
+name: "@mcp/github"
+version: "0.2.0"
+type: mcp
+description: "Connect AI assistants to GitHub - manage repos, issues, PRs"
+homepage: "https://github.com/github/github-mcp-server"
+repository: "https://github.com/github/github-mcp-server"
+keywords: [github, git, repository, issues, pull-requests]
+license: MIT
+
+upstream:
+  github: "github/github-mcp-server"
+  docker: "ghcr.io/github/github-mcp-server"
+  tracking: github-release
+  version_pattern: "v*"
+
+mcp:
+  transport: stdio
+  command: docker
+  args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+         "ghcr.io/github/github-mcp-server:v0.2.0"]
+  env:
+    - name: GITHUB_PERSONAL_ACCESS_TOKEN
+      required: true
+      description: "GitHub personal access token"
+  tools:
+    - get_file_contents
+    - create_or_update_file
+    - search_repositories
+    - create_issue
+    - create_pull_request
+
+  require:
+    bins: [docker]
+
+  transports:
+    - id: stdio-docker
+      label: "Docker (stdio)"
+      transport: stdio
+      command: docker
+      args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+             "ghcr.io/github/github-mcp-server:v0.2.0"]
+      env:
+        - name: GITHUB_PERSONAL_ACCESS_TOKEN
+          required: true
+          description: "GitHub personal access token"
+      require:
+        bins: [docker]
+
+    - id: remote
+      label: "GitHub Copilot (remote)"
+      transport: streamable-http
+      url: "https://api.githubcopilot.com/mcp/"

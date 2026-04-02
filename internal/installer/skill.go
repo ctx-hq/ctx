@@ -36,6 +36,7 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 	}
 
 	linked := make(map[string]bool)
+	var linkedNames []string
 	var skillStates []installstate.SkillState
 
 	// Link caller agent first if specified
@@ -49,9 +50,6 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 				output.Warn("Failed to link to %s: %v", a.Name(), err)
 				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			} else {
-				if !quiet {
-					output.PrintDim("  Linked to: %s (caller)", a.Name())
-				}
 				links.Add(fullName, LinkEntry{
 					Agent:  a.Name(),
 					Type:   LinkSymlink,
@@ -60,6 +58,7 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 				})
 				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "ok"})
 				linked[a.Name()] = true
+				linkedNames = append(linkedNames, a.Name())
 			}
 		}
 	}
@@ -75,9 +74,6 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 			skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			continue
 		}
-		if !quiet {
-			output.PrintDim("  Linked to: %s", a.Name())
-		}
 
 		links.Add(fullName, LinkEntry{
 			Agent:  a.Name(),
@@ -87,10 +83,13 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 		})
 		skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "ok"})
 		linked[a.Name()] = true
+		linkedNames = append(linkedNames, a.Name())
 	}
 
 	if len(linked) == 0 {
 		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
+	} else if !quiet {
+		output.PrintLinkedAgents(linkedNames)
 	}
 
 	_ = links.Save() // best effort

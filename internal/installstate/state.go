@@ -22,6 +22,7 @@ type PackageState struct {
 	CLI           *CLIState    `json:"cli,omitempty"`
 	Skills        []SkillState `json:"skills,omitempty"`
 	MCP           []MCPState   `json:"mcp,omitempty"`
+	Hooks         *HooksState  `json:"hooks,omitempty"`
 }
 
 // CLIState tracks how a CLI binary was installed.
@@ -43,9 +44,15 @@ type SkillState struct {
 
 // MCPState tracks an MCP config entry in an agent.
 type MCPState struct {
-	Agent     string `json:"agent"`
-	ConfigKey string `json:"config_key"` // key in mcpServers
-	Status    string `json:"status"`     // "ok" or "missing"
+	Agent       string `json:"agent"`
+	ConfigKey   string `json:"config_key"`             // key in mcpServers
+	Status      string `json:"status"`                 // "ok" or "missing"
+	TransportID string `json:"transport_id,omitempty"` // selected transport from transports[]
+}
+
+// HooksState tracks lifecycle hook completion.
+type HooksState struct {
+	PostInstall []string `json:"post_install,omitempty"` // completed hook descriptions
 }
 
 // Load reads state.json from a package directory.

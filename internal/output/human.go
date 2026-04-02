@@ -79,6 +79,22 @@ func Separator() {
 	fmt.Fprintln(os.Stderr, Dim+strings.Repeat("─", 40)+Reset)
 }
 
+// PrintLinkedAgents prints a compact summary of linked agents.
+// Shows up to 3 names inline, folding the rest as "+ N more".
+func PrintLinkedAgents(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	const maxShow = 3
+	var display string
+	if len(names) <= maxShow {
+		display = strings.Join(names, ", ")
+	} else {
+		display = fmt.Sprintf("%s + %d more", strings.Join(names[:maxShow], ", "), len(names)-maxShow)
+	}
+	fmt.Fprintf(os.Stderr, Green+"✓ "+Reset+"Linked to %s\n", display)
+}
+
 // Verbose prints a diagnostic message to stderr only when verbose mode is
 // active in the given context. Use this from internal packages that don't
 // have direct access to the Writer.

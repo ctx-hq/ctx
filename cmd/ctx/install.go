@@ -25,8 +25,9 @@ import (
 )
 
 var (
-	flagCaller string
-	flagPick   bool
+	flagCaller    string
+	flagPick      bool
+	flagTransport string
 )
 
 var installCmd = &cobra.Command{
@@ -108,22 +109,13 @@ Examples:
 			output.Warn("Post-install: %v", err)
 		}
 
-		// Show description if available
-		description := loadDescription(result)
-		if description != "" {
-			output.PrintDim("\n  %s", description)
-		}
-
 		// Show reload hint based on package type
-		hint := reloadHint(result.Type)
+		skillName := loadShortName(result)
+		hint := reloadHint(result.Type, skillName)
 		// CLI packages with bundled skills also need a reload hint
 		if hint == "" && manifest.PackageType(result.Type) == manifest.TypeCLI && hasSkillMD(result.InstallPath) {
-			hint = "Start a new conversation to use the bundled skill"
+			hint = "Start a new conversation, then use /" + skillName
 		}
-		if hint != "" {
-			output.Info(hint)
-		}
-
 		action := "installed"
 		if !result.IsNew {
 			action = "updated"
@@ -149,6 +141,7 @@ Examples:
 func init() {
 	installCmd.Flags().StringVar(&flagCaller, "caller", "", "Agent that invoked this install (e.g., claude, cursor)")
 	installCmd.Flags().BoolVar(&flagPick, "pick", false, "Interactively select members from a collection")
+	installCmd.Flags().StringVar(&flagTransport, "transport", "", "Select a named transport for MCP packages (e.g., remote, stdio-docker)")
 }
 
 // runPostInstall performs type-specific actions after a package is installed.
@@ -221,6 +214,59 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		state.Skills = skillStates
 
 	case manifest.TypeMCP:
+		// Transport selection (before preflight so we check the right transport's requirements)
+		selectedTransport := flagTransport
+		if selectedTransport == "" && len(m.MCP.Transports) > 0 {
+			isTTYForTransport := term.IsTerminal(int(os.Stdin.Fd()))
+			if isTTYForTransport && !flagYes {
+				p := prompt.DefaultPrompter()
+				var labels []string
+				for _, t := range m.MCP.Transports {
+					label := t.Label
+					if label == "" {
+						label = t.ID + " (" + t.Transport + ")"
+					}
+					labels = append(labels, label)
+				}
+				idx, selectErr := p.Select("Select transport:", labels, 0)
+				if selectErr == nil && idx >= 0 && idx < len(m.MCP.Transports) {
+					selectedTransport = m.MCP.Transports[idx].ID
+				}
+			}
+		}
+
+		// Preflight: check runtime prerequisites for the selected transport
+		preflightManifest := m
+		if selectedTransport != "" {
+			for _, t := range m.MCP.Transports {
+				if t.ID == selectedTransport && t.Require != nil {
+					// Override require with the selected transport's requirements
+					override := m
+					override.MCP = &manifest.MCPSpec{Require: t.Require}
+					preflightManifest = override
+					break
+				} else if t.ID == selectedTransport && t.Require == nil {
+					// Selected transport has no requirements — skip preflight
+					preflightManifest = manifest.Manifest{}
+					break
+				}
+			}
+		}
+		if preResult := installer.RunPreflight(&preflightManifest); preResult != nil && !preResult.Passed {
+			for _, e := range preResult.Errors {
+				output.Warn(e)
+			}
+			if len(m.MCP.Transports) > 0 {
+				for _, t := range m.MCP.Transports {
+					if t.Require == nil || len(t.Require.Bins) == 0 {
+						output.Info("Alternative: %s (no local install needed)", t.Label)
+						output.PrintDim("    ctx install %s --transport=%s", m.Name, t.ID)
+					}
+				}
+			}
+			return fmt.Errorf("preflight check failed: missing runtime dependencies")
+		}
+
 		// Prompt for required env vars that are not yet stored
 		var missingEnvVars []string // collected inside the block, read after it
 		if m.MCP != nil && len(m.MCP.Env) > 0 {
@@ -258,7 +304,23 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 			}
 		}
 
-		mcpStates, err := installer.LinkMCPToAgents(cmd.Context(), &m)
+		// Run post-install hooks (e.g., npx playwright install chromium)
+		var hookConfirm func() (bool, error)
+		if !flagYes && term.IsTerminal(int(os.Stdin.Fd())) {
+			hookConfirm = func() (bool, error) {
+				p := prompt.DefaultPrompter()
+				return p.Confirm("Run these hooks?", true)
+			}
+		}
+		hookCompleted, hookErr := installer.RunPostInstallHooks(cmd.Context(), &m, hookConfirm)
+		if hookErr != nil {
+			return fmt.Errorf("post-install hook: %w", hookErr)
+		}
+		if len(hookCompleted) > 0 {
+			state.Hooks = &installstate.HooksState{PostInstall: hookCompleted}
+		}
+
+		mcpStates, err := installer.LinkMCPToAgents(cmd.Context(), &m, selectedTransport)
 		if err != nil {
 			output.Warn("MCP config: %v", err)
 		}
@@ -306,8 +368,23 @@ func hasSkillMD(dir string) bool {
 	return err == nil
 }
 
-// loadDescription reads the package description from the installed manifest.
-func loadDescription(result *installer.InstallResult) string {
+// reloadHint returns a user-facing hint about reloading based on package type.
+func reloadHint(pkgType, skillName string) string {
+	switch manifest.PackageType(pkgType) {
+	case manifest.TypeSkill:
+		if skillName != "" {
+			return "Start a new conversation, then use /" + skillName
+		}
+		return "Start a new conversation to use this skill"
+	case manifest.TypeMCP:
+		return "Restart your agent to load this MCP server"
+	default:
+		return ""
+	}
+}
+
+// loadShortName extracts the short name from the installed manifest.
+func loadShortName(result *installer.InstallResult) string {
 	manifestPath := filepath.Join(result.InstallPath, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -317,19 +394,7 @@ func loadDescription(result *installer.InstallResult) string {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return ""
 	}
-	return m.Description
-}
-
-// reloadHint returns a user-facing hint about reloading based on package type.
-func reloadHint(pkgType string) string {
-	switch manifest.PackageType(pkgType) {
-	case manifest.TypeSkill:
-		return "Start a new conversation to use this skill"
-	case manifest.TypeMCP:
-		return "Restart your agent to load this MCP server"
-	default:
-		return ""
-	}
+	return m.ShortName()
 }
 
 // loadCollectionManifest checks if an install result is a collection package

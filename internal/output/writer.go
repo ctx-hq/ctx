@@ -229,10 +229,19 @@ func (w *Writer) writeQuiet(resp *Response) error {
 func (w *Writer) writeStyled(resp *Response) error {
 	items := toSlice(resp.Data)
 	if items == nil {
-		// Single object — print as key-value table
-		enc := json.NewEncoder(w.stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(resp.Data)
+		// Single object — try to render as a map row, fallback to notice/summary
+		if resp.Data != nil {
+			if m, ok := asMap(resp.Data); ok {
+				w.printMapRow(m)
+			}
+		}
+		if resp.Summary != "" {
+			_, _ = fmt.Fprintf(w.stderr, "\n"+Dim+"  %s"+Reset+"\n", resp.Summary)
+		}
+		if resp.Notice != "" {
+			_, _ = fmt.Fprintf(w.stderr, Cyan+"→ "+Reset+"%s\n", resp.Notice)
+		}
+		return nil
 	}
 
 	if len(items) == 0 {

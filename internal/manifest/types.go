@@ -42,6 +42,7 @@ type Manifest struct {
 
 	Source       *SourceSpec        `yaml:"source,omitempty" json:"source,omitempty"`
 	Install      *InstallSpec      `yaml:"install,omitempty" json:"install,omitempty"`
+	Upstream     *UpstreamSpec     `yaml:"upstream,omitempty" json:"upstream,omitempty"`
 	Dependencies map[string]string `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 
 	Visibility string `yaml:"visibility,omitempty" json:"visibility,omitempty"` // public, unlisted, private
@@ -53,6 +54,15 @@ type SourceSpec struct {
 	GitHub string `yaml:"github,omitempty" json:"github,omitempty"` // owner/repo
 	Path   string `yaml:"path,omitempty" json:"path,omitempty"`     // path within repo
 	Ref    string `yaml:"ref,omitempty" json:"ref,omitempty"`       // tag, branch, or commit
+}
+
+// UpstreamSpec tracks the original source for reference/wrapper packages.
+type UpstreamSpec struct {
+	NPM            string `yaml:"npm,omitempty" json:"npm,omitempty"`
+	GitHub         string `yaml:"github,omitempty" json:"github,omitempty"`
+	Docker         string `yaml:"docker,omitempty" json:"docker,omitempty"`
+	Tracking       string `yaml:"tracking,omitempty" json:"tracking,omitempty"`             // "npm", "github-release", "docker"
+	VersionPattern string `yaml:"version_pattern,omitempty" json:"version_pattern,omitempty"` // semver range to auto-track
 }
 
 // Scope returns the @scope part of the name.
@@ -78,13 +88,48 @@ type SkillSpec struct {
 
 // MCPSpec contains MCP server configuration.
 type MCPSpec struct {
-	Transport string            `yaml:"transport" json:"transport"`
-	Command   string            `yaml:"command,omitempty" json:"command,omitempty"`
-	Args      []string          `yaml:"args,omitempty" json:"args,omitempty"`
-	Env       []EnvVar          `yaml:"env,omitempty" json:"env,omitempty"`
-	URL       string            `yaml:"url,omitempty" json:"url,omitempty"`
-	Tools     []string          `yaml:"tools,omitempty" json:"tools,omitempty"`
-	Resources []string          `yaml:"resources,omitempty" json:"resources,omitempty"`
+	Transport string   `yaml:"transport" json:"transport"`
+	Command   string   `yaml:"command,omitempty" json:"command,omitempty"`
+	Args      []string `yaml:"args,omitempty" json:"args,omitempty"`
+	Env       []EnvVar `yaml:"env,omitempty" json:"env,omitempty"`
+	URL       string   `yaml:"url,omitempty" json:"url,omitempty"`
+	Tools     []string `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Resources []string `yaml:"resources,omitempty" json:"resources,omitempty"`
+
+	Require    *MCPRequireSpec `yaml:"require,omitempty" json:"require,omitempty"`
+	Hooks      *MCPHooks       `yaml:"hooks,omitempty" json:"hooks,omitempty"`
+	Transports []TransportSpec `yaml:"transports,omitempty" json:"transports,omitempty"`
+}
+
+// MCPRequireSpec declares runtime prerequisites for an MCP server.
+type MCPRequireSpec struct {
+	Bins        []string          `yaml:"bins,omitempty" json:"bins,omitempty"`
+	MinVersions map[string]string `yaml:"min_versions,omitempty" json:"min_versions,omitempty"`
+}
+
+// MCPHooks defines lifecycle hooks for MCP packages.
+type MCPHooks struct {
+	PostInstall []HookStep `yaml:"post_install,omitempty" json:"post_install,omitempty"`
+}
+
+// HookStep is a single command to run during a lifecycle hook.
+type HookStep struct {
+	Command     string   `yaml:"command" json:"command"`
+	Args        []string `yaml:"args,omitempty" json:"args,omitempty"`
+	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
+	Optional    bool     `yaml:"optional,omitempty" json:"optional,omitempty"`
+}
+
+// TransportSpec is a named transport alternative for MCP servers that support multiple connection methods.
+type TransportSpec struct {
+	ID        string          `yaml:"id" json:"id"`
+	Label     string          `yaml:"label,omitempty" json:"label,omitempty"`
+	Transport string          `yaml:"transport" json:"transport"`
+	Command   string          `yaml:"command,omitempty" json:"command,omitempty"`
+	Args      []string        `yaml:"args,omitempty" json:"args,omitempty"`
+	Env       []EnvVar        `yaml:"env,omitempty" json:"env,omitempty"`
+	URL       string          `yaml:"url,omitempty" json:"url,omitempty"`
+	Require   *MCPRequireSpec `yaml:"require,omitempty" json:"require,omitempty"`
 }
 
 // EnvVar represents an environment variable declaration.
