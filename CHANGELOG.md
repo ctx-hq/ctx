@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.25.0](https://github.com/ctx-hq/ctx/compare/v0.24.2...v0.25.0) (2026-04-02)
+
+
+### Features
+
+* add token management, stars, artifact uploads, and permission hardening ([0ccf044](https://github.com/ctx-hq/ctx/commit/0ccf044f63fd6e0c41dd5ce4cdacc3a0c86b09bf))
+* **init:** add README fetch/publish support with monorepo and GitHub API hardening ([2d40b8a](https://github.com/ctx-hq/ctx/commit/2d40b8a4d2561e180e8763457f53fa3e0bcb6122))
+* **init:** add upstream auto-detection for ctx init and harden install pipeline ([f509086](https://github.com/ctx-hq/ctx/commit/f509086979616e8b7935e3aeab370fc9371326ac))
+* **workspace:** auto-enrich author, repository, and license during workspace init ([172f59f](https://github.com/ctx-hq/ctx/commit/172f59fc3098c9b1be15ff448074471208259b58))
+
 ## [0.24.2](https://github.com/ctx-hq/ctx/compare/v0.24.1...v0.24.2) (2026-04-01)
 
 
