@@ -89,7 +89,7 @@ func (c *Client) Resolve(ctx context.Context, req *ResolveRequest) (*ResolveResp
 }
 
 // Publish publishes a package (manifest + optional archive).
-func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Reader) (*PublishResponse, error) {
+func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Reader, readmeData []byte) (*PublishResponse, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -108,6 +108,17 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 		}
 		if _, err := io.Copy(archivePart, archive); err != nil {
 			return nil, fmt.Errorf("write archive: %w", err)
+		}
+	}
+
+	// Include README if provided
+	if len(readmeData) > 0 {
+		readmePart, err := writer.CreateFormFile("readme", "README.md")
+		if err != nil {
+			return nil, fmt.Errorf("create readme part: %w", err)
+		}
+		if _, err := readmePart.Write(readmeData); err != nil {
+			return nil, fmt.Errorf("write readme: %w", err)
 		}
 	}
 

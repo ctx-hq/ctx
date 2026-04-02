@@ -86,7 +86,7 @@ func TestPushFlow_DirectoryWithArchiveCreation(t *testing.T) {
 
 	// Publish to mock registry.
 	reg := registry.New(srv.URL, "test-token")
-	result, err := reg.Publish(context.Background(), data, archive)
+	result, err := reg.Publish(context.Background(), data, archive, nil)
 	if err != nil {
 		t.Fatalf("publish failed: %v", err)
 	}

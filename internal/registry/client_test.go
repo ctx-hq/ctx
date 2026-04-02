@@ -114,7 +114,7 @@ func TestClientPublish_PathAndMethod(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "tok")
-	resp, err := c.Publish(context.Background(), []byte("name: test"), nil)
+	resp, err := c.Publish(context.Background(), []byte("name: test"), nil, nil)
 	if err != nil {
 		t.Fatalf("Publish error: %v", err)
 	}

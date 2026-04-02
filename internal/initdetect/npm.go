@@ -29,6 +29,12 @@ type npmPackageJSON struct {
 
 	// Engines
 	Engines map[string]string `json:"engines"`
+
+	// Workspace (monorepo)
+	Workspaces []string `json:"workspaces"`
+
+	// Readme content (present in version-specific endpoint)
+	Readme string `json:"readme"`
 }
 
 func detectNPM(ctx context.Context, pkg string) (*DetectResult, error) {
@@ -58,6 +64,25 @@ func detectNPM(ctx context.Context, pkg string) (*DetectResult, error) {
 	version := meta.Version
 	if v, ok := meta.DistTags["latest"]; ok {
 		version = v
+	}
+
+	// Fetch version-specific metadata for accurate engines/bin/deps
+	if version != "" {
+		if verMeta, err := fetchNPMVersion(ctx, pkg, version); err == nil {
+			// Overlay version-specific fields onto top-level meta
+			if verMeta.Engines != nil {
+				meta.Engines = verMeta.Engines
+			}
+			if verMeta.Bin != nil {
+				meta.Bin = verMeta.Bin
+			}
+			if verMeta.Dependencies != nil {
+				meta.Dependencies = verMeta.Dependencies
+			}
+			if verMeta.MCPName != "" {
+				meta.MCPName = verMeta.MCPName
+			}
+		}
 	}
 
 	// Detect package type
@@ -200,6 +225,28 @@ func extractMinVersion(constraint string) string {
 		return v
 	}
 	return ""
+}
+
+func fetchNPMVersion(ctx context.Context, pkg, version string) (*npmPackageJSON, error) {
+	url := fmt.Sprintf("https://registry.npmjs.org/%s/%s", pkg, version)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("npm version %s returned %d", version, resp.StatusCode)
+	}
+	var meta npmPackageJSON
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
 }
 
 func mergeMaps(a, b map[string]string) map[string]string {

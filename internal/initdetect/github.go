@@ -5,10 +5,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/manifest"
 )
+
+// githubToken returns a GitHub token from environment for API auth.
+// Checks GH_TOKEN (gh CLI convention) then GITHUB_TOKEN.
+func githubToken() string {
+	if t := os.Getenv("GH_TOKEN"); t != "" {
+		return t
+	}
+	return os.Getenv("GITHUB_TOKEN")
+}
+
+// githubRequest creates an http.Request with GitHub API headers and optional auth.
+func githubRequest(ctx context.Context, method, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "ctx-cli/1.0")
+	if token := githubToken(); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+	return req, nil
+}
 
 type githubRepo struct {
 	Name        string `json:"name"`
@@ -141,22 +165,22 @@ func detectGitHubMCP(ctx context.Context, repo string, result *DetectResult) *MC
 }
 
 func fetchGitHubRepo(ctx context.Context, repo string) (*githubRepo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s", repo)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := githubRequest(ctx, "GET", fmt.Sprintf("https://api.github.com/repos/%s", repo))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch GitHub repo: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("GitHub API returned %d for %s", resp.StatusCode, repo)
+		hint := ""
+		if resp.StatusCode == 403 || resp.StatusCode == 401 {
+			hint = " (set GH_TOKEN or GITHUB_TOKEN env var for authenticated access)"
+		}
+		return nil, fmt.Errorf("GitHub API returned %d for %s%s", resp.StatusCode, repo, hint)
 	}
-
 	var meta githubRepo
 	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
 		return nil, err
@@ -165,13 +189,10 @@ func fetchGitHubRepo(ctx context.Context, repo string) (*githubRepo, error) {
 }
 
 func fetchGitHubLatestRelease(ctx context.Context, repo string) (*githubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := githubRequest(ctx, "GET", fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -180,7 +201,6 @@ func fetchGitHubLatestRelease(ctx context.Context, repo string) (*githubRelease,
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("no releases found")
 	}
-
 	var rel githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
 		return nil, err
@@ -190,12 +210,10 @@ func fetchGitHubLatestRelease(ctx context.Context, repo string) (*githubRelease,
 
 // fileExists checks if a file exists in a GitHub repo using the Contents API.
 func fileExists(ctx context.Context, repo, path string) bool {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repo, path)
-	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
+	req, err := githubRequest(ctx, "HEAD", fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repo, path))
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false

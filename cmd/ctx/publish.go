@@ -178,7 +178,10 @@ Examples:
 		}
 		defer func() { _ = archive.Close() }()
 
-		result, err := reg.Publish(cmd.Context(), data, archive)
+		// Read README.md for inclusion in publish
+		readmeData, _ := os.ReadFile(filepath.Join(dir, "README.md"))
+
+		result, err := reg.Publish(cmd.Context(), data, archive, readmeData)
 		if err != nil {
 			return err
 		}
@@ -312,7 +315,7 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 	}
 	defer func() { _ = archive.Close() }()
 
-	result, err := reg.Publish(cmd.Context(), data, archive)
+	result, err := reg.Publish(cmd.Context(), data, archive, nil)
 	if err != nil {
 		return err
 	}

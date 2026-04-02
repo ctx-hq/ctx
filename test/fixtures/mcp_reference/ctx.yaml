@@ -1,45 +1,50 @@
-name: "@mcp/playwright"
-version: "0.0.70"
+name: '@mcp/playwright'
+version: 0.0.70
 type: mcp
-description: "Browser automation MCP server using Playwright"
-homepage: "https://github.com/microsoft/playwright-mcp"
-repository: "https://github.com/microsoft/playwright-mcp"
-keywords: [browser, automation, testing, playwright, web]
+description: Browser automation MCP server using Playwright
 license: Apache-2.0
-
-upstream:
-  npm: "@playwright/mcp"
-  tracking: npm
-  version_pattern: "*"
-
+homepage: https://github.com/microsoft/playwright-mcp
+repository: https://github.com/microsoft/playwright-mcp
+keywords:
+    - browser
+    - automation
+    - testing
+    - playwright
+    - web
 mcp:
-  transport: stdio
-  command: npx
-  args: ["-y", "@playwright/mcp@0.0.70"]
-  env:
-    - name: PLAYWRIGHT_MCP_HEADLESS
-      required: false
-      default: "true"
-      description: "Run browser in headless mode"
-    - name: PLAYWRIGHT_MCP_BROWSER
-      required: false
-      default: "chromium"
-      description: "Browser engine (chromium, firefox, webkit)"
-  tools:
-    - browser_navigate
-    - browser_click
-    - browser_snapshot
-    - browser_type
-    - browser_fill_form
-
-  require:
-    bins: [node]
-    min_versions:
-      node: "18.0.0"
-
-  hooks:
-    post_install:
-      - command: npx
-        args: ["playwright", "install", "chromium"]
-        description: "Install Chromium browser binary"
-        optional: false
+    transport: stdio
+    command: npx
+    args:
+        - -y
+        - '@playwright/mcp@0.0.70'
+    env:
+        - name: PLAYWRIGHT_MCP_HEADLESS
+          default: "true"
+          description: Run browser in headless mode
+        - name: PLAYWRIGHT_MCP_BROWSER
+          default: chromium
+          description: Browser engine (chromium, firefox, webkit)
+    tools:
+        - browser_navigate
+        - browser_click
+        - browser_snapshot
+        - browser_type
+        - browser_fill_form
+    require:
+        bins:
+            - node
+        min_versions:
+            node: 18.0.0
+    hooks:
+        post_install:
+            - command: npx
+              args:
+                - playwright
+                - install
+                - chromium
+              description: Install Chromium browser binary
+upstream:
+    npm: '@playwright/mcp'
+    tracking: npm
+    version_pattern: '*'
+visibility: public

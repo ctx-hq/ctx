@@ -32,12 +32,15 @@ func detectLocal(ctx context.Context, path string) (*DetectResult, error) {
 		Version: "0.1.0",
 	}
 
-	// Detect type from files present
-	pkgType := detectLocalType(absPath)
+	// Read package.json if present
+	// For monorepos (workspaces), find the main MCP sub-package
+	pj := findMainPackageJSON(absPath)
+
+	// Detect type from files present and the resolved package.json
+	pkgType := detectLocalType(absPath, pj)
 	result.PackageType = pkgType
 
-	// Read package.json if present
-	if pj, err := readLocalPackageJSON(absPath); err == nil {
+	if pj != nil {
 		if pj.Description != "" {
 			result.Description = pj.Description
 		}
@@ -50,6 +53,35 @@ func detectLocal(ctx context.Context, path string) (*DetectResult, error) {
 			result.Homepage = pj.Homepage
 		}
 		result.Repository = extractNPMRepo(pj.Repository)
+		// If the sub-package is an MCP package, set upstream to its npm name
+		if pj.MCPName != "" || hasMCPDep(pj) {
+			result.PackageType = manifest.TypeMCP
+			result.Upstream = &manifest.UpstreamSpec{
+				NPM:      pj.Name,
+				Tracking: "npm",
+			}
+			if result.MCP == nil {
+				result.MCP = &MCPDetection{
+					Transport: "stdio",
+					Command:   "npx",
+					Args:      []string{"-y", fmt.Sprintf("%s@%s", pj.Name, pj.Version)},
+				}
+			}
+			// Detect Node.js requirement
+			if nodeVer, ok := pj.Engines["node"]; ok {
+				minVer := extractMinVersion(nodeVer)
+				if minVer != "" {
+					result.MCP.Require = &manifest.MCPRequireSpec{
+						Bins:        []string{"node"},
+						MinVersions: map[string]string{"node": minVer},
+					}
+				} else {
+					result.MCP.Require = &manifest.MCPRequireSpec{Bins: []string{"node"}}
+				}
+			} else {
+				result.MCP.Require = &manifest.MCPRequireSpec{Bins: []string{"node"}}
+			}
+		}
 	}
 
 	// Read server.json if present (MCP)
@@ -90,7 +122,7 @@ func detectLocal(ctx context.Context, path string) (*DetectResult, error) {
 	return result, nil
 }
 
-func detectLocalType(dir string) manifest.PackageType {
+func detectLocalType(dir string, pj *npmPackageJSON) manifest.PackageType {
 	// Check for server.json (MCP)
 	if _, err := os.Stat(filepath.Join(dir, "server.json")); err == nil {
 		return manifest.TypeMCP
@@ -99,12 +131,12 @@ func detectLocalType(dir string) manifest.PackageType {
 	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
 		return manifest.TypeSkill
 	}
-	// Check package.json for MCP indicators
-	if pj, err := readLocalPackageJSON(dir); err == nil {
+	// Check resolved package.json for MCP indicators
+	if pj != nil {
 		if pj.MCPName != "" {
 			return manifest.TypeMCP
 		}
-		if _, ok := pj.Dependencies["@modelcontextprotocol/sdk"]; ok {
+		if hasMCPDep(pj) {
 			return manifest.TypeMCP
 		}
 		if strings.Contains(strings.ToLower(pj.Name), "mcp") {
@@ -141,4 +173,61 @@ func readLocalPackageJSON(dir string) (*npmPackageJSON, error) {
 		return nil, err
 	}
 	return &pj, nil
+}
+
+// findMainPackageJSON finds the best package.json for metadata extraction.
+// For monorepos with workspaces, it searches sub-packages for MCP indicators.
+// For single-package repos, it returns the root package.json.
+func findMainPackageJSON(dir string) *npmPackageJSON {
+	rootPJ, err := readLocalPackageJSON(dir)
+	if err != nil {
+		return nil
+	}
+
+	// Check if root has workspaces (monorepo)
+	if rootPJ.Workspaces == nil || len(rootPJ.Workspaces) == 0 {
+		return rootPJ
+	}
+
+	// Monorepo: scan workspace members for MCP sub-package
+	// Priority: mcpName > MCP SDK dep > name contains "mcp"
+	var candidates []*npmPackageJSON
+	for _, pattern := range rootPJ.Workspaces {
+		matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil || !info.IsDir() {
+				continue
+			}
+			subPJ, err := readLocalPackageJSON(match)
+			if err != nil {
+				continue
+			}
+			if subPJ.MCPName != "" || hasMCPDep(subPJ) || strings.Contains(strings.ToLower(subPJ.Name), "mcp") {
+				candidates = append(candidates, subPJ)
+			}
+		}
+	}
+
+	if len(candidates) > 0 {
+		// Sort by specificity: mcpName > MCP SDK dep > name match
+		best := candidates[0]
+		for _, c := range candidates[1:] {
+			if c.MCPName != "" && best.MCPName == "" {
+				best = c
+			} else if hasMCPDep(c) && !hasMCPDep(best) && best.MCPName == "" {
+				best = c
+			}
+		}
+		return best
+	}
+
+	// No MCP sub-package found, use root (may have limited metadata)
+	return rootPJ
+}
+
+func hasMCPDep(pj *npmPackageJSON) bool {
+	allDeps := mergeMaps(pj.Dependencies, pj.DevDependencies)
+	_, ok := allDeps["@modelcontextprotocol/sdk"]
+	return ok
 }

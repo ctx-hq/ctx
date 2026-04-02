@@ -740,7 +740,7 @@ func publishWithRetry(ctx context.Context, reg *registry.Client, data []byte, ar
 			}
 		}
 
-		result, err := reg.Publish(ctx, data, archive)
+		result, err := reg.Publish(ctx, data, archive, nil)
 		if err == nil {
 			return result, nil
 		}

@@ -243,7 +243,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	defer func() { _ = archive.Close() }()
 
 	reg := registry.New(cfg.RegistryURL(), token)
-	result, err := reg.Publish(cmd.Context(), manifestData, archive)
+	result, err := reg.Publish(cmd.Context(), manifestData, archive, nil)
 	if err != nil {
 		return err
 	}

@@ -934,6 +934,16 @@ func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
 		return fmt.Errorf("write ctx.yaml: %w", err)
 	}
 
+	// Fetch upstream README if available
+	readmePath := "README.md"
+	if _, statErr := os.Stat(readmePath); os.IsNotExist(statErr) {
+		if readme := initdetect.FetchUpstreamREADME(cmd.Context(), result); readme != nil {
+			if writeErr := os.WriteFile(readmePath, readme, 0o644); writeErr == nil {
+				output.PrintDim("  Fetched upstream README.md (%d bytes)", len(readme))
+			}
+		}
+	}
+
 	output.Info("Generated %s", outPath)
 	output.PrintDim("")
 	output.PrintDim("  Next steps:")
