@@ -106,7 +106,12 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		currentPlatform := runtime.GOOS + "-" + runtime.GOARCH
 		for _, a := range resolution.Artifacts {
 			if a.Platform == currentPlatform && a.DownloadURL != "" {
-				downloadURL = a.DownloadURL
+				// API returns relative paths — prepend registry base URL
+				if strings.HasPrefix(a.DownloadURL, "/") {
+					downloadURL = i.Registry.BaseURL + a.DownloadURL
+				} else {
+					downloadURL = a.DownloadURL
+				}
 				artifactSHA256 = a.SHA256
 				isArtifact = true
 				if artifactSHA256 == "" {
@@ -123,8 +128,12 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		switch resolution.Source {
 		case "registry":
 			if isArtifact {
-				// Platform-specific artifact — download via URL directly
-				body, err = downloadHTTP(ctx, downloadURL)
+				// Platform-specific artifact — only send auth token for registry-hosted URLs
+				token := ""
+				if strings.HasPrefix(downloadURL, i.Registry.BaseURL) {
+					token = i.Registry.Token
+				}
+				body, err = downloadHTTP(ctx, downloadURL, token)
 			} else {
 				body, err = i.Registry.Download(ctx, resolution.FullName, resolution.Version)
 			}
@@ -132,7 +141,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 				return nil, nil, fmt.Errorf("download: %w", err)
 			}
 		case "github":
-			body, err = downloadHTTP(ctx, downloadURL)
+			body, err = downloadHTTP(ctx, downloadURL, "")
 			if err != nil {
 				return nil, nil, fmt.Errorf("download from github: %w", err)
 			}
@@ -266,7 +275,27 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		}
 	}
 
-	// 2. Clean up links (symlinks, MCP configs)
+	// 2. Clean up binary symlink in ~/.ctx/bin/
+	currentLink := filepath.Join(pkgDir, "current")
+	if target, lErr := os.Readlink(currentLink); lErr == nil {
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(pkgDir, target)
+		}
+		manifestPath := filepath.Join(target, "manifest.json")
+		if mData, rErr := os.ReadFile(manifestPath); rErr == nil {
+			var m manifest.Manifest
+			if json.Unmarshal(mData, &m) == nil && m.CLI != nil && m.CLI.Binary != "" {
+				binDir := filepath.Join(filepath.Dir(i.DataDir), "bin")
+				binLink := filepath.Join(binDir, m.CLI.Binary)
+				// Only remove if the symlink points into this package
+				if linkTarget, err := os.Readlink(binLink); err == nil && strings.HasPrefix(linkTarget, pkgDir) {
+					_ = os.Remove(binLink)
+				}
+			}
+		}
+	}
+
+	// 3. Clean up links (symlinks, MCP configs)
 	links, linkErr := LoadLinks()
 	if linkErr == nil {
 		entries := links.Remove(fullName)
@@ -274,7 +303,7 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		_ = links.Save() // best effort
 	}
 
-	// 3. Remove entire package directory (all versions + current symlink + state.json)
+	// 4. Remove entire package directory (all versions + current symlink + state.json)
 	if err := os.RemoveAll(pkgDir); err != nil {
 		return fmt.Errorf("remove package dir: %w", err)
 	}
@@ -286,12 +315,15 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 }
 
 // downloadHTTP fetches a URL and returns the response body.
-func downloadHTTP(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+func downloadHTTP(ctx context.Context, rawURL, token string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", config.UserAgent())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

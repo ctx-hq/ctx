@@ -398,7 +398,6 @@ func Scaffold(pkgType PackageType, scope, name string) *Manifest {
 			Binary: name,
 			Verify: fmt.Sprintf("%s --version", name),
 		}
-		m.Install = &InstallSpec{}
 	}
 
 	return m

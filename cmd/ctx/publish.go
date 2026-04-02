@@ -88,6 +88,11 @@ Examples:
 			}
 		}
 
+		// Apply --private flag
+		if flagPrivate {
+			m.Visibility = "private"
+		}
+
 		// Auto-enrich missing metadata from git/filesystem
 		autoEnrichManifest(m, dir)
 
@@ -186,11 +191,17 @@ Examples:
 			return err
 		}
 
+		pubBreadcrumbs := []output.Breadcrumb{
+			{Action: "info", Command: "ctx info " + result.FullName, Description: "View package"},
+		}
+		if m.Type == manifest.TypeCLI {
+			pubBreadcrumbs = append(pubBreadcrumbs,
+				output.Breadcrumb{Action: "upload", Command: "ctx artifact upload " + result.FullName + "@" + result.Version + " --dir dist/", Description: "Upload platform binaries"},
+			)
+		}
 		return w.OK(result,
 			output.WithSummary("Published "+result.FullName+"@"+result.Version),
-			output.WithBreadcrumbs(
-				output.Breadcrumb{Action: "info", Command: "ctx info " + result.FullName, Description: "View package"},
-			),
+			output.WithBreadcrumbs(pubBreadcrumbs...),
 		)
 	},
 }

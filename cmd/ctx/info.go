@@ -27,8 +27,12 @@ var infoCmd = &cobra.Command{
 			return err
 		}
 
+		summary := pkg.FullName
+		if pkg.Version != "" {
+			summary += "@" + pkg.Version
+		}
 		return w.OK(pkg,
-			output.WithSummary(pkg.FullName+"@"+pkg.Version),
+			output.WithSummary(summary),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "install", Command: "ctx i " + pkg.FullName, Description: "Install this package"},
 				output.Breadcrumb{Action: "remove", Command: "ctx rm " + pkg.FullName, Description: "Remove this package"},

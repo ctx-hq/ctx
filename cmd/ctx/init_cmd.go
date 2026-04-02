@@ -268,7 +268,9 @@ Examples:
 				Verify: meta.verify,
 				Auth:   meta.authHint,
 			}
-			m.Install = buildInstallSpec(meta.installMethod, meta.installPkg)
+			if meta.installMethod != "" && meta.installPkg != "" {
+				m.Install = buildInstallSpec(meta.installMethod, meta.installPkg)
+			}
 			m.Skill.Entry = skillEntry
 			m.Skill.Origin = "native"
 
@@ -335,13 +337,21 @@ Examples:
 		output.Success("Created %s in %s", fullName, outDir)
 
 		// 12. Output
-		breadcrumbs := []output.Breadcrumb{
-			{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
-		}
+		var breadcrumbs []output.Breadcrumb
 		if skillEntry != "" {
-			breadcrumbs = append([]output.Breadcrumb{
-				{Action: "edit", Command: "edit " + filepath.Join(outDir, skillEntry), Description: "Edit skill content"},
-			}, breadcrumbs...)
+			breadcrumbs = append(breadcrumbs,
+				output.Breadcrumb{Action: "edit", Command: "edit " + filepath.Join(outDir, skillEntry), Description: "Edit skill content"},
+			)
+		}
+		if pkgType == manifest.TypeCLI {
+			breadcrumbs = append(breadcrumbs,
+				output.Breadcrumb{Action: "publish", Command: "ctx publish", Description: "Publish to registry"},
+				output.Breadcrumb{Action: "upload", Command: "ctx artifact upload " + fullName + "@" + meta.version + " --dir dist/", Description: "Upload platform binaries"},
+			)
+		} else {
+			breadcrumbs = append(breadcrumbs,
+				output.Breadcrumb{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
+			)
 		}
 		return w.OK(
 			map[string]string{"name": fullName, "version": meta.version, "path": outDir},
@@ -425,15 +435,16 @@ func parseInitSource(input initInput) (initMeta, error) {
 		}
 		dirName := filepath.Base(cwd)
 
-		// Check if SKILL.md exists in cwd — if so, read frontmatter for metadata.
-		skillPath := filepath.Join(cwd, "SKILL.md")
-		if _, statErr := os.Stat(skillPath); statErr == nil {
+		// Check if SKILL.md exists in cwd or skills/*/ — extract metadata from first found.
+		found := findAllSkillMD(cwd)
+		if len(found) > 0 {
+			skillPath := filepath.Join(cwd, found[0])
 			fm, body, readErr := readAndParseSkillMD(skillPath)
 			if readErr != nil {
 				return initMeta{}, fmt.Errorf("parse SKILL.md: %w", readErr)
 			}
 			meta := metaFromFrontmatter(fm, body, dirName)
-			meta.skillEntry = "SKILL.md"
+			meta.skillEntry = found[0]
 			autoDetectMeta(&meta, cwd)
 			return meta, nil
 		}
@@ -632,7 +643,7 @@ func parseDirSource(dirPath string) (initMeta, error) {
 	return meta, nil
 }
 
-// autoDetectMeta fills in author, repository, and license from git/filesystem
+// autoDetectMeta fills in author, repository, license, and version from git/filesystem
 // if they are not already set.
 func autoDetectMeta(meta *initMeta, dir string) {
 	if meta.author == "" {
@@ -644,6 +655,12 @@ func autoDetectMeta(meta *initMeta, dir string) {
 	if meta.license == "" {
 		if lr := license.Detect(dir); lr.SPDX != "" {
 			meta.license = lr.SPDX
+		}
+	}
+	// Use latest git tag as version if still at default
+	if meta.version == "0.1.0" {
+		if tag := gitutil.LatestTag(dir); tag != "" {
+			meta.version = tag
 		}
 	}
 }

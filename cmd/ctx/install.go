@@ -124,9 +124,29 @@ Examples:
 		// Show reload hint based on package type
 		skillName := loadShortName(result)
 		hint := reloadHint(result.Type, skillName)
-		// CLI packages with bundled skills also need a reload hint
-		if hint == "" && manifest.PackageType(result.Type) == manifest.TypeCLI && hasSkillMD(result.InstallPath) {
-			hint = "Start a new conversation, then use /" + skillName
+		// CLI packages: check if ~/.ctx/bin is in PATH, hint if not
+		if manifest.PackageType(result.Type) == manifest.TypeCLI {
+			binDir := filepath.Join(filepath.Dir(config.DataDir()), "bin")
+			cleanBinDir := filepath.Clean(binDir)
+			inPath := false
+			for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+				if filepath.Clean(p) == cleanBinDir {
+					inPath = true
+					break
+				}
+			}
+			if !inPath {
+				hint = fmt.Sprintf("Add %s to your PATH: export PATH=\"%s:$PATH\"", binDir, binDir)
+			}
+			// Also add skill hint if applicable
+			if hasSkillMD(result.InstallPath) {
+				skillHint := "Start a new conversation, then use /" + skillName
+				if hint != "" {
+					hint += "\n" + skillHint
+				} else {
+					hint = skillHint
+				}
+			}
 		}
 		action := "installed"
 		if !result.IsNew {
@@ -249,6 +269,22 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 				output.Warn("CLI install: %v", err)
 			} else {
 				state.CLI = cliState
+			}
+		}
+
+		// Link binary to ~/.ctx/bin/ for PATH access
+		if m.CLI != nil && m.CLI.Binary != "" {
+			binName := m.CLI.Binary
+			binSrc := filepath.Join(result.InstallPath, binName)
+			if _, statErr := os.Stat(binSrc); statErr == nil {
+				binDir := filepath.Join(filepath.Dir(config.DataDir()), "bin")
+				if mkErr := os.MkdirAll(binDir, 0o755); mkErr == nil {
+					binLink := filepath.Join(binDir, binName)
+					_ = os.Remove(binLink) // remove stale symlink
+					if lnErr := os.Symlink(binSrc, binLink); lnErr == nil {
+						output.Success("Linked %s → %s", binName, binLink)
+					}
+				}
 			}
 		}
 

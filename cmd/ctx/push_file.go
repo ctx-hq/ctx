@@ -18,6 +18,7 @@ import (
 
 var flagBump string
 var flagForce bool
+var flagPrivate bool
 
 var (
 	flagPublishAll           bool
@@ -29,6 +30,7 @@ func init() {
 	pushCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().BoolVar(&flagForce, "force", false, "Skip install method validation")
+	publishCmd.Flags().BoolVar(&flagPrivate, "private", false, "Publish as a private package")
 	publishCmd.Flags().BoolVar(&flagPublishAll, "all", false, "Publish all workspace members")
 	publishCmd.Flags().StringVar(&flagPublishFilter, "filter", "", "Glob filter for workspace members to publish")
 	publishCmd.Flags().BoolVar(&flagPublishContinueOnErr, "continue-on-error", false, "Continue publishing on member failure")

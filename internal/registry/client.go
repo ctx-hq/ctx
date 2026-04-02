@@ -82,7 +82,7 @@ func (c *Client) GetVersion(ctx context.Context, fullName, version string) (*Ver
 // Resolve resolves version constraints.
 func (c *Client) Resolve(ctx context.Context, req *ResolveRequest) (*ResolveResponse, error) {
 	var result ResolveResponse
-	if err := c.post(ctx, "/v1/resolve", req, &result); err != nil {
+	if err := c.post(ctx, "/v1/resolve?include_artifacts=true", req, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

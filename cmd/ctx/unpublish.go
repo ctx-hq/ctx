@@ -75,6 +75,7 @@ Examples:
 		return w.OK(
 			map[string]string{"deleted": "true", "full_name": fullName},
 			output.WithSummary("Deleted "+fullName),
+			output.WithNotice("Local ctx.yaml and skill files are not removed. Delete them manually if no longer needed."),
 		)
 	},
 }

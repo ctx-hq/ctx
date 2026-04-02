@@ -3,11 +3,14 @@ package gitutil
 import (
 	"context"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const cmdTimeout = 3 * time.Second
+
+var semverRegex = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$`)
 
 // RemoteURL returns the HTTPS URL of the "origin" remote for the git
 // repository containing dir. Returns "" if dir is not in a git repo,
@@ -25,6 +28,17 @@ func RemoteURL(dir string) string {
 // Returns "" on any error.
 func Author(dir string) string {
 	return gitCmd(dir, "config", "user.name")
+}
+
+// LatestTag returns the latest semver tag (without leading "v") for the
+// repository containing dir. Returns "" if no tags exist or any error occurs.
+func LatestTag(dir string) string {
+	tag := gitCmd(dir, "describe", "--tags", "--abbrev=0")
+	tag = strings.TrimPrefix(tag, "v")
+	if !semverRegex.MatchString(tag) {
+		return ""
+	}
+	return tag
 }
 
 // gitCmd runs a git command with a timeout and returns trimmed stdout.

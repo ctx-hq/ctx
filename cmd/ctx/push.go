@@ -645,12 +645,21 @@ func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*reg
 		return nil, err
 	}
 
-	// Ensure push defaults.
+	// Ensure push defaults and persist to ctx.yaml so the user can see them.
+	dirty := false
 	if m.Visibility == "" {
 		m.Visibility = "private"
+		dirty = true
 	}
 	if m.Visibility == "private" && !m.Mutable {
 		m.Mutable = true
+		dirty = true
+	}
+	if dirty {
+		if wb, wErr := manifest.Marshal(m); wErr == nil {
+			_ = os.WriteFile(filepath.Join(s.Dir, "ctx.yaml"), wb, 0o644)
+			output.Info("Updated ctx.yaml with defaults (visibility=%s, mutable=%v)", m.Visibility, m.Mutable)
+		}
 	}
 
 	data, err := manifest.Marshal(m)
