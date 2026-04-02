@@ -155,8 +155,8 @@ func (c *Client) Publish(ctx context.Context, manifestData []byte, archive io.Re
 
 // Yank yanks a version.
 func (c *Client) Yank(ctx context.Context, fullName, version string) error {
-	path := fmt.Sprintf("/v1/packages/%s/versions/%s", url.PathEscape(fullName), url.PathEscape(version))
-	return c.doPatch(ctx, path, map[string]bool{"yanked": true})
+	path := fmt.Sprintf("/v1/packages/%s/versions/%s/yank", url.PathEscape(fullName), url.PathEscape(version))
+	return c.post(ctx, path, nil, nil)
 }
 
 // DeletePackage permanently deletes a package and all its versions.
@@ -628,4 +628,166 @@ func (c *Client) DissolveOrg(ctx context.Context, name, action, transferTo, conf
 		body["transfer_to"] = transferTo
 	}
 	return c.post(ctx, "/v1/orgs/"+url.PathEscape(name)+"/dissolve", body, nil)
+}
+
+// ── Token Management ──
+
+// CreateToken creates a new API token with optional scopes.
+func (c *Client) CreateToken(ctx context.Context, req CreateTokenRequest) (*CreateTokenResponse, error) {
+	var result CreateTokenResponse
+	if err := c.doJSON(ctx, "POST", "/v1/me/tokens", req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListTokens returns all tokens for the current user.
+func (c *Client) ListTokens(ctx context.Context) ([]TokenInfo, error) {
+	var result struct {
+		Tokens []TokenInfo `json:"tokens"`
+	}
+	if err := c.doJSON(ctx, "GET", "/v1/me/tokens", nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Tokens, nil
+}
+
+// RevokeToken deletes a token by ID.
+func (c *Client) RevokeToken(ctx context.Context, tokenID string) error {
+	return c.doJSON(ctx, "DELETE", "/v1/me/tokens/"+url.PathEscape(tokenID), nil, nil)
+}
+
+// StarPackage stars a package.
+func (c *Client) StarPackage(ctx context.Context, fullName string) error {
+	return c.doJSON(ctx, "PUT", "/v1/packages/"+url.PathEscape(fullName)+"/star", nil, nil)
+}
+
+// UnstarPackage unstars a package.
+func (c *Client) UnstarPackage(ctx context.Context, fullName string) error {
+	return c.doJSON(ctx, "DELETE", "/v1/packages/"+url.PathEscape(fullName)+"/star", nil, nil)
+}
+
+// ListStars returns the user's starred packages.
+func (c *Client) ListStars(ctx context.Context) ([]StarEntry, error) {
+	var result struct {
+		Stars []StarEntry `json:"stars"`
+	}
+	if err := c.doJSON(ctx, "GET", "/v1/me/stars", nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Stars, nil
+}
+
+// CreateStarList creates a new star list.
+func (c *Client) CreateStarList(ctx context.Context, name, visibility string) (*StarList, error) {
+	var result StarList
+	body := map[string]string{"name": name, "visibility": visibility}
+	if err := c.doJSON(ctx, "POST", "/v1/me/star-lists", body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListStarLists returns the user's star lists.
+func (c *Client) ListStarLists(ctx context.Context) ([]StarList, error) {
+	var result struct {
+		Lists []StarList `json:"lists"`
+	}
+	if err := c.doJSON(ctx, "GET", "/v1/me/star-lists", nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Lists, nil
+}
+
+// GetPublicStarList returns a public star list by user and slug.
+func (c *Client) GetPublicStarList(ctx context.Context, username, slug string) ([]StarEntry, error) {
+	path := fmt.Sprintf("/v1/users/%s/star-lists/%s", url.PathEscape(username), url.PathEscape(slug))
+	var result struct {
+		Stars []StarEntry `json:"stars"`
+	}
+	if err := c.doJSON(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Stars, nil
+}
+
+// UploadArtifact uploads a platform-specific binary artifact for a version.
+// Uses streaming multipart to avoid buffering the entire archive in memory.
+func (c *Client) UploadArtifact(ctx context.Context, fullName, version, platform string, archive io.Reader) error {
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
+
+	// Write multipart body in a goroutine so the HTTP request can stream it.
+	errCh := make(chan error, 1)
+	go func() {
+		var writeErr error
+		defer func() {
+			if writeErr != nil {
+				pw.CloseWithError(writeErr) // signal reader to abort
+			} else {
+				pw.Close()
+			}
+			errCh <- writeErr
+		}()
+
+		if err := writer.WriteField("platform", platform); err != nil {
+			writeErr = fmt.Errorf("write platform field: %w", err)
+			return
+		}
+
+		archivePart, err := writer.CreateFormFile("archive", "artifact.tar.gz")
+		if err != nil {
+			writeErr = fmt.Errorf("create archive part: %w", err)
+			return
+		}
+		if _, err := io.Copy(archivePart, archive); err != nil {
+			writeErr = fmt.Errorf("write archive: %w", err)
+			return
+		}
+
+		writeErr = writer.Close()
+	}()
+
+	apiPath := fmt.Sprintf("/v1/packages/%s/versions/%s/artifacts", url.PathEscape(fullName), url.PathEscape(version))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+apiPath, pr)
+	if err != nil {
+		pr.Close()  // unblock writer goroutine
+		<-errCh     // wait for goroutine to exit
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", config.UserAgent())
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		pr.Close()  // unblock writer goroutine
+		<-errCh     // wait for goroutine to exit
+		return fmt.Errorf("upload artifact: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check for errors from the multipart writer goroutine.
+	if writeErr := <-errCh; writeErr != nil {
+		return writeErr
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return parseError(resp)
+	}
+	return nil
+}
+
+// ListArtifacts returns all platform artifacts for a version.
+func (c *Client) ListArtifacts(ctx context.Context, fullName, version string) ([]ArtifactInfo, error) {
+	var result struct {
+		Artifacts []ArtifactInfo `json:"artifacts"`
+	}
+	path := fmt.Sprintf("/v1/packages/%s/versions/%s/artifacts", url.PathEscape(fullName), url.PathEscape(version))
+	if err := c.get(ctx, path, &result); err != nil {
+		return nil, err
+	}
+	return result.Artifacts, nil
 }

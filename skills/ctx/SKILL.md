@@ -27,6 +27,7 @@ triggers:
   - create organization
   - ctx whoami
   - ctx login
+  - ctx logout
   - who am i
   - check auth
   - check login status
@@ -36,6 +37,29 @@ triggers:
   - publish all skills
   - install collection
   - multi-skill repo
+  - ctx token
+  - api token
+  - create token
+  - ctx star
+  - star a package
+  - ctx artifact
+  - upload artifact
+  - ctx rename
+  - rename package
+  - ctx transfer
+  - transfer ownership
+  - ctx unpublish
+  - ctx yank
+  - ctx wrap
+  - wrap cli tool
+  - ctx tui
+  - browse packages
+  - ctx serve
+  - mcp server mode
+  - ctx config
+  - ctx upgrade
+  - ctx notifications
+  - ctx mcp test
 invocable: true
 argument-hint: "[command] [args...]"
 ---
@@ -127,6 +151,37 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx publish --filter <glob>` | | Publish matching workspace members |
 | `ctx install <collection>` | | Install all skills in a collection |
 | `ctx install <collection> --pick` | | Interactive skill selection from collection |
+| `ctx install --from-list <list>` | | Batch install from a star list |
+| `ctx token create` | | Create an API token (scoped permissions) |
+| `ctx token list` | `ctx token ls` | List your API tokens |
+| `ctx token revoke <id>` | | Revoke an API token |
+| `ctx star <pkg>` | | Star/unstar a package |
+| `ctx star list` | `ctx star ls` | List your starred packages |
+| `ctx star create <name>` | | Create a star list (curated collection) |
+| `ctx star show` | | Show your star lists |
+| `ctx artifact upload` | | Upload a platform-specific artifact |
+| `ctx artifact list` | `ctx artifact ls` | List artifacts for a version |
+| `ctx rename <pkg> <new>` | | Rename a package (old name redirects) |
+| `ctx transfer <pkg> <scope>` | | Transfer ownership to another scope |
+| `ctx transfers` | `ctx xfer` | List incoming transfer requests |
+| `ctx transfers accept <id>` | | Accept a transfer request |
+| `ctx transfers decline <id>` | | Decline a transfer request |
+| `ctx unpublish <pkg>` | | Permanently delete a package or version |
+| `ctx yank <pkg>@<ver>` | | Retract a published version (reversible) |
+| `ctx wrap <binary>` | | Package a CLI tool as a ctx skill |
+| `ctx tui` | | Interactive terminal package browser |
+| `ctx serve` | | Run ctx as an MCP server over stdio |
+| `ctx config list` | | List all configuration settings |
+| `ctx config get <key>` | | Get a configuration value |
+| `ctx config set <key> <val>` | | Set a configuration value |
+| `ctx upgrade` | | Upgrade ctx to the latest version |
+| `ctx logout` | | Log out and clear credentials |
+| `ctx mcp test` | | Test an MCP server connection |
+| `ctx mcp list` | `ctx mcp ls` | List installed MCP servers |
+| `ctx mcp env` | | Manage MCP server env variables |
+| `ctx notifications` | `ctx notif` | List notifications |
+| `ctx notifications read <id>` | | Mark notification as read |
+| `ctx notifications dismiss <id>` | | Dismiss a notification |
 
 ## Global Flags
 
@@ -141,7 +196,9 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `--count` | Count only |
 | `--yes` | Skip confirmation prompts |
 | `--type` | Filter by type (skill/mcp/cli) |
+| `--caller` | Identify calling agent (e.g., `--caller claude`) |
 | `--offline` | Disable all network access |
+| `-v, --verbose` | Show verbose diagnostic output |
 
 ## Common Workflows
 
@@ -207,6 +264,48 @@ ctx up                        # Update everything
 ```bash
 ctx use @ctx/basecamp@0.7.2   # Rollback to older version (instant)
 ctx prune --keep 2            # Clean old versions, keep 2 most recent
+```
+
+### API Tokens (CI/CD)
+```bash
+ctx token create --name "ci" --scope publish  # Create scoped token
+ctx token ls                                  # List tokens
+ctx token revoke <id>                         # Revoke a token
+```
+
+### Star & Curate
+```bash
+ctx star @ctx/ffmpeg              # Star a package
+ctx star ls                       # List starred packages
+ctx star create "my-toolkit"      # Create a star list
+ctx install --from-list my-toolkit  # Batch install from star list
+```
+
+### Artifact Management
+```bash
+ctx artifact upload --platform darwin-arm64 ./my-binary  # Upload artifact
+ctx artifact ls @scope/pkg@1.0.0                         # List artifacts
+```
+
+### Package Lifecycle
+```bash
+ctx rename @me/old-name new-name   # Rename (old redirects)
+ctx transfer @me/pkg @org          # Transfer ownership
+ctx yank @me/pkg@1.0.0             # Retract a version (reversible)
+ctx unpublish @me/pkg --yes        # Permanently delete
+```
+
+### Wrap a CLI Tool
+```bash
+ctx wrap ./my-binary               # Introspect + generate ctx.yaml & SKILL.md
+ctx publish                        # Then publish to registry
+```
+
+### MCP Server Management
+```bash
+ctx mcp ls                         # List installed MCP servers
+ctx mcp test                       # Test all connections
+ctx mcp env set MY_KEY val         # Set env variable
 ```
 
 ### Diagnose Issues

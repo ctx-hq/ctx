@@ -11,10 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// getToken returns the current auth token from keychain or config fallback.
-// Returns empty string if not logged in. Prints a warning to stderr on
-// keychain access errors so the user is aware of the issue.
+// getToken returns the current auth token.
+// Priority: CTX_TOKEN env var > system keychain > empty string.
+// The env var enables CI/CD workflows (e.g. GitHub Actions) where
+// interactive login is not possible.
 func getToken() string {
+	if envToken := os.Getenv("CTX_TOKEN"); envToken != "" {
+		return envToken
+	}
 	token, err := auth.GetToken()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)

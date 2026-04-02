@@ -127,10 +127,20 @@ type ResolveResponse struct {
 
 // ResolvedPackage is one entry in the resolve response.
 type ResolvedPackage struct {
-	Version     string `json:"version"`
-	Manifest    string `json:"manifest"`
-	DownloadURL string `json:"download_url"`
+	Version     string         `json:"version"`
+	Manifest    string         `json:"manifest"`
+	DownloadURL string         `json:"download_url"`
+	SHA256      string         `json:"sha256"`
+	Artifacts   []ArtifactInfo `json:"artifacts,omitempty"`
+}
+
+// ArtifactInfo describes a platform-specific artifact.
+type ArtifactInfo struct {
+	Platform    string `json:"platform"`
 	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
+	DownloadURL string `json:"download_url,omitempty"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // PublishResponse is returned after a successful publish.
@@ -265,4 +275,52 @@ type RenameResult struct {
 	OldUsername     string `json:"old_username,omitempty"`
 	NewUsername     string `json:"new_username,omitempty"`
 	PackagesUpdated int    `json:"packages_updated,omitempty"`
+}
+
+// TokenInfo is a summary of an API token (never contains the token itself).
+type TokenInfo struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	EndpointScopes []string `json:"endpoint_scopes,omitempty"`
+	PackageScopes  []string `json:"package_scopes,omitempty"`
+	TokenType      string `json:"token_type,omitempty"`
+	CreatedAt      string `json:"created_at"`
+	LastUsedAt     string `json:"last_used_at,omitempty"`
+	ExpiresAt      string `json:"expires_at,omitempty"`
+}
+
+// CreateTokenRequest is the body for POST /v1/me/tokens.
+type CreateTokenRequest struct {
+	Name           string   `json:"name"`
+	ExpiresInDays  int      `json:"expires_in_days,omitempty"`
+	EndpointScopes []string `json:"endpoint_scopes,omitempty"`
+	PackageScopes  []string `json:"package_scopes,omitempty"`
+	TokenType      string   `json:"token_type,omitempty"`
+}
+
+// CreateTokenResponse is returned after creating a new token.
+// The Token field is only returned once — never stored in plaintext.
+type CreateTokenResponse struct {
+	ID    string `json:"id"`
+	Token string `json:"token"`
+	Name  string `json:"name"`
+}
+
+// StarEntry represents a starred package.
+type StarEntry struct {
+	PackageName string `json:"package_name"`
+	FullName    string `json:"full_name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	StarredAt   string `json:"starred_at"`
+}
+
+// StarList represents a user's curated list of starred packages.
+type StarList struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description,omitempty"`
+	Visibility  string `json:"visibility"`
+	CreatedAt   string `json:"created_at"`
 }

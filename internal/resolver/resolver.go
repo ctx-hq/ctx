@@ -17,6 +17,7 @@ type Resolution struct {
 	DownloadURL string
 	SHA256      string
 	Source      string // "registry", "github", "local"
+	Artifacts   []registry.ArtifactInfo
 }
 
 // Resolver resolves package references to installable versions.
@@ -63,6 +64,7 @@ func (r *Resolver) resolveRegistry(ctx context.Context, fullName, constraint str
 		DownloadURL: resolved.DownloadURL,
 		SHA256:      resolved.SHA256,
 		Source:      "registry",
+		Artifacts:   resolved.Artifacts,
 	}, nil
 }
 

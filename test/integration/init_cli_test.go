@@ -380,6 +380,43 @@ func TestInitMetadataRoundtrip(t *testing.T) {
 	}
 }
 
+// TestMCPValidateWarnsOnMissingArgs verifies that MCP packages with
+// launcher commands (npx, node) but no args produce a warning.
+func TestMCPValidateWarnsOnMissingArgs(t *testing.T) {
+	tests := []struct {
+		command     string
+		args        []string
+		wantWarning bool
+	}{
+		{"npx", nil, true},
+		{"node", nil, true},
+		{"python3", nil, true},
+		{"npx", []string{"-y", "my-server"}, false},
+		{"my-custom-binary", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			m := &manifest.Manifest{
+				Name:    "@test/mcp-test",
+				Version: "0.1.0",
+				Type:    manifest.TypeMCP,
+				MCP: &manifest.MCPSpec{
+					Transport: "stdio",
+					Command:   tt.command,
+					Args:      tt.args,
+				},
+			}
+			warnings := manifest.ValidateMCPWarnings(m)
+			hasWarning := len(warnings) > 0
+			if hasWarning != tt.wantWarning {
+				t.Errorf("command=%q args=%v: warning=%v, want %v",
+					tt.command, tt.args, hasWarning, tt.wantWarning)
+			}
+		})
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

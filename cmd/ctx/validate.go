@@ -48,10 +48,21 @@ var validateCmd = &cobra.Command{
 			// If SKILL.md doesn't exist, that's not an error — it might be created later
 		}
 
+		// MCP warnings (non-fatal)
+		var mcpWarnings []string
+		if m.Type == manifest.TypeMCP {
+			mcpWarnings = manifest.ValidateMCPWarnings(m)
+		}
+
+		// Combine all warnings for display
+		allWarnings := make([]string, 0, len(skillWarnings)+len(mcpWarnings))
+		allWarnings = append(allWarnings, skillWarnings...)
+		allWarnings = append(allWarnings, mcpWarnings...)
+
 		result := map[string]any{
 			"valid":          len(errs) == 0,
 			"errors":         errs,
-			"skill_warnings": skillWarnings,
+			"skill_warnings": allWarnings,
 			"name":           m.Name,
 			"type":           m.Type,
 		}
@@ -65,10 +76,10 @@ var validateCmd = &cobra.Command{
 		}
 
 		notice := ""
-		if len(skillWarnings) > 0 {
-			notice = "SKILL.md warnings:"
-			for _, sw := range skillWarnings {
-				notice += "\n  - " + sw
+		if len(allWarnings) > 0 {
+			notice = "Warnings:"
+			for _, w := range allWarnings {
+				notice += "\n  - " + w
 			}
 		}
 

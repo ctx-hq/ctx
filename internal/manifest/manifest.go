@@ -213,6 +213,24 @@ func validateMCP(m *Manifest) []string {
 	return errs
 }
 
+// ValidateMCPWarnings returns non-fatal warnings for MCP packages.
+func ValidateMCPWarnings(m *Manifest) []string {
+	var warnings []string
+	if m.MCP == nil {
+		return warnings
+	}
+
+	// Warn if stdio command like npx/node/python has no args — it won't run anything useful
+	if m.MCP.Transport == "stdio" && m.MCP.Command != "" && len(m.MCP.Args) == 0 {
+		launchers := map[string]bool{"npx": true, "node": true, "python": true, "python3": true, "deno": true, "bun": true}
+		if launchers[m.MCP.Command] {
+			warnings = append(warnings, fmt.Sprintf("mcp.args is empty but command is %q — add args (e.g. [\"-y\", \"package-name\"]) so the MCP server can start", m.MCP.Command))
+		}
+	}
+
+	return warnings
+}
+
 // validateCLI checks the cli section.
 func validateCLI(m *Manifest) []string {
 	var errs []string

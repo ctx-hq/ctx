@@ -153,15 +153,12 @@ func TestClientYank_PathAndMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Yank error: %v", err)
 	}
-	if gotMethod != "PATCH" {
-		t.Errorf("method = %q, want PATCH", gotMethod)
+	if gotMethod != "POST" {
+		t.Errorf("method = %q, want POST", gotMethod)
 	}
-	wantPath := "/v1/packages/@test%2Fpkg/versions/1.0.0"
+	wantPath := "/v1/packages/@test%2Fpkg/versions/1.0.0/yank"
 	if gotRawPath != wantPath {
 		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
-	}
-	if yanked, ok := gotBody["yanked"]; !ok || yanked != true {
-		t.Errorf("body = %v, want {yanked: true}", gotBody)
 	}
 }
 
@@ -257,6 +254,97 @@ func TestClientDownload_PathAndMethod(t *testing.T) {
 	wantPath := "/v1/packages/@test%2Fpkg/versions/1.0.0/archive"
 	if gotRawPath != wantPath {
 		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
+	}
+}
+
+func TestClientTokenCRUD(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/me/tokens":
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["name"] == nil {
+				t.Error("missing name in token create")
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": "t1", "token": "ctx_test", "name": body["name"].(string)})
+
+		case r.Method == "GET" && r.URL.Path == "/v1/me/tokens":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"tokens": []map[string]interface{}{
+					{"id": "t1", "name": "ci", "token_type": "personal", "created_at": "2026-01-01"},
+				},
+			})
+
+		case r.Method == "DELETE":
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	resp, err := c.CreateToken(ctx, CreateTokenRequest{Name: "ci", EndpointScopes: []string{"publish"}})
+	if err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+	if resp.Token != "ctx_test" {
+		t.Errorf("token = %q", resp.Token)
+	}
+
+	tokens, err := c.ListTokens(ctx)
+	if err != nil {
+		t.Fatalf("ListTokens: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].Name != "ci" {
+		t.Errorf("tokens = %v", tokens)
+	}
+
+	if err := c.RevokeToken(ctx, "t1"); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+}
+
+func TestClientStarFlow(t *testing.T) {
+	starred := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PUT":
+			starred = true
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		case r.Method == "DELETE":
+			starred = false
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		case r.Method == "GET":
+			stars := []map[string]string{}
+			if starred {
+				stars = append(stars, map[string]string{"full_name": "@t/p", "type": "skill", "description": "test", "starred_at": "2026-01-01"})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"stars": stars})
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	if err := c.StarPackage(ctx, "@t/p"); err != nil {
+		t.Fatalf("Star: %v", err)
+	}
+	stars, _ := c.ListStars(ctx)
+	if len(stars) != 1 {
+		t.Errorf("after star: %d stars", len(stars))
+	}
+
+	if err := c.UnstarPackage(ctx, "@t/p"); err != nil {
+		t.Fatalf("Unstar: %v", err)
+	}
+	stars, _ = c.ListStars(ctx)
+	if len(stars) != 0 {
+		t.Errorf("after unstar: %d stars", len(stars))
 	}
 }
 

@@ -4,12 +4,15 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -95,23 +98,55 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		versionExists = true
 	}
 
+	// Check for platform-specific artifact and override download URL if available
+	downloadURL := resolution.DownloadURL
+	isArtifact := false
+	artifactSHA256 := ""
+	if len(resolution.Artifacts) > 0 {
+		currentPlatform := runtime.GOOS + "-" + runtime.GOARCH
+		for _, a := range resolution.Artifacts {
+			if a.Platform == currentPlatform && a.DownloadURL != "" {
+				downloadURL = a.DownloadURL
+				artifactSHA256 = a.SHA256
+				isArtifact = true
+				if artifactSHA256 == "" {
+					return nil, nil, fmt.Errorf("artifact for platform %s is missing SHA256 checksum", currentPlatform)
+				}
+				break
+			}
+		}
+	}
+
 	// Download and extract to versioned directory (skip if version already exists)
-	if !versionExists && resolution.DownloadURL != "" {
+	if !versionExists && downloadURL != "" {
 		var body io.ReadCloser
 		switch resolution.Source {
 		case "registry":
-			body, err = i.Registry.Download(ctx, resolution.FullName, resolution.Version)
+			if isArtifact {
+				// Platform-specific artifact — download via URL directly
+				body, err = downloadHTTP(ctx, downloadURL)
+			} else {
+				body, err = i.Registry.Download(ctx, resolution.FullName, resolution.Version)
+			}
 			if err != nil {
 				return nil, nil, fmt.Errorf("download: %w", err)
 			}
 		case "github":
-			body, err = downloadURL(ctx, resolution.DownloadURL)
+			body, err = downloadHTTP(ctx, downloadURL)
 			if err != nil {
 				return nil, nil, fmt.Errorf("download from github: %w", err)
 			}
 		}
 		if body != nil {
 			defer func() { _ = body.Close() }()
+
+			// For artifact downloads, wrap reader with SHA256 hasher for integrity check
+			var hashReader io.Reader = body
+			var hasher hash.Hash
+			if isArtifact {
+				hasher = sha256.New()
+				hashReader = io.TeeReader(body, hasher)
+			}
 
 			// Extract to a temp dir first, then atomically move to version dir
 			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
@@ -123,8 +158,16 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			}
 			defer func() { _ = os.RemoveAll(tmpDir) }() // clean up on failure
 
-			if err := extractArchive(body, tmpDir); err != nil {
+			if err := extractArchive(io.NopCloser(hashReader), tmpDir); err != nil {
 				return nil, nil, fmt.Errorf("extract package: %w", err)
+			}
+
+			// Verify SHA256 integrity for artifact downloads
+			if hasher != nil {
+				actualSHA := fmt.Sprintf("%x", hasher.Sum(nil))
+				if actualSHA != artifactSHA256 {
+					return nil, nil, fmt.Errorf("SHA256 mismatch: expected %s, got %s", artifactSHA256, actualSHA)
+				}
 			}
 
 			// Write manifest into the temp dir
@@ -141,7 +184,7 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 				return nil, nil, fmt.Errorf("rename to version dir: %w", err)
 			}
 		}
-	} else if !versionExists {
+	} else if !versionExists && downloadURL == "" {
 		// No download URL — create version dir with manifest and content
 		if err := os.MkdirAll(versionDir, 0o700); err != nil {
 			return nil, nil, fmt.Errorf("create version dir: %w", err)
@@ -242,8 +285,8 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 	return nil
 }
 
-// downloadURL fetches a URL and returns the response body.
-func downloadURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+// downloadHTTP fetches a URL and returns the response body.
+func downloadHTTP(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return nil, err

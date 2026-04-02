@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/term"
@@ -18,8 +19,8 @@ import (
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
 	"github.com/ctx-hq/ctx/internal/registry"
-	"github.com/ctx-hq/ctx/internal/secrets"
 	"github.com/ctx-hq/ctx/internal/resolver"
+	"github.com/ctx-hq/ctx/internal/secrets"
 	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
 )
@@ -28,6 +29,7 @@ var (
 	flagCaller    string
 	flagPick      bool
 	flagTransport string
+	flagFromList  string
 )
 
 var installCmd = &cobra.Command{
@@ -42,8 +44,9 @@ Examples:
   ctx install @mcp/github@2.1.0        Install exact version
   ctx install github:user/repo         Install from GitHub directly
   ctx install @baoyu/skills            Install a collection (all members)
-  ctx install @baoyu/skills --pick     Install selected members from collection`,
-	Args: cobra.ExactArgs(1),
+  ctx install @baoyu/skills --pick     Install selected members from collection
+  ctx install --from-list @user/my-tools  Batch install from a public star list`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := requireOnline(); err != nil {
 			return err
@@ -52,6 +55,15 @@ Examples:
 		cfg, err := config.Load()
 		if err != nil {
 			return err
+		}
+
+		// --from-list: batch install all packages in a public star list
+		if flagFromList != "" {
+			return installFromList(cmd, w, cfg)
+		}
+
+		if len(args) == 0 {
+			return fmt.Errorf("package name required (or use --from-list)")
 		}
 
 		reg := registry.New(cfg.RegistryURL(), getToken())
@@ -142,6 +154,54 @@ func init() {
 	installCmd.Flags().StringVar(&flagCaller, "caller", "", "Agent that invoked this install (e.g., claude, cursor)")
 	installCmd.Flags().BoolVar(&flagPick, "pick", false, "Interactively select members from a collection")
 	installCmd.Flags().StringVar(&flagTransport, "transport", "", "Select a named transport for MCP packages (e.g., remote, stdio-docker)")
+	installCmd.Flags().StringVar(&flagFromList, "from-list", "", "Install all packages from a public star list (@user/slug)")
+}
+
+// installFromList fetches a public star list and installs each package.
+func installFromList(cmd *cobra.Command, w *output.Writer, cfg *config.Config) error {
+	// Parse @user/slug
+	listRef := flagFromList
+	if !strings.Contains(listRef, "/") {
+		return fmt.Errorf("--from-list must be @user/slug format (e.g. @alice/my-tools)")
+	}
+	listRef = strings.TrimPrefix(listRef, "@")
+	parts := strings.SplitN(listRef, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("--from-list must be @user/slug format (e.g. @alice/my-tools)")
+	}
+	username, slug := parts[0], parts[1]
+
+	reg := registry.New(cfg.RegistryURL(), getToken())
+	stars, err := reg.GetPublicStarList(cmd.Context(), username, slug)
+	if err != nil {
+		return fmt.Errorf("fetch star list: %w", err)
+	}
+	if len(stars) == 0 {
+		return w.OK(nil, output.WithSummary("Star list is empty"))
+	}
+
+	output.Info("Installing %d packages from @%s/%s...", len(stars), username, slug)
+
+	inst := installer.New(reg, resolver.New(reg))
+
+	var installed, failed int
+	for i, s := range stars {
+		output.Info("[%d/%d] %s", i+1, len(stars), s.FullName)
+		_, installErr := inst.Install(cmd.Context(), s.FullName)
+		if installErr != nil {
+			output.Warn("  Failed: %v", installErr)
+			failed++
+			continue
+		}
+		installed++
+	}
+
+	return w.OK(map[string]interface{}{
+		"list":      fmt.Sprintf("@%s/%s", username, slug),
+		"installed": installed,
+		"failed":    failed,
+		"total":     len(stars),
+	}, output.WithSummary(fmt.Sprintf("Installed %d/%d from @%s/%s", installed, len(stars), username, slug)))
 }
 
 // runPostInstall performs type-specific actions after a package is installed.
