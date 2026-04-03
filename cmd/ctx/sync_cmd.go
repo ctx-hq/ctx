@@ -161,11 +161,11 @@ var syncPullCmd = &cobra.Command{
 		for _, pkg := range resp.Profile.Packages {
 			if !pkg.Syncable {
 				skipped++
-				output.Warn("Skipped %s (no remote source)", pkg.Name)
+				w.Warn("Skipped %s (no remote source)", pkg.Name)
 				continue
 			}
 
-			output.Info("Restoring %s...", pkg.Name)
+			w.Info("Restoring %s...", pkg.Name)
 			var ref string
 			if pkg.SourceURL != "" {
 				// Use explicit source URL (e.g. github:owner/repo@ref)
@@ -177,7 +177,7 @@ var syncPullCmd = &cobra.Command{
 				}
 			}
 			if _, installErr := inst.Install(cmd.Context(), ref); installErr != nil {
-				output.Warn("Failed to restore %s: %v", pkg.Name, installErr)
+				w.Warn("Failed to restore %s: %v", pkg.Name, installErr)
 				continue
 			}
 			restored++

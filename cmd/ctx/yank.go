@@ -38,7 +38,7 @@ Examples:
 		}
 
 		if !flagYes {
-			output.Warn("This will yank %s@%s. Existing installations are not affected.", fullName, version)
+			w.Warn("This will yank %s@%s. Existing installations are not affected.", fullName, version)
 			return output.ErrUsageHint(
 				"confirmation required",
 				"Run with --yes to confirm",

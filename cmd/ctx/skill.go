@@ -88,7 +88,7 @@ var skillInstallCmd = &cobra.Command{
 				continue
 			}
 			if err := a.InstallSkill(canonicalDir, "ctx"); err != nil {
-				output.Warn("Failed to link to %s: %v", a.Name(), err)
+				w.Warn("Failed to link to %s: %v", a.Name(), err)
 				continue
 			}
 
@@ -99,7 +99,7 @@ var skillInstallCmd = &cobra.Command{
 				Source: canonicalDir,
 				Target: filepath.Join(a.SkillsDir(), "ctx"),
 			})
-			output.Success("Linked to %s", a.Name())
+			w.Success("Linked to %s", a.Name())
 			linked++
 		}
 

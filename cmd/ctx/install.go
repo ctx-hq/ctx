@@ -85,7 +85,7 @@ Examples:
 				return nil
 			})
 		} else {
-			output.Info("Resolving %s...", args[0])
+			w.Info("Resolving %s...", args[0])
 			result, err = inst.Install(cmd.Context(), args[0])
 		}
 		if err != nil {
@@ -118,7 +118,7 @@ Examples:
 
 		// Run type-specific post-install actions (linking)
 		if err := runPostInstall(cmd, result, caller, selectedAgents); err != nil {
-			output.Warn("Post-install: %v", err)
+			w.Warn("Post-install: %v", err)
 		}
 
 		// Show reload hint based on package type
@@ -200,16 +200,16 @@ func installFromList(cmd *cobra.Command, w *output.Writer, cfg *config.Config) e
 		return w.OK(nil, output.WithSummary("Star list is empty"))
 	}
 
-	output.Info("Installing %d packages from @%s/%s...", len(stars), username, slug)
+	w.Info("Installing %d packages from @%s/%s...", len(stars), username, slug)
 
 	inst := installer.New(reg, resolver.New(reg))
 
 	var installed, failed int
 	for i, s := range stars {
-		output.Info("[%d/%d] %s", i+1, len(stars), s.FullName)
+		w.Info("[%d/%d] %s", i+1, len(stars), s.FullName)
 		_, installErr := inst.Install(cmd.Context(), s.FullName)
 		if installErr != nil {
-			output.Warn("  Failed: %v", installErr)
+			w.Warn("  Failed: %v", installErr)
 			failed++
 			continue
 		}
@@ -226,6 +226,7 @@ func installFromList(cmd *cobra.Command, w *output.Writer, cfg *config.Config) e
 
 // runPostInstall performs type-specific actions after a package is installed.
 func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller string, targetAgents []agent.Agent) error {
+	w := getWriter(cmd)
 	// Load the manifest from the installed package
 	manifestPath := filepath.Join(result.InstallPath, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
@@ -252,15 +253,15 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 	case manifest.TypeCLI:
 		// Script installs require explicit user confirmation
 		if m.Install != nil && m.Install.Script != "" && !flagYes {
-			output.Warn("This package installs via shell script: %s", m.Install.Script)
+			w.Warn("This package installs via shell script: %s", m.Install.Script)
 			p := prompt.DefaultPrompter()
 			ok, err := p.Confirm("Execute this script?", false)
 			if err != nil || !ok {
-				output.Warn("script installation cancelled by user")
+				w.Warn("script installation cancelled by user")
 			} else {
 				cliState, err := installer.InstallCLI(cmd.Context(), &m)
 				if err != nil {
-					output.Warn("CLI install: %v", err)
+					w.Warn("CLI install: %v", err)
 				} else {
 					state.CLI = cliState
 				}
@@ -268,7 +269,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		} else if m.Install != nil && m.Install.Script != "" {
 			cliState, err := installer.InstallCLI(cmd.Context(), &m)
 			if err != nil {
-				output.Warn("CLI install: %v", err)
+				w.Warn("CLI install: %v", err)
 			} else {
 				state.CLI = cliState
 			}
@@ -284,7 +285,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 					binLink := filepath.Join(binDir, binName)
 					_ = os.Remove(binLink) // remove stale symlink
 					if lnErr := os.Symlink(binSrc, binLink); lnErr == nil {
-						output.Success("Linked %s → %s", binName, binLink)
+						w.Success("Linked %s → %s", binName, binLink)
 					}
 				}
 			}
@@ -294,20 +295,20 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		if hasSkillMD(result.InstallPath) {
 			skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 			if linkErr != nil {
-				output.Warn("Skill linking: %v", linkErr)
+				w.Warn("Skill linking: %v", linkErr)
 			}
 			state.Skills = skillStates
 		}
 
 		// Show auth hint
 		if m.CLI != nil && m.CLI.Auth != "" {
-			output.Warn(m.CLI.Auth)
+			w.Warn("%s", m.CLI.Auth)
 		}
 
 	case manifest.TypeSkill:
 		skillStates, linkErr := installer.LinkSkillToAgents(cmd.Context(), result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 		if linkErr != nil {
-			output.Warn("Skill linking: %v", linkErr)
+			w.Warn("Skill linking: %v", linkErr)
 		}
 		state.Skills = skillStates
 
@@ -352,13 +353,13 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 		}
 		if preResult := installer.RunPreflight(&preflightManifest); preResult != nil && !preResult.Passed {
 			for _, e := range preResult.Errors {
-				output.Warn(e)
+				w.Warn("%s", e)
 			}
 			if len(m.MCP.Transports) > 0 {
 				for _, t := range m.MCP.Transports {
 					if t.Require == nil || len(t.Require.Bins) == 0 {
-						output.Info("Alternative: %s (no local install needed)", t.Label)
-						output.PrintDim("    ctx install %s --transport=%s", m.Name, t.ID)
+						w.Info("Alternative: %s (no local install needed)", t.Label)
+						w.PrintDim("    ctx install %s --transport=%s", m.Name, t.ID)
 					}
 				}
 			}
@@ -420,7 +421,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 
 		mcpStates, err := installer.LinkMCPToAgents(cmd.Context(), &m, selectedTransport)
 		if err != nil {
-			output.Warn("MCP config: %v", err)
+			w.Warn("MCP config: %v", err)
 		}
 		state.MCP = mcpStates
 
@@ -429,32 +430,32 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 			quietCtx := context.WithValue(cmd.Context(), installer.QuietLinkKey, true)
 			skillStates, linkErr := installer.LinkSkillToAgents(quietCtx, result.InstallPath, m.ShortName(), result.FullName, caller, targetAgents)
 			if linkErr != nil {
-				output.Warn("Skill linking: %v", linkErr)
+				w.Warn("Skill linking: %v", linkErr)
 			}
 			state.Skills = skillStates
 		}
 
 		// Post-install guidance
-		output.PrintDim("")
+		w.PrintDim("")
 		if len(missingEnvVars) > 0 {
-			output.Warn("Required environment variables not set:")
+			w.Warn("Required environment variables not set:")
 			for _, name := range missingEnvVars {
-				output.PrintDim("    %s", name)
+				w.PrintDim("    %s", name)
 			}
-			output.Info("Set them with:")
+			w.Info("Set them with:")
 			for _, name := range missingEnvVars {
-				output.PrintDim("    ctx mcp env set %s %s=<value>", m.Name, name)
+				w.PrintDim("    ctx mcp env set %s %s=<value>", m.Name, name)
 			}
-			output.Info("Then re-link to agents:")
-			output.PrintDim("    ctx install %s", m.Name)
-			output.PrintDim("")
+			w.Info("Then re-link to agents:")
+			w.PrintDim("    ctx install %s", m.Name)
+			w.PrintDim("")
 		}
-		output.PrintDim("  Next: ctx mcp test %s", m.ShortName())
+		w.PrintDim("  Next: ctx mcp test %s", m.ShortName())
 	}
 
 	// Save installation state for repair/uninstall
 	if err := state.Save(pkgDir); err != nil {
-		output.Warn("Failed to save install state: %v", err)
+		w.Warn("Failed to save install state: %v", err)
 	}
 
 	return nil
@@ -533,14 +534,14 @@ func installCollection(cmd *cobra.Command, result *installer.InstallResult, m *m
 				}
 			}
 			if len(selected) == 0 {
-				output.Info("No members selected.")
+				w.Info("No members selected.")
 				return nil
 			}
 			members = selected
 		}
 	}
 
-	output.Info("Installing %d member(s) from collection %s...", len(members), result.FullName)
+	w.Info("Installing %d member(s) from collection %s...", len(members), result.FullName)
 
 	caller := flagCaller
 	if caller == "" {
@@ -563,18 +564,18 @@ func installCollection(cmd *cobra.Command, result *installer.InstallResult, m *m
 	var installed int
 	var failed int
 	for i, memberName := range members {
-		output.Info("[%d/%d] Installing %s...", i+1, len(members), memberName)
+		w.Info("[%d/%d] Installing %s...", i+1, len(members), memberName)
 
 		memberResult, installErr := inst.Install(cmd.Context(), memberName)
 		if installErr != nil {
-			output.Warn("Failed to install %s: %v", memberName, installErr)
+			w.Warn("Failed to install %s: %v", memberName, installErr)
 			failed++
 			continue
 		}
 
 		// Run post-install for each member.
 		if postErr := runPostInstall(cmd, memberResult, caller, selectedAgents); postErr != nil {
-			output.Warn("Post-install %s: %v", memberName, postErr)
+			w.Warn("Post-install %s: %v", memberName, postErr)
 		}
 
 		installed++

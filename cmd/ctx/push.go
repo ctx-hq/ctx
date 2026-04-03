@@ -398,53 +398,44 @@ func showPushStatus(w *output.Writer) error {
 	}
 
 	// For human output, print a colored table to stderr, then summary only.
-	output.Header("Push Status")
-	fmt.Fprintf(os.Stderr, "  %-30s %-10s %-14s %s\n",
-		output.Dim+"SKILL"+output.Reset,
-		output.Dim+"VERSION"+output.Reset,
-		output.Dim+"STATUS"+output.Reset,
-		output.Dim+"LAST PUSHED"+output.Reset,
+	w.Header("Push Status")
+	s := w.Styler()
+	fmt.Fprintf(os.Stderr, "  %s %s %s %s\n",
+		output.PadRight(s.Dim("SKILL"), 30),
+		output.PadRight(s.Dim("VERSION"), 10),
+		output.PadRight(s.Dim("STATUS"), 14),
+		s.Dim("LAST PUSHED"),
 	)
 	for _, e := range entries {
 		var statusDisp string
 		switch e.Status {
 		case "error":
-			statusDisp = output.Red + "error" + output.Reset
+			statusDisp = s.Error("error")
 		case "modified":
-			statusDisp = output.Yellow + "modified" + output.Reset
+			statusDisp = s.Warning("modified")
 		case "never_pushed":
-			statusDisp = output.Cyan + "never pushed" + output.Reset
+			statusDisp = s.Info("never pushed")
 		default:
-			statusDisp = output.Green + "up to date" + output.Reset
+			statusDisp = s.Success("up to date")
 		}
 		lp := e.LastPushed
 		if lp == "" {
 			lp = "—"
 		}
-		// Pad based on plain display text length for alignment.
-		var plainLen int
-		switch e.Status {
-		case "never_pushed":
-			plainLen = len("never pushed")
-		case "up_to_date":
-			plainLen = len("up to date")
-		default:
-			plainLen = len(e.Status)
-		}
-		padding := 14 - plainLen
-		if padding < 0 {
-			padding = 0
-		}
-		fmt.Fprintf(os.Stderr, "  %-30s %-10s %s%s %s\n", e.FullName, e.Version, statusDisp, strings.Repeat(" ", padding), lp)
+		fmt.Fprintf(os.Stderr, "  %s %s %s %s\n",
+			output.PadRight(e.FullName, 30),
+			output.PadRight(e.Version, 10),
+			output.PadRight(statusDisp, 14),
+			lp)
 	}
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "  %s\n", output.Dim+summary+output.Reset)
+	fmt.Fprintf(os.Stderr, "  %s\n", s.Dim(summary))
 	return nil
 }
 
 // pushScanDryRun shows which skills would be pushed (no network, no writes).
 func pushScanDryRun(w *output.Writer, ps *pushstate.PushState) error {
-	output.Info("Scanning %s...", config.SkillsDir())
+	w.Info("Scanning %s...", config.SkillsDir())
 	skills, err := scanSkills(ps)
 	if err != nil {
 		return err
@@ -453,7 +444,7 @@ func pushScanDryRun(w *output.Writer, ps *pushstate.PushState) error {
 	var dirty []skillEntry
 	for _, s := range skills {
 		if s.Error != "" {
-			output.Warn("%s: %s (skipped)", s.FullName, s.Error)
+			w.Warn("%s: %s (skipped)", s.FullName, s.Error)
 			continue
 		}
 		if s.Dirty {
@@ -466,11 +457,12 @@ func pushScanDryRun(w *output.Writer, ps *pushstate.PushState) error {
 
 	fmt.Fprintln(os.Stderr)
 	for _, s := range dirty {
-		status := output.Yellow + "modified" + output.Reset
+		st := w.Styler()
+		status := st.Warning("modified")
 		if _, ok := ps.Skills[s.FullName]; !ok {
-			status = output.Cyan + "never pushed" + output.Reset
+			status = st.Info("never pushed")
 		}
-		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, output.Dim+s.Version+output.Reset, status)
+		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, st.Dim(s.Version), status)
 	}
 	fmt.Fprintln(os.Stderr)
 
@@ -499,8 +491,8 @@ func pushDirectoryDryRun(w *output.Writer, dir string, cfg *config.Config) error
 		return output.ErrUsageHint("no ctx.yaml found", "Run 'ctx init' first")
 	}
 
-	output.Header("Dry Run")
-	output.Table([][]string{
+	w.Header("Dry Run")
+	w.Table([][]string{
 		{"Name:", m.Name},
 		{"Version:", m.Version},
 		{"Directory:", dir},
@@ -514,7 +506,7 @@ func pushDirectoryDryRun(w *output.Writer, dir string, cfg *config.Config) error
 
 // pushScan handles the no-args scan mode.
 func pushScan(cmd *cobra.Command, w *output.Writer, cfg *config.Config, ps *pushstate.PushState, token string) error {
-	output.Info("Scanning %s...", config.SkillsDir())
+	w.Info("Scanning %s...", config.SkillsDir())
 
 	skills, err := scanSkills(ps)
 	if err != nil {
@@ -530,7 +522,7 @@ func pushScan(cmd *cobra.Command, w *output.Writer, cfg *config.Config, ps *push
 	var dirty []skillEntry
 	for _, s := range skills {
 		if s.Error != "" {
-			output.Warn("%s: %s (skipped)", s.FullName, s.Error)
+			w.Warn("%s: %s (skipped)", s.FullName, s.Error)
 			continue
 		}
 		if s.Dirty {
@@ -547,11 +539,12 @@ func pushScan(cmd *cobra.Command, w *output.Writer, cfg *config.Config, ps *push
 	// Display dirty skills.
 	fmt.Fprintln(os.Stderr)
 	for _, s := range dirty {
-		status := output.Yellow + "modified" + output.Reset
+		st := w.Styler()
+		status := st.Warning("modified")
 		if _, ok := ps.Skills[s.FullName]; !ok {
-			status = output.Cyan + "never pushed" + output.Reset
+			status = st.Info("never pushed")
 		}
-		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, output.Dim+s.Version+output.Reset, status)
+		fmt.Fprintf(os.Stderr, "  %s %s (%s)\n", s.FullName, st.Dim(s.Version), status)
 	}
 	fmt.Fprintln(os.Stderr)
 
@@ -563,7 +556,7 @@ func pushScan(cmd *cobra.Command, w *output.Writer, cfg *config.Config, ps *push
 			return confirmErr
 		}
 		if !confirmed {
-			output.Info("Cancelled.")
+			w.Info("Cancelled.")
 			return nil
 		}
 	}
@@ -593,15 +586,15 @@ func pushBatch(ctx context.Context, skills []skillEntry, reg *registry.Client, p
 				return
 			}
 
-			res, err := pushOneSkill(ctx, s, reg)
+			res, err := pushOneSkill(ctx, s, reg, w)
 			if err != nil {
 				results[i] = pushResult{FullName: s.FullName, Error: err.Error()}
-				output.Error("%s: %v", s.FullName, err)
+				w.Errorf("%s: %v", s.FullName, err)
 				return
 			}
 
 			results[i] = pushResult{FullName: s.FullName, Version: res.Version, Pushed: true}
-			output.Success("%s@%s", res.FullName, res.Version)
+			w.Success("%s@%s", res.FullName, res.Version)
 
 			mu.Lock()
 			ps.RecordPush(s.FullName, s.Hash, res.Version, s.Dir)
@@ -612,7 +605,7 @@ func pushBatch(ctx context.Context, skills []skillEntry, reg *registry.Client, p
 
 	// Save state once after all pushes (preserves partial success).
 	if err := ps.Save(); err != nil {
-		output.Warn("Failed to save push state: %v", err)
+		w.Warn("Failed to save push state: %v", err)
 	}
 
 	// Summarize.
@@ -639,7 +632,7 @@ func pushBatch(ctx context.Context, skills []skillEntry, reg *registry.Client, p
 }
 
 // pushOneSkill stages, archives, and publishes a single skill with retry.
-func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*registry.PublishResponse, error) {
+func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client, w *output.Writer) (*registry.PublishResponse, error) {
 	m, err := manifest.LoadFromDir(s.Dir)
 	if err != nil {
 		return nil, err
@@ -658,7 +651,7 @@ func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*reg
 	if dirty {
 		if wb, wErr := manifest.Marshal(m); wErr == nil {
 			_ = os.WriteFile(filepath.Join(s.Dir, "ctx.yaml"), wb, 0o644)
-			output.Info("Updated ctx.yaml with defaults (visibility=%s, mutable=%v)", m.Visibility, m.Mutable)
+			w.Info("Updated ctx.yaml with defaults (visibility=%s, mutable=%v)", m.Visibility, m.Mutable)
 		}
 	}
 
@@ -674,7 +667,7 @@ func pushOneSkill(ctx context.Context, s skillEntry, reg *registry.Client) (*reg
 	}
 	defer cleanup()
 
-	return publishWithRetry(ctx, reg, data, archive)
+	return publishWithRetry(ctx, reg, data, archive, w)
 }
 
 // stageAndArchive creates a staging directory from package files (whitelist),
@@ -727,7 +720,7 @@ func stageAndArchive(dir string, m *manifest.Manifest, manifestData []byte) (io.
 }
 
 // publishWithRetry wraps reg.Publish with exponential backoff for retryable errors.
-func publishWithRetry(ctx context.Context, reg *registry.Client, data []byte, archive io.ReadSeeker, cfg ...retryConfig) (*registry.PublishResponse, error) {
+func publishWithRetry(ctx context.Context, reg *registry.Client, data []byte, archive io.ReadSeeker, w *output.Writer, cfg ...retryConfig) (*registry.PublishResponse, error) {
 	rc := defaultRetryConfig
 	if len(cfg) > 0 {
 		rc = cfg[0]
@@ -758,7 +751,7 @@ func publishWithRetry(ctx context.Context, reg *registry.Client, data []byte, ar
 		if !isRetryable(err) {
 			return nil, err
 		}
-		output.Warn("Publish failed (attempt %d/%d): %v", attempt+1, rc.MaxRetries+1, err)
+		w.Warn("Publish failed (attempt %d/%d): %v", attempt+1, rc.MaxRetries+1, err)
 	}
 	return nil, fmt.Errorf("publish failed after %d attempts: %w", rc.MaxRetries+1, lastErr)
 }
@@ -831,7 +824,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 				"Run 'ctx init' to create a manifest, or create a SKILL.md",
 			)
 		}
-		output.Info("Found SKILL.md, auto-creating ctx.yaml...")
+		w.Info("Found SKILL.md, auto-creating ctx.yaml...")
 		scope := resolvedUsername()
 		if scope == "" {
 			scope = "your-scope"
@@ -894,7 +887,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 
 	// Stage, archive, and publish.
 	reg := registry.New(cfg.RegistryURL(), token)
-	output.Info("Pushing %s@%s...", m.Name, m.Version)
+	w.Info("Pushing %s@%s...", m.Name, m.Version)
 
 	archive, cleanup, err := stageAndArchive(dir, m, data)
 	if err != nil {
@@ -902,7 +895,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 	}
 	defer cleanup()
 
-	result, err := publishWithRetry(cmd.Context(), reg, data, archive)
+	result, err := publishWithRetry(cmd.Context(), reg, data, archive, w)
 	if err != nil {
 		return err
 	}
@@ -911,7 +904,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 	hash, _ := pushstate.HashDir(dir)
 	ps.RecordPush(m.Name, hash, result.Version, dir)
 	if saveErr := ps.Save(); saveErr != nil {
-		output.Warn("Failed to save push state: %v", saveErr)
+		w.Warn("Failed to save push state: %v", saveErr)
 	}
 
 	return w.OK(result,

@@ -37,7 +37,7 @@ func Repair(ctx context.Context, m *manifest.Manifest, pkgDir, installPath, full
 	if state.CLI != nil {
 		if err := adapter.Verify(state.CLI.Binary, ""); err != nil {
 			// Binary is missing — try to reinstall via same adapter
-			output.Info("CLI binary %s not found, reinstalling via %s...", state.CLI.Binary, state.CLI.Adapter)
+			output.FromContext(ctx).Info("CLI binary %s not found, reinstalling via %s...", state.CLI.Binary, state.CLI.Adapter)
 			a, aErr := adapter.FindByName(state.CLI.Adapter)
 			if aErr == nil {
 				if installErr := a.Install(ctx, state.CLI.AdapterPkg); installErr == nil {
@@ -67,7 +67,7 @@ func Repair(ctx context.Context, m *manifest.Manifest, pkgDir, installPath, full
 	for i, s := range state.Skills {
 		if _, err := os.Stat(s.SymlinkPath); err != nil {
 			// Symlink is broken — re-link
-			output.Info("Skill link for %s broken, re-linking...", s.Agent)
+			output.FromContext(ctx).Info("Skill link for %s broken, re-linking...", s.Agent)
 			if m != nil {
 				_, _ = LinkSkillToAgents(ctx, installPath, m.ShortName(), fullName, caller, nil)
 			}

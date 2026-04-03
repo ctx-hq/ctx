@@ -203,7 +203,7 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `--json` | Full JSON envelope with breadcrumbs |
 | `--quiet` | Raw JSON data only |
 | `--agent` | Agent mode (quiet + JSON errors) |
-| `--styled` | Force ANSI colors |
+| `--color=auto\|always\|never` | Color output control (respects NO_COLOR) |
 | `--md` | Markdown table output |
 | `--ids-only` | One ID per line |
 | `--count` | Count only |

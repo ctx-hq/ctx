@@ -173,14 +173,14 @@ func uploadFromDir(cmd *cobra.Command, w *output.Writer, client *registry.Client
 	for _, item := range items {
 		f, err := os.Open(item.path)
 		if err != nil {
-			output.Warn("skip %s: %v", item.path, err)
+			w.Warn("skip %s: %v", item.path, err)
 			continue
 		}
 
-		output.Info("Uploading %s (%s)...", filepath.Base(item.path), item.platform)
+		w.Info("Uploading %s (%s)...", filepath.Base(item.path), item.platform)
 		if err := client.UploadArtifact(cmd.Context(), fullName, version, item.platform, f); err != nil {
 			_ = f.Close()
-			output.Warn("failed %s: %v", item.platform, err)
+			w.Warn("failed %s: %v", item.platform, err)
 			continue
 		}
 		_ = f.Close()

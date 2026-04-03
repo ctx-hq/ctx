@@ -95,7 +95,7 @@ Examples:
 		}
 
 		// Auto-enrich missing metadata from git/filesystem
-		autoEnrichManifest(m, dir)
+		autoEnrichManifest(m, dir, w)
 
 		errs := manifest.Validate(m)
 		if len(errs) > 0 {
@@ -112,7 +112,7 @@ Examples:
 			issues := 0
 			for _, r := range checkResults {
 				if !r.OK {
-					output.Warn("install.%s: %s — %s", r.Method, r.Pkg, r.Error)
+					w.Warn("install.%s: %s — %s", r.Method, r.Pkg, r.Error)
 					issues++
 				}
 			}
@@ -127,16 +127,16 @@ Examples:
 		// Security scan
 		scanResult, scanErr := securityscan.Scan(dir)
 		if scanErr != nil {
-			output.Warn("Security scan error: %v", scanErr)
+			w.Warn("Security scan error: %v", scanErr)
 		} else if len(scanResult.Findings) > 0 {
 			for _, f := range scanResult.Findings {
 				switch f.Severity {
 				case securityscan.Critical:
-					output.Warn("[CRITICAL] %s:%d — %s", f.File, f.Line, f.Message)
+					w.Warn("[CRITICAL] %s:%d — %s", f.File, f.Line, f.Message)
 				case securityscan.High:
-					output.Warn("[HIGH] %s:%d — %s", f.File, f.Line, f.Message)
+					w.Warn("[HIGH] %s:%d — %s", f.File, f.Line, f.Message)
 				case securityscan.Medium:
-					output.Info("[MEDIUM] %s:%d — %s", f.File, f.Line, f.Message)
+					w.Info("[MEDIUM] %s:%d — %s", f.File, f.Line, f.Message)
 				}
 			}
 			if !scanResult.Passed() && !flagForce {
@@ -158,7 +158,7 @@ Examples:
 			p := prompt.DefaultPrompter()
 			confirmed, pErr := p.Confirm("Publish?", true)
 			if pErr != nil || !confirmed {
-				output.Info("Cancelled.")
+				w.Info("Cancelled.")
 				return nil
 			}
 		}
@@ -181,7 +181,7 @@ Examples:
 		// Publish
 		reg := registry.New(cfg.RegistryURL(), getToken())
 
-		output.Info("Publishing %s@%s...", m.Name, m.Version)
+		w.Info("Publishing %s@%s...", m.Name, m.Version)
 
 		// Stage only package files (whitelist) and create archive.
 		stg, stgErr := staging.New("ctx-publish-")
@@ -274,19 +274,19 @@ func publishWorkspace(cmd *cobra.Command, dir string, w *output.Writer) error {
 		members = filtered
 	}
 
-	output.Info("Publishing %d member(s) from workspace %s...", len(members), ws.Root.Name)
+	w.Info("Publishing %d member(s) from workspace %s...", len(members), ws.Root.Name)
 
 	var published int
 	var failed int
 	for i, member := range members {
-		output.Info("")
-		output.Info("[%d/%d] Publishing %s@%s...", i+1, len(members), member.Manifest.Name, member.Manifest.Version)
+		w.Info("")
+		w.Info("[%d/%d] Publishing %s@%s...", i+1, len(members), member.Manifest.Name, member.Manifest.Version)
 
 		// Publish each member by invoking the existing publish flow.
-		pubErr := publishSingleMember(cmd, member, reg)
+		pubErr := publishSingleMember(cmd, member, reg, w)
 		if pubErr != nil {
 			failed++
-			output.Warn("Failed: %v", pubErr)
+			w.Warn("Failed: %v", pubErr)
 			if !flagPublishContinueOnErr {
 				return fmt.Errorf("publish %s failed: %w (use --continue-on-error to skip failures)", member.Manifest.Name, pubErr)
 			}
@@ -295,18 +295,18 @@ func publishWorkspace(cmd *cobra.Command, dir string, w *output.Writer) error {
 		published++
 	}
 
-	output.Info("")
+	w.Info("")
 	if failed > 0 {
-		output.Warn("Published %d/%d members (%d failed)", published, len(members), failed)
+		w.Warn("Published %d/%d members (%d failed)", published, len(members), failed)
 	} else {
-		output.Info("Published %d member(s) from workspace %s", published, ws.Root.Name)
+		w.Info("Published %d member(s) from workspace %s", published, ws.Root.Name)
 	}
 
 	return nil
 }
 
 // publishSingleMember publishes a single workspace member.
-func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, reg *registry.Client) error {
+func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, reg *registry.Client, w *output.Writer) error {
 	m := member.Manifest
 	dir := member.Dir
 
@@ -324,16 +324,16 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 	// Security scan (same gate as single-package publish)
 	scanResult, scanErr := securityscan.Scan(dir)
 	if scanErr != nil {
-		output.Warn("Security scan error for %s: %v", m.Name, scanErr)
+		w.Warn("Security scan error for %s: %v", m.Name, scanErr)
 	} else if len(scanResult.Findings) > 0 {
 		for _, f := range scanResult.Findings {
 			switch f.Severity {
 			case securityscan.Critical:
-				output.Warn("[CRITICAL] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+				w.Warn("[CRITICAL] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
 			case securityscan.High:
-				output.Warn("[HIGH] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+				w.Warn("[HIGH] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
 			case securityscan.Medium:
-				output.Info("[MEDIUM] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+				w.Info("[MEDIUM] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
 			}
 		}
 		if !scanResult.Passed() && !flagForce {
@@ -386,62 +386,62 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 		return err
 	}
 
-	output.Success("Published %s@%s", result.FullName, result.Version)
+	w.Success("Published %s@%s", result.FullName, result.Version)
 	return nil
 }
 
 // autoEnrichManifest fills in missing optional metadata fields from
 // git configuration and filesystem detection. It modifies m in place.
 // Fields that already have values are never overwritten.
-func autoEnrichManifest(m *manifest.Manifest, dir string) {
-	enrichManifest(m, dir, false)
+func autoEnrichManifest(m *manifest.Manifest, dir string, w *output.Writer) {
+	enrichManifest(m, dir, false, w)
 }
 
 // autoEnrichManifestQuiet is like autoEnrichManifest but suppresses
 // per-field warnings. Used in workspace batch publish to avoid noisy
 // repeated warnings for every member.
 func autoEnrichManifestQuiet(m *manifest.Manifest, dir string) {
-	enrichManifest(m, dir, true)
+	enrichManifest(m, dir, true, nil)
 }
 
-func enrichManifest(m *manifest.Manifest, dir string, quiet bool) {
+func enrichManifest(m *manifest.Manifest, dir string, quiet bool, w *output.Writer) {
 	if m.Author == "" {
 		if author := gitutil.Author(dir); author != "" {
 			m.Author = author
-			if !quiet {
-				output.Info("Auto-detected author: %s", author)
+			if !quiet && w != nil {
+				w.Info("Auto-detected author: %s", author)
 			}
 		}
 	}
 	if m.Repository == "" {
 		if repo := gitutil.RemoteURL(dir); repo != "" {
 			m.Repository = repo
-			if !quiet {
-				output.Info("Auto-detected repository: %s", repo)
+			if !quiet && w != nil {
+				w.Info("Auto-detected repository: %s", repo)
 			}
 		}
 	}
 	if m.License == "" {
 		if lr := license.Detect(dir); lr.SPDX != "" {
 			m.License = lr.SPDX
-			if !quiet {
-				output.Info("Auto-detected license: %s", lr.SPDX)
+			if !quiet && w != nil {
+				w.Info("Auto-detected license: %s", lr.SPDX)
 			}
 		}
 	}
 
-	if quiet {
+	if quiet || w == nil {
 		return
 	}
 
 	// Soft warnings for missing recommended fields
 	if m.Repository == "" {
-		output.Warn("No repository URL detected (add to ctx.yaml or configure git remote)")
+		w.Warn("No repository URL detected (add to ctx.yaml or configure git remote)")
 	}
 	if m.License == "" {
-		output.Warn("No license detected (add LICENSE file or set license in ctx.yaml)")
+		w.Warn("No license detected (add LICENSE file or set license in ctx.yaml)")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "README.md")); os.IsNotExist(err) {
-		output.Warn("No README.md found (recommended for package documentation)")
+		w.Warn("No README.md found (recommended for package documentation)")
 	}
 }

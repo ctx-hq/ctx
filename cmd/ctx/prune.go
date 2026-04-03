@@ -76,7 +76,7 @@ Examples:
 		for _, pkg := range packages {
 			removed, freed, err := inst.PruneVersions(pkg, pruneKeep)
 			if err != nil {
-				output.Warn("Failed to prune %s: %v", pkg, err)
+				w.Warn("Failed to prune %s: %v", pkg, err)
 				continue
 			}
 			if len(removed) > 0 {

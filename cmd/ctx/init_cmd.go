@@ -179,7 +179,7 @@ Examples:
 				return confirmErr
 			}
 			if !overwrite {
-				output.Info("Cancelled.")
+				w.Info("Cancelled.")
 				return nil
 			}
 		}
@@ -189,7 +189,7 @@ Examples:
 		if pkgTypePreview == "" {
 			pkgTypePreview = manifest.TypeSkill
 		}
-		output.Header("Package Preview")
+		w.Header("Package Preview")
 		previewRows := [][]string{
 			{"Name:", fullName},
 			{"Version:", meta.version},
@@ -222,7 +222,7 @@ Examples:
 			previewRows = append(previewRows, []string{"Repository:", meta.repository})
 		}
 		previewRows = append(previewRows, []string{"Directory:", outDir})
-		output.Table(previewRows)
+		w.Table(previewRows)
 		fmt.Fprintln(os.Stderr) // blank line after table
 
 		confirmed, err := p.Confirm("Create package?", true)
@@ -230,7 +230,7 @@ Examples:
 			return err
 		}
 		if !confirmed {
-			output.Info("Cancelled.")
+			w.Info("Cancelled.")
 			return nil
 		}
 
@@ -333,7 +333,7 @@ Examples:
 			}
 		}
 
-		output.Success("Created %s in %s", fullName, outDir)
+		w.Success("Created %s in %s", fullName, outDir)
 
 		// 12. Output
 		var breadcrumbs []output.Breadcrumb
@@ -881,26 +881,26 @@ func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
 	detector := initdetect.NewDetector()
 
 	kind, key := initdetect.ParseSource(flagInitFrom)
-	output.Info("Detecting source: %s (%s)", kind, key)
+	w.Info("Detecting source: %s (%s)", kind, key)
 
 	result, err := detector.Detect(cmd.Context(), flagInitFrom)
 	if err != nil {
 		return fmt.Errorf("detection failed: %w", err)
 	}
 
-	output.PrintDim("  Type: %s", result.PackageType)
-	output.PrintDim("  Name: %s", result.Name)
-	output.PrintDim("  Version: %s", result.Version)
+	w.PrintDim("  Type: %s", result.PackageType)
+	w.PrintDim("  Name: %s", result.Name)
+	w.PrintDim("  Version: %s", result.Version)
 	if result.License != "" {
-		output.PrintDim("  License: %s", result.License)
+		w.PrintDim("  License: %s", result.License)
 	}
 	if result.MCP != nil {
-		output.PrintDim("  Transport: %s", result.MCP.Transport)
+		w.PrintDim("  Transport: %s", result.MCP.Transport)
 		if len(result.MCP.Transports) > 0 {
-			output.PrintDim("  Additional transports: %d", len(result.MCP.Transports))
+			w.PrintDim("  Additional transports: %d", len(result.MCP.Transports))
 		}
 		if len(result.MCP.Tools) > 0 {
-			output.PrintDim("  Tools: %d detected", len(result.MCP.Tools))
+			w.PrintDim("  Tools: %d detected", len(result.MCP.Tools))
 		}
 	}
 
@@ -910,18 +910,18 @@ func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
 	// Validate
 	errs := manifest.Validate(m)
 	if len(errs) > 0 {
-		output.Warn("Generated manifest has validation issues:")
+		w.Warn("Generated manifest has validation issues:")
 		for _, e := range errs {
-			output.PrintDim("  - %s", e)
+			w.PrintDim("  - %s", e)
 		}
-		output.Info("Review and fix the generated ctx.yaml before publishing.")
+		w.Info("Review and fix the generated ctx.yaml before publishing.")
 	}
 
 	// Write ctx.yaml
 	outPath := filepath.Join(".", manifest.FileName)
 	if _, err := os.Stat(outPath); err == nil {
 		if flagYes {
-			output.Warn("Overwriting existing ctx.yaml (--yes)")
+			w.Warn("Overwriting existing ctx.yaml (--yes)")
 		} else if term.IsTerminal(int(os.Stdin.Fd())) {
 			p := prompt.DefaultPrompter()
 			overwrite, confirmErr := p.Confirm("ctx.yaml already exists, overwrite?", false)
@@ -929,7 +929,7 @@ func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
 				return confirmErr
 			}
 			if !overwrite {
-				output.Info("Cancelled.")
+				w.Info("Cancelled.")
 				return nil
 			}
 		} else {
@@ -951,19 +951,19 @@ func runInitFrom(cmd *cobra.Command, w *output.Writer) error {
 	if _, statErr := os.Stat(readmePath); os.IsNotExist(statErr) {
 		if readme := initdetect.FetchUpstreamREADME(cmd.Context(), result); readme != nil {
 			if writeErr := os.WriteFile(readmePath, readme, 0o644); writeErr == nil {
-				output.PrintDim("  Fetched upstream README.md (%d bytes)", len(readme))
+				w.PrintDim("  Fetched upstream README.md (%d bytes)", len(readme))
 			}
 		}
 	}
 
-	output.Info("Generated %s", outPath)
-	output.PrintDim("")
-	output.PrintDim("  Next steps:")
+	w.Info("Generated %s", outPath)
+	w.PrintDim("")
+	w.PrintDim("  Next steps:")
 	if m.Type == manifest.TypeMCP {
-		output.PrintDim("    ctx mcp test %s        Verify the MCP server works", m.ShortName())
+		w.PrintDim("    ctx mcp test %s        Verify the MCP server works", m.ShortName())
 	}
-	output.PrintDim("    Review the generated ctx.yaml")
-	output.PrintDim("    ctx publish")
+	w.PrintDim("    Review the generated ctx.yaml")
+	w.PrintDim("    ctx publish")
 
 	return w.OK(map[string]interface{}{
 		"file":    outPath,

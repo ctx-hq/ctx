@@ -79,7 +79,7 @@ var whoamiCmd = &cobra.Command{
 				case apiErr.StatusCode >= 500:
 					if res.Profile.Username != "" {
 						if w.IsStyled() {
-							output.Warn("registry returned server error, showing cached info")
+							w.Warn("registry returned server error, showing cached info")
 						}
 						return whoamiCached(w, res)
 					}
@@ -99,7 +99,7 @@ var whoamiCmd = &cobra.Command{
 			// True network error: fall back to cached
 			if res.Profile.Username != "" {
 				if w.IsStyled() {
-					output.Warn("could not reach registry, showing cached info")
+					w.Warn("could not reach registry, showing cached info")
 				}
 				return whoamiCached(w, res)
 			}

@@ -28,8 +28,9 @@ func main() {
 		// Resolve format from flags directly — the writer in rootCmd's context
 		// may not have the user-specified format because PersistentPreRunE sets
 		// it on the subcommand's context, not rootCmd's.
-		format, _ := output.ResolveFormat(flagJSON, flagQuiet, flagStyled, flagMD, flagIDsOnly, flagCount, flagAgent)
-		w := output.NewWriter(output.WithFormat(format))
+		format, _ := output.ResolveFormat(flagJSON, flagQuiet, flagMD, flagIDsOnly, flagCount, flagAgent)
+		colorMode, _ := output.ParseColorMode(flagColor)
+		w := output.NewWriter(output.WithFormat(format), output.WithColorMode(colorMode))
 		_ = w.Err(err)
 
 		if cliErr := output.AsCLIError(err); cliErr != nil {

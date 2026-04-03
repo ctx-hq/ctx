@@ -80,7 +80,7 @@ Examples:
 			resolveReq.Packages[e.FullName] = "*"
 		}
 
-		output.Info("Checking %d package(s) for updates...", len(toCheck))
+		w.Info("Checking %d package(s) for updates...", len(toCheck))
 		resolved, resolveErr := reg.Resolve(cmd.Context(), resolveReq)
 
 		// Phase 2: Determine which packages need updating
@@ -92,7 +92,7 @@ Examples:
 
 		if resolveErr != nil {
 			// Batch resolve failed — fall back to sequential
-			output.Warn("Batch resolve unavailable, checking individually...")
+			w.Warn("Batch resolve unavailable, checking individually...")
 			for _, e := range toCheck {
 				pkg, err := reg.GetPackage(cmd.Context(), e.FullName)
 				if err != nil {
@@ -227,7 +227,7 @@ Examples:
 		for _, r := range results {
 			if r.postInstall != nil {
 				if err := runPostInstall(cmd, r.postInstall, "", nil); err != nil {
-					output.Warn("Post-install link for %s: %v", r.FullName, err)
+					w.Warn("Post-install link for %s: %v", r.FullName, err)
 				}
 			}
 		}
@@ -238,10 +238,10 @@ Examples:
 		for _, r := range results {
 			if r.Updated {
 				updatedCount++
-				output.Success("%s: %s → %s", r.FullName, r.OldVersion, r.NewVersion)
+				w.Success("%s: %s → %s", r.FullName, r.OldVersion, r.NewVersion)
 			} else if r.Error != "" {
 				failedCount++
-				output.Warn("Failed %s: %s", r.FullName, r.Error)
+				w.Warn("Failed %s: %s", r.FullName, r.Error)
 			}
 		}
 

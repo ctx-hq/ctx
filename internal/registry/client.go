@@ -441,7 +441,7 @@ func (c *Client) doDelete(ctx context.Context, path string) error {
 
 // doJSON is a generic helper for JSON API requests.
 func (c *Client) doJSON(ctx context.Context, method, path string, body any, result any) error {
-	output.Verbose(ctx, "registry: %s %s%s", method, c.BaseURL, path)
+	output.FromContext(ctx).Verbose(ctx, "registry: %s %s%s", method, c.BaseURL, path)
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -471,7 +471,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, resu
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	output.Verbose(ctx, "registry: %s %s%s → %d", method, c.BaseURL, path, resp.StatusCode)
+	output.FromContext(ctx).Verbose(ctx, "registry: %s %s%s → %d", method, c.BaseURL, path, resp.StatusCode)
 
 	if resp.StatusCode >= 400 {
 		return parseError(resp)

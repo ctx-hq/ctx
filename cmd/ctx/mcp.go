@@ -68,8 +68,8 @@ func runMCPTestSingle(ctx context.Context, w *output.Writer, inst *installer.Ins
 		return err
 	}
 
-	opts := manifestToConnectOpts(m, mcpTestTimeout)
-	result, err := runTestWithProgress(ctx, m.ShortName(), opts, m.MCP.Tools)
+	opts := manifestToConnectOpts(w, m, mcpTestTimeout)
+	result, err := runTestWithProgress(ctx, w, m.ShortName(), opts, m.MCP.Tools)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func runMCPTestSingle(ctx context.Context, w *output.Writer, inst *installer.Ins
 }
 
 // runTestWithProgress wraps mcpclient.RunTest with a progress indicator.
-func runTestWithProgress(ctx context.Context, name string, opts mcpclient.ConnectOptions, tools []string) (*mcpclient.TestResult, error) {
+func runTestWithProgress(ctx context.Context, w *output.Writer, name string, opts mcpclient.ConnectOptions, tools []string) (*mcpclient.TestResult, error) {
 	type testOut struct {
 		result *mcpclient.TestResult
 		err    error
@@ -91,7 +91,7 @@ func runTestWithProgress(ctx context.Context, name string, opts mcpclient.Connec
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	dots := 0
-	output.PrintDim("  Connecting to %s...", name)
+	w.PrintDim("  Connecting to %s...", name)
 
 	for {
 		select {
@@ -101,7 +101,7 @@ func runTestWithProgress(ctx context.Context, name string, opts mcpclient.Connec
 		case <-ticker.C:
 			dots++
 			fmt.Fprintf(os.Stderr, "\r\033[K")
-			output.PrintDim("  Waiting for server to respond... (%ds)", dots*3)
+			w.PrintDim("  Waiting for server to respond... (%ds)", dots*3)
 			if dots >= 3 {
 				ticker.Stop()
 			}
@@ -123,21 +123,21 @@ func runMCPTestAll(ctx context.Context, w *output.Writer, inst *installer.Instal
 	}
 
 	if len(mcpEntries) == 0 {
-		output.Info("No MCP servers installed.")
+		w.Info("No MCP servers installed.")
 		return nil
 	}
 
 	for _, e := range mcpEntries {
 		m, err := loadManifestFromPath(e.InstallPath)
 		if err != nil || m.MCP == nil {
-			output.Warn("Skipping %s: cannot load manifest", e.FullName)
+			w.Warn("Skipping %s: cannot load manifest", e.FullName)
 			continue
 		}
 
-		opts := manifestToConnectOpts(m, mcpTestTimeout)
-		result, err := runTestWithProgress(ctx, m.ShortName(), opts, m.MCP.Tools)
+		opts := manifestToConnectOpts(w, m, mcpTestTimeout)
+		result, err := runTestWithProgress(ctx, w, m.ShortName(), opts, m.MCP.Tools)
 		if err != nil {
-			output.Warn("Skipping %s: %v", e.FullName, err)
+			w.Warn("Skipping %s: %v", e.FullName, err)
 			continue
 		}
 
@@ -166,7 +166,7 @@ func printTestResult(w *output.Writer, name string, result *mcpclient.TestResult
 		if step.Elapsed > 0 {
 			elapsed = fmt.Sprintf(" (%s)", step.Elapsed.Round(time.Millisecond))
 		}
-		output.PrintDim("  %s %s%s%s", icon, step.Name, detail, elapsed)
+		w.PrintDim("  %s %s%s%s", icon, step.Name, detail, elapsed)
 	}
 
 	const stderrPrefix = "  stderr: "
@@ -174,7 +174,7 @@ func printTestResult(w *output.Writer, name string, result *mcpclient.TestResult
 	if result.Stderr != "" {
 		stderr := truncateStderr(result.Stderr, 5, len(stderrPrefix))
 		if stderr != "" {
-			output.PrintDim("%s%s", stderrPrefix, stderr)
+			w.PrintDim("%s%s", stderrPrefix, stderr)
 		}
 	}
 
@@ -186,15 +186,15 @@ func printTestResult(w *output.Writer, name string, result *mcpclient.TestResult
 			}
 			if strings.Contains(step.Detail, "INITIALIZATION_TIMEOUT") {
 				fmt.Fprintln(os.Stderr)
-				output.Warn("Server did not respond in time. Possible causes:")
-				output.PrintDim("    1. First run — npx/docker still downloading (try: --timeout %s)", mcpTestTimeout*2)
-				output.PrintDim("    2. Missing auth — server needs credentials (e.g. az login, API key)")
-				output.PrintDim("    3. Server error — run manually to see output:")
-				output.PrintDim("       %s", formatManualCommand(result))
+				w.Warn("Server did not respond in time. Possible causes:")
+				w.PrintDim("    1. First run — npx/docker still downloading (try: --timeout %s)", mcpTestTimeout*2)
+				w.PrintDim("    2. Missing auth — server needs credentials (e.g. az login, API key)")
+				w.PrintDim("    3. Server error — run manually to see output:")
+				w.PrintDim("       %s", formatManualCommand(result))
 			} else if strings.Contains(step.Detail, "PROCESS_SPAWN_ERROR") {
 				fmt.Fprintln(os.Stderr)
-				output.Warn("Could not start the server. Is the command installed?")
-				output.PrintDim("    Run manually: %s", formatManualCommand(result))
+				w.Warn("Could not start the server. Is the command installed?")
+				w.PrintDim("    Run manually: %s", formatManualCommand(result))
 			}
 			break
 		}
@@ -306,7 +306,7 @@ var mcpEnvListCmd = &cobra.Command{
 
 		m := store.List(pkg)
 		if m == nil {
-			output.Info("No env vars stored for %s", pkg)
+			w.Info("No env vars stored for %s", pkg)
 			return w.OK(map[string]any{}, output.WithSummary("No env vars stored"))
 		}
 
@@ -385,7 +385,7 @@ func loadManifestFromPath(installPath string) (*manifest.Manifest, error) {
 	return &m, nil
 }
 
-func manifestToConnectOpts(m *manifest.Manifest, timeout time.Duration) mcpclient.ConnectOptions {
+func manifestToConnectOpts(w *output.Writer, m *manifest.Manifest, timeout time.Duration) mcpclient.ConnectOptions {
 	opts := mcpclient.ConnectOptions{
 		Transport: m.MCP.Transport,
 		Command:   m.MCP.Command,
@@ -402,7 +402,7 @@ func manifestToConnectOpts(m *manifest.Manifest, timeout time.Duration) mcpclien
 		}
 	}
 	if store, err := secrets.Load(); err != nil {
-		output.Warn("load secrets: %v", err)
+		w.Warn("load secrets: %v", err)
 	} else {
 		for k, v := range store.List(m.Name) {
 			env[k] = v

@@ -83,6 +83,7 @@ Examples:
   ctx workspace init --scan "*" --exclude "docs,scripts" --scope "@team"
   ctx workspace init --scan "marketing/*,engineering/*" --scope "@org"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		w := getWriter(cmd)
 		rootDir := "."
 
 		// Check if workspace already exists.
@@ -140,7 +141,7 @@ Examples:
 			m, scaffoldErr := manifest.ScaffoldFromSkillMD(dir)
 			if scaffoldErr != nil {
 				relDir, _ := filepath.Rel(absRoot, dir)
-				output.Warn("Skipping %s: %v", relDir, scaffoldErr)
+				w.Warn("Skipping %s: %v", relDir, scaffoldErr)
 				skipped++
 				continue
 			}
@@ -174,7 +175,7 @@ Examples:
 			}
 			created++
 			relDir, _ := filepath.Rel(absRoot, dir)
-			output.PrintDim("  Created %s/%s", relDir, manifest.FileName)
+			w.PrintDim("  Created %s/%s", relDir, manifest.FileName)
 		}
 
 		// Auto-detect collections from .claude-plugin/marketplace.json.
@@ -226,10 +227,10 @@ Examples:
 			return fmt.Errorf("write root %s: %w", manifest.FileName, writeErr)
 		}
 
-		output.Info("Workspace initialized: %d skills created, %d skipped", created, skipped)
-		output.Info("Root %s created with %d member pattern(s)", manifest.FileName, len(scanPatterns))
+		w.Info("Workspace initialized: %d skills created, %d skipped", created, skipped)
+		w.Info("Root %s created with %d member pattern(s)", manifest.FileName, len(scanPatterns))
 		if len(collections) > 0 {
-			output.Info("Auto-detected %d collection(s) from .claude-plugin/marketplace.json", len(collections))
+			w.Info("Auto-detected %d collection(s) from .claude-plugin/marketplace.json", len(collections))
 		}
 
 		return nil
@@ -243,6 +244,7 @@ var workspaceValidateCmd = &cobra.Command{
 	Aliases: []string{"val"},
 	Short:   "Validate all workspace members",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		w := getWriter(cmd)
 		ws, err := manifest.LoadWorkspace(".")
 		if err != nil {
 			return err
@@ -254,7 +256,7 @@ var workspaceValidateCmd = &cobra.Command{
 			if len(errs) > 0 {
 				totalErrors += len(errs)
 				for _, e := range errs {
-					output.Warn("%s: %s", m.RelDir, e)
+					w.Warn("%s: %s", m.RelDir, e)
 				}
 			}
 		}
@@ -264,7 +266,7 @@ var workspaceValidateCmd = &cobra.Command{
 			_, colErr := manifest.ResolveCollections(ws)
 			if colErr != nil {
 				totalErrors++
-				output.Warn("collections: %v", colErr)
+				w.Warn("collections: %v", colErr)
 			}
 		}
 
@@ -272,7 +274,7 @@ var workspaceValidateCmd = &cobra.Command{
 			return fmt.Errorf("%d validation error(s) found", totalErrors)
 		}
 
-		output.Info("All %d workspace members are valid", len(ws.Members))
+		w.Info("All %d workspace members are valid", len(ws.Members))
 		return nil
 	},
 }

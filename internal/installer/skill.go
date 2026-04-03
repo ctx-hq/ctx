@@ -24,7 +24,8 @@ var QuietLinkKey = quietLinkKeyType{}
 // Returns the list of skill states for tracking in state.json.
 func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, caller string, targetAgents []agent.Agent) ([]installstate.SkillState, error) {
 	quiet, _ := ctx.Value(QuietLinkKey).(bool)
-	output.Verbose(ctx, "linking skill %s to detected agents", skillName)
+	w := output.FromContext(ctx)
+	w.Verbose(ctx, "linking skill %s to detected agents", skillName)
 	agents := targetAgents
 	if agents == nil {
 		agents = agent.DetectAll()
@@ -43,11 +44,11 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 	if caller != "" {
 		a, err := agent.FindByName(caller)
 		if err != nil {
-			output.Warn("Caller agent %q not recognized: %v", caller, err)
+			w.Warn("Caller agent %q not recognized: %v", caller, err)
 		} else {
 			target := filepath.Join(a.SkillsDir(), skillName)
 			if err := a.InstallSkill(installDir, skillName); err != nil {
-				output.Warn("Failed to link to %s: %v", a.Name(), err)
+				w.Warn("Failed to link to %s: %v", a.Name(), err)
 				skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			} else {
 				links.Add(fullName, LinkEntry{
@@ -70,7 +71,7 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 		}
 		target := filepath.Join(a.SkillsDir(), skillName)
 		if err := a.InstallSkill(installDir, skillName); err != nil {
-			output.Warn("Failed to link to %s: %v", a.Name(), err)
+			w.Warn("Failed to link to %s: %v", a.Name(), err)
 			skillStates = append(skillStates, installstate.SkillState{Agent: a.Name(), SymlinkPath: target, Status: "broken"})
 			continue
 		}
@@ -87,9 +88,9 @@ func LinkSkillToAgents(ctx context.Context, installDir, skillName, fullName, cal
 	}
 
 	if len(linked) == 0 {
-		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
+		w.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
 	} else if !quiet {
-		output.PrintLinkedAgents(linkedNames)
+		w.PrintLinkedAgents(linkedNames)
 	}
 
 	_ = links.Save() // best effort

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/colorprofile"
 	"golang.org/x/term"
 )
 
@@ -87,6 +88,11 @@ func WithFormat(f Format) WriterOption {
 	return func(w *Writer) { w.format = f }
 }
 
+// WithColorMode sets the color mode.
+func WithColorMode(m ColorMode) WriterOption {
+	return func(w *Writer) { w.colorMode = m }
+}
+
 // WithStdout sets the stdout writer (default: os.Stdout).
 func WithStdout(out io.Writer) WriterOption {
 	return func(w *Writer) { w.stdout = out }
@@ -99,9 +105,29 @@ func WithStderr(err io.Writer) WriterOption {
 
 // Writer handles formatted output for all commands.
 type Writer struct {
-	format Format
-	stdout io.Writer
-	stderr io.Writer
+	format    Format
+	colorMode ColorMode
+	stdout    io.Writer
+	stderr    io.Writer
+	styler    *Styler
+}
+
+// --- Context key for Writer propagation ---
+
+type writerKeyType struct{}
+
+// WriterKey is the context key for storing/retrieving the Writer.
+var WriterKey = writerKeyType{}
+
+// FromContext retrieves the Writer from the context. Returns a safe default if not found.
+func FromContext(ctx context.Context) *Writer {
+	if ctx == nil {
+		return NewWriter()
+	}
+	if w, ok := ctx.Value(WriterKey).(*Writer); ok {
+		return w
+	}
+	return NewWriter()
 }
 
 // --- Verbose context propagation ---
@@ -124,14 +150,41 @@ func IsVerboseContext(ctx context.Context) bool {
 // NewWriter creates a new Writer with the given options.
 func NewWriter(opts ...WriterOption) *Writer {
 	w := &Writer{
-		format: FormatAuto,
-		stdout: os.Stdout,
-		stderr: os.Stderr,
+		format:    FormatAuto,
+		colorMode: ColorAuto,
+		stdout:    os.Stdout,
+		stderr:    os.Stderr,
 	}
 	for _, opt := range opts {
 		opt(w)
 	}
+
+	// Build color profile based on color mode and stdout.
+	w.styler = NewStyler(w.detectProfile())
+
 	return w
+}
+
+// detectProfile resolves the effective colorprofile.Profile based on ColorMode
+// and the underlying writers. In auto mode, we detect from stdout (where
+// human-readable data rows go) and stderr independently, then use the higher
+// of the two. This avoids the case where `ctx list 2>file` would incorrectly
+// disable color on stdout just because stderr was redirected.
+func (w *Writer) detectProfile() colorprofile.Profile {
+	switch w.colorMode {
+	case ColorNever:
+		return colorprofile.ASCII
+	case ColorAlways:
+		return colorprofile.TrueColor
+	default: // ColorAuto
+		env := os.Environ()
+		outProfile := colorprofile.Detect(w.stdout, env)
+		errProfile := colorprofile.Detect(w.stderr, env)
+		if outProfile > errProfile {
+			return outProfile
+		}
+		return errProfile
+	}
 }
 
 // EffectiveFormat resolves FormatAuto to a concrete format based on TTY detection.
@@ -156,6 +209,108 @@ func (w *Writer) IsMachine() bool {
 	return f == FormatJSON || f == FormatQuiet || f == FormatIDs || f == FormatCount
 }
 
+// Styler returns the Writer's Styler for direct style access.
+func (w *Writer) Styler() *Styler {
+	return w.styler
+}
+
+// --- Human-readable status output methods (write to stderr) ---
+
+// Success prints a success message with a green checkmark to stderr.
+func (w *Writer) Success(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Success("\u2713"), msg)
+}
+
+// Errorf prints an error message with a red cross to stderr.
+// Named Errorf to avoid collision with the structured Err() method.
+func (w *Writer) Errorf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Error("\u2717"), msg)
+}
+
+// Warn prints a warning message with a yellow exclamation to stderr.
+func (w *Writer) Warn(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Warning("!"), msg)
+}
+
+// Info prints an info message with a cyan arrow to stderr.
+func (w *Writer) Info(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Info("\u2192"), msg)
+}
+
+// Header prints a section header in bold to stderr.
+func (w *Writer) Header(text string) {
+	_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.styler.Bold(text))
+}
+
+// PrintDim prints dimmed text to stderr.
+func (w *Writer) PrintDim(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s\n", w.styler.Dim(msg))
+}
+
+// Verbose prints a diagnostic message to stderr only when verbose mode is active.
+func (w *Writer) Verbose(ctx context.Context, format string, args ...any) {
+	if !IsVerboseContext(ctx) {
+		return
+	}
+	msg := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Dim("[verbose]"), msg)
+}
+
+// --- Structured output helpers (write to stdout) ---
+
+// Table prints a simple key-value table to stdout.
+func (w *Writer) Table(rows [][]string) {
+	if len(rows) == 0 {
+		return
+	}
+	maxKey := 0
+	for _, row := range rows {
+		if len(row) > 0 && len(row[0]) > maxKey {
+			maxKey = len(row[0])
+		}
+	}
+	for _, row := range rows {
+		if len(row) >= 2 {
+			_, _ = fmt.Fprintf(w.stdout, "  %-*s  %s\n", maxKey, row[0], row[1])
+		}
+	}
+}
+
+// List prints a bulleted list to stdout.
+func (w *Writer) List(items []string) {
+	for _, item := range items {
+		_, _ = fmt.Fprintf(w.stdout, "  \u2022 %s\n", item)
+	}
+}
+
+// Separator prints a horizontal rule to stderr.
+func (w *Writer) Separator() {
+	_, _ = fmt.Fprintln(w.stderr, w.styler.Dim(strings.Repeat("\u2500", 40)))
+}
+
+// PrintLinkedAgents prints a compact summary of linked agents.
+// Shows up to 3 names inline, folding the rest as "+ N more".
+func (w *Writer) PrintLinkedAgents(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	const maxShow = 3
+	var display string
+	if len(names) <= maxShow {
+		display = strings.Join(names, ", ")
+	} else {
+		display = fmt.Sprintf("%s + %d more", strings.Join(names[:maxShow], ", "), len(names)-maxShow)
+	}
+	_, _ = fmt.Fprintf(w.stderr, "%s Linked to %s\n", w.styler.Success("\u2713"), display)
+}
+
+// --- Structured output (OK / Err) ---
+
 // OK outputs a successful response in the configured format.
 func (w *Writer) OK(data any, opts ...ResponseOption) error {
 	resp := &Response{OK: true, Data: data}
@@ -169,7 +324,7 @@ func (w *Writer) OK(data any, opts ...ResponseOption) error {
 	case FormatQuiet:
 		return w.writeQuiet(resp)
 	case FormatStyled:
-		return w.writeStyled(resp)
+		return w.writeHuman(resp)
 	case FormatMarkdown:
 		return w.writeMarkdown(resp)
 	case FormatIDs:
@@ -201,11 +356,11 @@ func (w *Writer) Err(err error) error {
 	}
 
 	// Styled error output
-	if _, err := fmt.Fprintf(w.stderr, Red+"✗ "+Reset+"%s\n", cliErr.Message); err != nil {
+	if _, err := fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Error("\u2717"), cliErr.Message); err != nil {
 		return err
 	}
 	if cliErr.Hint != "" {
-		if _, err := fmt.Fprintf(w.stderr, Dim+"  Hint: %s"+Reset+"\n", cliErr.Hint); err != nil {
+		if _, err := fmt.Fprintf(w.stderr, "  %s\n", w.styler.Dim("Hint: "+cliErr.Hint)); err != nil {
 			return err
 		}
 	}
@@ -226,7 +381,7 @@ func (w *Writer) writeQuiet(resp *Response) error {
 	return enc.Encode(resp.Data)
 }
 
-func (w *Writer) writeStyled(resp *Response) error {
+func (w *Writer) writeHuman(resp *Response) error {
 	items := toSlice(resp.Data)
 	if items == nil {
 		// Single object — try to render as a map row, fallback to notice/summary
@@ -235,18 +390,13 @@ func (w *Writer) writeStyled(resp *Response) error {
 				w.printMapRow(m)
 			}
 		}
-		if resp.Summary != "" {
-			_, _ = fmt.Fprintf(w.stderr, "\n"+Dim+"  %s"+Reset+"\n", resp.Summary)
-		}
-		if resp.Notice != "" {
-			_, _ = fmt.Fprintf(w.stderr, Cyan+"→ "+Reset+"%s\n", resp.Notice)
-		}
+		w.writeHumanMeta(resp)
 		return nil
 	}
 
 	if len(items) == 0 {
 		if resp.Summary != "" {
-			_, _ = fmt.Fprintln(w.stderr, Dim+resp.Summary+Reset)
+			_, _ = fmt.Fprintln(w.stderr, w.styler.Dim(resp.Summary))
 		}
 		return nil
 	}
@@ -260,13 +410,26 @@ func (w *Writer) writeStyled(resp *Response) error {
 		}
 	}
 
+	w.writeHumanMeta(resp)
+	return nil
+}
+
+// writeHumanMeta renders summary, notice, and breadcrumbs for human output.
+func (w *Writer) writeHumanMeta(resp *Response) {
 	if resp.Summary != "" {
-		_, _ = fmt.Fprintf(w.stderr, "\n"+Dim+"  %s"+Reset+"\n", resp.Summary)
+		_, _ = fmt.Fprintf(w.stderr, "\n  %s\n", w.styler.Dim(resp.Summary))
 	}
 	if resp.Notice != "" {
-		_, _ = fmt.Fprintf(w.stderr, Dim+"  %s"+Reset+"\n", resp.Notice)
+		_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Info("\u2192"), resp.Notice)
 	}
-	return nil
+	if len(resp.Breadcrumbs) > 0 {
+		_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.styler.Dim("Next steps:"))
+		for _, b := range resp.Breadcrumbs {
+			_, _ = fmt.Fprintf(w.stderr, "  %s  %s\n",
+				w.styler.Info(b.Command),
+				w.styler.Dim(b.Description))
+		}
+	}
 }
 
 func (w *Writer) writeMarkdown(resp *Response) error {
@@ -345,9 +508,10 @@ func (w *Writer) printMapRow(m map[string]any) {
 	if name != "" {
 		typeBadge := ""
 		if typ != "" {
-			typeBadge = fmt.Sprintf(" [%s]", typ)
+			typeBadge = " " + w.styler.TypeBadge(typ)
 		}
-		_, _ = fmt.Fprintf(w.stdout, "  %-30s%-8s %s\n", name, typeBadge, extra)
+		_, _ = fmt.Fprintf(w.stdout, "  %s%s %s\n",
+			PadRight(w.styler.Name(name), 30), typeBadge, w.styler.Dim(extra))
 	} else {
 		// Fallback: print all keys
 		parts := make([]string, 0)
@@ -431,15 +595,12 @@ func isTTY(w io.Writer) bool {
 
 // ResolveFormat determines the output format from flag values.
 // Returns an error if multiple mutually exclusive flags are set.
-func ResolveFormat(jsonFlag, quietFlag, styledFlag, mdFlag, idsFlag, countFlag, agentFlag bool) (Format, error) {
+func ResolveFormat(jsonFlag, quietFlag, mdFlag, idsFlag, countFlag, agentFlag bool) (Format, error) {
 	count := 0
 	if jsonFlag {
 		count++
 	}
 	if quietFlag {
-		count++
-	}
-	if styledFlag {
 		count++
 	}
 	if mdFlag {
@@ -455,7 +616,7 @@ func ResolveFormat(jsonFlag, quietFlag, styledFlag, mdFlag, idsFlag, countFlag, 
 		count++
 	}
 	if count > 1 {
-		return FormatAuto, ErrUsage("output format flags are mutually exclusive: --json, --quiet, --styled, --md, --ids-only, --count, --agent")
+		return FormatAuto, ErrUsage("output format flags are mutually exclusive: --json, --quiet, --md, --ids-only, --count, --agent")
 	}
 
 	switch {
@@ -463,8 +624,6 @@ func ResolveFormat(jsonFlag, quietFlag, styledFlag, mdFlag, idsFlag, countFlag, 
 		return FormatJSON, nil
 	case quietFlag:
 		return FormatQuiet, nil
-	case styledFlag:
-		return FormatStyled, nil
 	case mdFlag:
 		return FormatMarkdown, nil
 	case idsFlag:

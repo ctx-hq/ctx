@@ -67,9 +67,9 @@ Examples:
 				return fmt.Errorf("write SKILL.md: %w", err)
 			}
 			if removeErr := os.Remove(originalPath); removeErr != nil {
-				output.Warn("Could not remove backup: %v", removeErr)
+				w.Warn("Could not remove backup: %v", removeErr)
 			}
-			output.Info("Enrichment removed, original SKILL.md restored")
+			w.Info("Enrichment removed, original SKILL.md restored")
 			return w.OK(map[string]string{"action": "reset", "package": args[0]},
 				output.WithSummary("Enrichment removed for "+args[0]),
 			)

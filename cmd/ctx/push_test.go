@@ -440,7 +440,7 @@ func TestPublishWithRetry_Success(t *testing.T) {
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
-	result, err := publishWithRetry(context.Background(), reg, data, archive, testRetryConfig)
+	result, err := publishWithRetry(context.Background(), reg, data, archive, output.NewWriter(), testRetryConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestPublishWithRetry_RetriesOnServerError(t *testing.T) {
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
-	result, err := publishWithRetry(context.Background(), reg, data, archive, testRetryConfig)
+	result, err := publishWithRetry(context.Background(), reg, data, archive, output.NewWriter(), testRetryConfig)
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestPublishWithRetry_NonRetryableError(t *testing.T) {
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
-	_, err := publishWithRetry(context.Background(), reg, data, archive, testRetryConfig)
+	_, err := publishWithRetry(context.Background(), reg, data, archive, output.NewWriter(), testRetryConfig)
 	if err == nil {
 		t.Fatal("expected error for forbidden")
 	}
@@ -533,7 +533,7 @@ func TestPublishWithRetry_ExhaustsRetries(t *testing.T) {
 	defer cleanup()
 
 	reg := registry.New(srv.URL, "test-token")
-	_, err := publishWithRetry(context.Background(), reg, data, archive, testRetryConfig)
+	_, err := publishWithRetry(context.Background(), reg, data, archive, output.NewWriter(), testRetryConfig)
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}

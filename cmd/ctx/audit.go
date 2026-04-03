@@ -58,7 +58,7 @@ Examples:
 			return w.OK([]AuditEntry{}, output.WithSummary("No packages installed"))
 		}
 
-		output.Info("Auditing %d installed package(s)...", len(installed))
+		w.Info("Auditing %d installed package(s)...", len(installed))
 
 		// Batch resolve to check unavailable versions (best-effort, skip on error)
 		unavailableSet := map[string]bool{}
@@ -130,11 +130,11 @@ Examples:
 					if entry.HasIntegrity {
 						integrityStr = ", integrity recorded"
 					}
-					output.Success("  %s@%s — ok%s", entry.FullName, entry.Version, integrityStr)
+					w.Success("  %s@%s — ok%s", entry.FullName, entry.Version, integrityStr)
 				case "unavailable":
-					output.Warn("  %s@%s — unavailable upstream", entry.FullName, entry.Version)
+					w.Warn("  %s@%s — unavailable upstream", entry.FullName, entry.Version)
 				case "scan_failed":
-					output.Warn("  %s@%s — %d security finding(s)", entry.FullName, entry.Version, entry.ScanFindings)
+					w.Warn("  %s@%s — %d security finding(s)", entry.FullName, entry.Version, entry.ScanFindings)
 				}
 			}
 

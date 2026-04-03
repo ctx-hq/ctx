@@ -82,7 +82,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	// 3. Parse frontmatter
 	fm, body, parseErr := manifest.ParseSkillMD(strings.NewReader(string(data)))
 	if parseErr != nil {
-		output.Warn("Could not parse frontmatter: %v (treating as plain content)", parseErr)
+		w.Warn("Could not parse frontmatter: %v (treating as plain content)", parseErr)
 		fm = nil
 		body = string(data)
 	}
@@ -207,8 +207,8 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 
 	// 10. Preview
-	output.Header("Package Preview")
-	output.Table([][]string{
+	w.Header("Package Preview")
+	w.Table([][]string{
 		{"Name:", fullName},
 		{"Version:", version},
 		{"Type:", "skill"},
@@ -233,12 +233,12 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		return err
 	}
 	if !confirmed {
-		output.Info("Cancelled.")
+		w.Info("Cancelled.")
 		return nil
 	}
 
 	// 13. Create archive and publish (SKILL.md content goes to registry)
-	output.Info("Publishing %s@%s...", fullName, version)
+	w.Info("Publishing %s@%s...", fullName, version)
 	archive, err := stg.TarGz()
 	if err != nil {
 		return fmt.Errorf("create archive: %w", err)
@@ -255,13 +255,13 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	dest := filepath.Join(config.SkillsDir(), scope, skillName)
 	if commitErr := stg.Commit(dest); commitErr != nil {
 		// Publish succeeded but local commit failed — warn but don't error
-		output.Warn("Published to registry, but failed to save locally: %v", commitErr)
-		output.Info("Package is available via: ctx install %s", fullName)
+		w.Warn("Published to registry, but failed to save locally: %v", commitErr)
+		w.Info("Package is available via: ctx install %s", fullName)
 		return w.OK(result,
 			output.WithSummary(fmt.Sprintf("Published %s@%s (%s)", result.FullName, result.Version, opts.defaultVisibility)),
 		)
 	}
-	output.Success("Saved to %s", dest)
+	w.Success("Saved to %s", dest)
 
 	// Record push state.
 	if pst, loadErr := pushstate.Load(); loadErr == nil {
@@ -281,9 +281,9 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 	if linkBack {
 		if linkErr := linkToOriginal(absFilePath, skillMDPath, fullName); linkErr != nil {
-			output.Warn("Could not create link: %v", linkErr)
+			w.Warn("Could not create link: %v", linkErr)
 		} else {
-			output.Success("Linked: %s → %s", absFilePath, skillMDPath)
+			w.Success("Linked: %s → %s", absFilePath, skillMDPath)
 		}
 	}
 

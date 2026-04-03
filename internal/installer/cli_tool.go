@@ -55,7 +55,7 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) (*installstate.CLISta
 		Status:     "failed",
 	}
 
-	output.Info("Installing via %s: %s", a.Name(), pkg)
+	output.FromContext(ctx).Info("Installing via %s: %s", a.Name(), pkg)
 	if err := a.Install(ctx, pkg); err != nil {
 		return state, fmt.Errorf("install via %s: %w", a.Name(), err)
 	}
@@ -72,7 +72,7 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) (*installstate.CLISta
 	state.Verified = true
 	state.Status = "ok"
 
-	output.Success("Verified: %s is available", m.CLI.Binary)
+	output.FromContext(ctx).Success("Verified: %s is available", m.CLI.Binary)
 
 	// Register in links registry
 	links, linkErr := LoadLinks()

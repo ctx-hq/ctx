@@ -2,10 +2,9 @@
 package tui
 
 import (
-	"image/color"
-
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
+
+	"github.com/ctx-hq/ctx/internal/output"
 )
 
 // MinWidth is the minimum terminal width required for the TUI.
@@ -13,51 +12,39 @@ const MinWidth = 40
 
 // Status icon constants for use in status displays.
 const (
-	IconPass = "✓"
+	IconPass = "\u2713"
 	IconWarn = "!"
-	IconFail = "✗"
+	IconFail = "\u2717"
 )
 
-// adaptiveColor returns an AdaptiveColor that picks the right shade for
-// dark vs light terminal backgrounds. All pairs maintain WCAG 4.5:1
-// contrast minimum against their respective backgrounds.
-func adaptiveColor(dark, light string) color.Color {
-	return compat.AdaptiveColor{
-		Dark:  lipgloss.Color(dark),
-		Light: lipgloss.Color(light),
-	}
-}
-
-// --- Color palette (WCAG 4.5:1 contrast on respective backgrounds) ---
+// --- Color aliases from the shared WCAG palette ---
+// These are convenience references for building lipgloss styles below.
+// The canonical definitions live in output.Palette (SSOT).
 
 var (
-	// Primary text: high contrast on both backgrounds.
-	colorPrimary = adaptiveColor("#E0E0E0", "#1A1A1A")
-	// Secondary/muted text.
-	colorSecondary = adaptiveColor("#A0A0A0", "#555555")
-	// Accent / active highlight.
-	colorAccent = adaptiveColor("#5FAFFF", "#0055AA")
-	// Success green.
-	colorSuccess = adaptiveColor("#5FD75F", "#007A00")
-	// Warning yellow.
-	colorWarning = adaptiveColor("#D7AF5F", "#7A5500")
-	// Error red.
-	colorError = adaptiveColor("#FF5F5F", "#B30000")
-	// Badge colors per type.
-	colorSkill = adaptiveColor("#87D7FF", "#004C80")
-	colorMCP   = adaptiveColor("#D7AFFF", "#55007A")
-	colorCLI   = adaptiveColor("#FFAF5F", "#7A4400")
-	// Tab bar / status bar backgrounds.
-	colorBarBg    = adaptiveColor("#303030", "#D0D0D0")
-	colorTabBg    = adaptiveColor("#404040", "#C0C0C0")
-	colorActiveBg = adaptiveColor("#005FAF", "#B0D0FF")
+	colorPrimary   = output.Palette.Primary
+	colorSecondary = output.Palette.Secondary
+	colorAccent    = output.Palette.Accent
+	colorSuccess   = output.Palette.Success
+	colorWarning   = output.Palette.Warning
+	colorError     = output.Palette.Error
+	colorSkill     = output.Palette.Skill
+	colorMCP       = output.Palette.MCP
+	colorCLI       = output.Palette.CLI
+)
+
+// Tab bar / status bar background colors (TUI-specific, not in shared palette).
+var (
+	colorBarBg    = output.AdaptiveColor("#303030", "#D0D0D0")
+	colorTabBg    = output.AdaptiveColor("#404040", "#C0C0C0")
+	colorActiveBg = output.AdaptiveColor("#005FAF", "#B0D0FF")
 )
 
 // --- Styles ---
 
 // ActiveTab is the style for the currently selected tab.
 var ActiveTab = lipgloss.NewStyle().
-	Foreground(adaptiveColor("#FFFFFF", "#000000")).
+	Foreground(output.AdaptiveColor("#FFFFFF", "#000000")).
 	Background(colorActiveBg).
 	Bold(true).
 	Padding(0, 2)

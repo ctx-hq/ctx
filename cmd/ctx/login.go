@@ -8,7 +8,6 @@ import (
 
 	"github.com/ctx-hq/ctx/internal/auth"
 	"github.com/ctx-hq/ctx/internal/config"
-	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/profile"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
@@ -21,6 +20,7 @@ var loginCmd = &cobra.Command{
 		if err := requireOnline(); err != nil {
 			return err
 		}
+		w := getWriter(cmd)
 
 		// Determine target profile name via resolve chain when --profile is not set.
 		// This respects CTX_PROFILE, .ctx-profile, and the active profile.
@@ -61,15 +61,15 @@ var loginCmd = &cobra.Command{
 				}
 			}
 			if username != "" {
-				output.Info("Already logged in as %s (profile: %s)", username, profileName)
+				w.Info("Already logged in as %s (profile: %s)", username, profileName)
 			} else {
-				output.Info("Already logged in (profile: %s)", profileName)
+				w.Info("Already logged in (profile: %s)", profileName)
 			}
-			output.PrintDim("  Run 'ctx logout' to sign out")
+			w.PrintDim("  Run 'ctx logout' to sign out")
 			return nil
 		}
 
-		output.Info("Starting GitHub authentication...")
+		w.Info("Starting GitHub authentication...")
 		resp, err := auth.StartDeviceFlow(cmd.Context(), registryURL)
 		if err != nil {
 			return fmt.Errorf("start auth: %w", err)
@@ -78,17 +78,17 @@ var loginCmd = &cobra.Command{
 		// Auto-open browser (best-effort — show URL as fallback)
 		browserURL := resp.BrowserURL()
 		if err := auth.OpenBrowser(browserURL); err != nil {
-			output.PrintDim("  Could not open browser automatically")
+			w.PrintDim("  Could not open browser automatically")
 		}
 
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintf(os.Stderr, "  Open:  %s\n", resp.VerificationURI)
-		fmt.Fprintf(os.Stderr, "  Code:  %s%s%s\n", output.Bold, resp.UserCode, output.Reset)
+		fmt.Fprintf(os.Stderr, "  Code:  %s\n", w.Styler().Bold(resp.UserCode))
 		if resp.VerificationURIComplete != "" {
 			fmt.Fprintf(os.Stderr, "\n  Or visit: %s\n", resp.VerificationURIComplete)
 		}
 		fmt.Fprintln(os.Stderr)
-		output.Info("Waiting for authorization...")
+		w.Info("Waiting for authorization...")
 
 		ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(resp.ExpiresIn)*time.Second)
 		defer cancel()
@@ -141,9 +141,9 @@ var loginCmd = &cobra.Command{
 		}
 
 		if username != "" {
-			output.Success("Logged in as %s (profile: %s)", username, profileName)
+			w.Success("Logged in as %s (profile: %s)", username, profileName)
 		} else {
-			output.Success("Authenticated successfully! (profile: %s)", profileName)
+			w.Success("Authenticated successfully! (profile: %s)", profileName)
 		}
 		return nil
 	},

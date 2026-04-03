@@ -38,32 +38,32 @@ Examples:
 		if err != nil {
 			return fmt.Errorf("binary %q not found in PATH", binary)
 		}
-		output.Info("Found %s at %s", binary, binPath)
+		w.Info("Found %s at %s", binary, binPath)
 
 		// Step 2: Capture help text
 		helpText, helpErr := introspect.CaptureHelp(binary)
 		if helpErr != nil {
-			output.Warn("Could not capture help output: %v", helpErr)
+			w.Warn("Could not capture help output: %v", helpErr)
 		}
 
 		// Step 3: Detect version
 		vr := introspect.CaptureVersion(binary)
 		version := vr.Version
-		output.PrintDim("  Detected version: %s", version)
+		w.PrintDim("  Detected version: %s", version)
 
 		// Step 4: Detect install method
 		installSpec := introspect.DetectInstallMethod(binary)
 		if installSpec.Brew != "" {
-			output.PrintDim("  Install method: brew (%s)", installSpec.Brew)
+			w.PrintDim("  Install method: brew (%s)", installSpec.Brew)
 		} else if installSpec.Npm != "" {
-			output.PrintDim("  Install method: npm (%s)", installSpec.Npm)
+			w.PrintDim("  Install method: npm (%s)", installSpec.Npm)
 		} else if installSpec.Pip != "" {
-			output.PrintDim("  Install method: pip (%s)", installSpec.Pip)
+			w.PrintDim("  Install method: pip (%s)", installSpec.Pip)
 		} else if installSpec.Cargo != "" {
-			output.PrintDim("  Install method: cargo (%s)", installSpec.Cargo)
+			w.PrintDim("  Install method: cargo (%s)", installSpec.Cargo)
 		} else {
-			output.Warn("No install method detected — users won't be able to install this package.")
-			output.PrintDim("  Edit ctx.yaml to add install.brew, install.npm, install.pip, install.cargo, or install.script before publishing.")
+			w.Warn("No install method detected — users won't be able to install this package.")
+			w.PrintDim("  Edit ctx.yaml to add install.brew, install.npm, install.pip, install.cargo, or install.script before publishing.")
 		}
 
 		// Step 5: Determine metadata
@@ -127,7 +127,7 @@ Examples:
 		errs := manifest.Validate(m)
 		if len(errs) > 0 {
 			for _, e := range errs {
-				output.Warn("Validation: %s", e)
+				w.Warn("Validation: %s", e)
 			}
 			return fmt.Errorf("generated manifest has validation errors")
 		}

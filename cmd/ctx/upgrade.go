@@ -19,13 +19,13 @@ var upgradeCmd = &cobra.Command{
 		}
 		w := getWriter(cmd)
 
-		output.Info("Checking for updates...")
+		w.Info("Checking for updates...")
 		latest := selfupdate.FetchLatestVersion()
 
 		current := Version
 		if latest == "" {
 			// Could not reach GitHub API — show current version instead of failing.
-			output.Success("ctx %s (unable to check for updates, try again later)", current)
+			w.Success("ctx %s (unable to check for updates, try again later)", current)
 			return w.OK(map[string]string{
 				"version": current,
 				"status":  "check_failed",
@@ -33,20 +33,20 @@ var upgradeCmd = &cobra.Command{
 		}
 
 		if selfupdate.IsUpToDate(latest, current) {
-			output.Success("ctx %s is already the latest version", current)
+			w.Success("ctx %s is already the latest version", current)
 			return w.OK(map[string]string{
 				"version": current,
 				"status":  "up_to_date",
 			}, output.WithSummary(fmt.Sprintf("ctx %s is already the latest version", current)))
 		}
 
-		output.Info("Upgrading ctx %s → %s...", current, latest)
+		w.Info("Upgrading ctx %s → %s...", current, latest)
 
 		if err := selfupdate.Upgrade(latest); err != nil {
 			return fmt.Errorf("upgrade failed: %w", err)
 		}
 
-		output.Success("ctx upgraded to %s", latest)
+		w.Success("ctx upgraded to %s", latest)
 
 		return w.OK(map[string]string{
 			"previous": current,

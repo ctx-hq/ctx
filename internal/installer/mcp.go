@@ -16,7 +16,8 @@ import (
 // transportID selects a named transport from mcp.transports[]; empty uses the default top-level transport.
 // Returns the list of MCP states for tracking in state.json.
 func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID string) ([]installstate.MCPState, error) {
-	output.Verbose(ctx, "configuring MCP %s in detected agents", m.ShortName())
+	w := output.FromContext(ctx)
+	w.Verbose(ctx, "configuring MCP %s in detected agents", m.ShortName())
 	if m.MCP == nil {
 		return nil, fmt.Errorf("package is not an MCP server")
 	}
@@ -56,7 +57,7 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID stri
 
 	// Overlay with stored secrets (API keys, tokens, etc.)
 	if store, err := secrets.Load(); err != nil {
-		output.Warn("load secrets: %v", err)
+		w.Warn("load secrets: %v", err)
 	} else {
 		for k, v := range store.List(m.Name) {
 			if cfg.Env == nil {
@@ -68,7 +69,7 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID stri
 
 	agents := agent.DetectAll()
 	if len(agents) == 0 {
-		output.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
+		w.Warn("No agents detected. Use 'ctx link <agent>' to link manually.")
 		return nil, nil
 	}
 
@@ -82,7 +83,7 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID stri
 	var configuredNames []string
 	for _, a := range agents {
 		if err := a.AddMCP(name, cfg); err != nil {
-			output.Warn("Failed to configure %s in %s: %v", name, a.Name(), err)
+			w.Warn("Failed to configure %s in %s: %v", name, a.Name(), err)
 			mcpStates = append(mcpStates, installstate.MCPState{Agent: a.Name(), ConfigKey: name, Status: "missing"})
 			continue
 		}
@@ -98,7 +99,7 @@ func LinkMCPToAgents(ctx context.Context, m *manifest.Manifest, transportID stri
 	}
 
 	if len(configuredNames) > 0 {
-		output.PrintLinkedAgents(configuredNames)
+		w.PrintLinkedAgents(configuredNames)
 	}
 
 	_ = links.Save() // best effort
@@ -130,10 +131,11 @@ func buildMCPConfig(mcp *manifest.MCPSpec, transportID string) (agent.MCPConfig,
 
 // UnlinkMCPFromAgents removes an MCP config from all detected agents.
 func UnlinkMCPFromAgents(name string) error {
+	w := output.NewWriter()
 	agents := agent.DetectAll()
 	for _, a := range agents {
 		if err := a.RemoveMCP(name); err != nil {
-			output.Warn("Failed to remove %s from %s: %v", name, a.Name(), err)
+			w.Warn("Failed to remove %s from %s: %v", name, a.Name(), err)
 		}
 	}
 	return nil

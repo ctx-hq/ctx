@@ -55,7 +55,7 @@ Examples:
 			return output.ErrNotFound("agent", agentName)
 		}
 
-		output.Info("Linking packages to %s...", a.Name())
+		w.Info("Linking packages to %s...", a.Name())
 
 		// Load all installed packages and link them
 		inst := installer.NewScanner()
@@ -80,7 +80,7 @@ Examples:
 			switch manifest.PackageType(entry.Type) {
 			case manifest.TypeSkill:
 				if err := installer.LinkSkillToAgent(entry.InstallPath, m.ShortName(), agentName); err != nil {
-					output.Warn("Failed to link skill %s: %v", entry.FullName, err)
+					w.Warn("Failed to link skill %s: %v", entry.FullName, err)
 					continue
 				}
 				linked++
@@ -98,7 +98,7 @@ Examples:
 						}
 					}
 					if err := a.AddMCP(m.ShortName(), cfg); err != nil {
-						output.Warn("Failed to link MCP %s: %v", entry.FullName, err)
+						w.Warn("Failed to link MCP %s: %v", entry.FullName, err)
 						continue
 					}
 					linked++

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/ctx-hq/ctx/internal/config"
@@ -17,7 +16,7 @@ var (
 	// Global flags
 	flagJSON    bool
 	flagQuiet   bool
-	flagStyled  bool
+	flagColor   string
 	flagMD      bool
 	flagIDsOnly bool
 	flagCount   bool
@@ -28,18 +27,9 @@ var (
 	flagProfile string
 )
 
-// writerKey is the context key for the output Writer.
-type writerKeyType struct{}
-
-var writerKey = writerKeyType{}
-
 // getWriter retrieves the Writer from the command context.
 func getWriter(cmd *cobra.Command) *output.Writer {
-	if w, ok := cmd.Context().Value(writerKey).(*output.Writer); ok {
-		return w
-	}
-	// Fallback: create a default writer
-	return output.NewWriter()
+	return output.FromContext(cmd.Context())
 }
 
 var rootCmd = &cobra.Command{
@@ -60,8 +50,14 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 		// Set version for User-Agent in HTTP requests
 		config.Version = Version
 
+		// Parse color mode from --color flag
+		colorMode, err := output.ParseColorMode(flagColor)
+		if err != nil {
+			return err
+		}
+
 		// Resolve output format from flags
-		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagStyled, flagMD, flagIDsOnly, flagCount, flagAgent)
+		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagMD, flagIDsOnly, flagCount, flagAgent)
 		if err != nil {
 			return err
 		}
@@ -71,8 +67,8 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 		verbose := flagVerbose && !flagQuiet
 
 		// Create Writer and attach to context
-		w := output.NewWriter(output.WithFormat(format))
-		ctx := context.WithValue(cmd.Context(), writerKey, w)
+		w := output.NewWriter(output.WithFormat(format), output.WithColorMode(colorMode))
+		ctx := context.WithValue(cmd.Context(), output.WriterKey, w)
 		ctx = output.ContextWithVerbose(ctx, verbose)
 		cmd.SetContext(ctx)
 		return nil
@@ -85,8 +81,9 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 		updateEnabled := cfg == nil || cfg.IsUpdateCheckEnabled()
 		if !flagAgent && !flagQuiet && !flagJSON && !offline && updateEnabled && os.Getenv("CI") == "" && cmd.Name() != "upgrade" {
 			if latest := selfupdate.CheckForUpdate(Version); latest != "" {
-				fmt.Fprintf(os.Stderr, "\n\033[0;33mnotice:\033[0m ctx %s available (current: %s)\n", latest, Version)
-				fmt.Fprintf(os.Stderr, "  run \033[1mctx upgrade\033[0m to update\n")
+				w := getWriter(cmd)
+				w.Warn("ctx %s available (current: %s)", latest, Version)
+				w.PrintDim("  run ctx upgrade to update")
 			}
 		}
 		return nil
@@ -97,11 +94,13 @@ func init() {
 	// Output format flags (mutually exclusive)
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON envelope")
 	rootCmd.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "Output data only, no envelope")
-	rootCmd.PersistentFlags().BoolVar(&flagStyled, "styled", false, "Force styled output (ANSI colors)")
 	rootCmd.PersistentFlags().BoolVar(&flagMD, "md", false, "Output as Markdown")
 	rootCmd.PersistentFlags().BoolVar(&flagIDsOnly, "ids-only", false, "Output one ID per line")
 	rootCmd.PersistentFlags().BoolVar(&flagCount, "count", false, "Output count only")
 	rootCmd.PersistentFlags().BoolVar(&flagAgent, "agent", false, "Agent mode (quiet output, JSON errors)")
+
+	// Color control (orthogonal to format)
+	rootCmd.PersistentFlags().StringVar(&flagColor, "color", "auto", "Color output: auto, always, never")
 
 	// Behavior flags
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Skip confirmation prompts")

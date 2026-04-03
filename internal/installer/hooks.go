@@ -23,14 +23,16 @@ func RunPostInstallHooks(ctx context.Context, m *manifest.Manifest, confirm func
 		return nil, nil
 	}
 
+	w := output.FromContext(ctx)
+
 	// Display all commands for user review
-	output.Info("Post-install hooks to run:")
+	w.Info("Post-install hooks to run:")
 	for _, step := range m.MCP.Hooks.PostInstall {
 		cmd := step.Command
 		if len(step.Args) > 0 {
 			cmd += " " + strings.Join(step.Args, " ")
 		}
-		output.PrintDim("  %s", cmd)
+		w.PrintDim("  %s", cmd)
 	}
 
 	// Ask for confirmation if a confirm callback is provided
@@ -40,7 +42,7 @@ func RunPostInstallHooks(ctx context.Context, m *manifest.Manifest, confirm func
 			return nil, err
 		}
 		if !ok {
-			output.Warn("Post-install hooks skipped by user")
+			w.Warn("Post-install hooks skipped by user")
 			return nil, nil
 		}
 	}
@@ -51,7 +53,7 @@ func RunPostInstallHooks(ctx context.Context, m *manifest.Manifest, confirm func
 		if desc == "" {
 			desc = step.Command
 		}
-		output.Info("Running: %s", desc)
+		w.Info("Running: %s", desc)
 
 		hookCtx, cancel := context.WithTimeout(ctx, hookTimeout)
 		cmd := exec.CommandContext(hookCtx, step.Command, step.Args...)
@@ -63,13 +65,13 @@ func RunPostInstallHooks(ctx context.Context, m *manifest.Manifest, confirm func
 
 		if err != nil {
 			if step.Optional {
-				output.Warn("Optional hook failed: %s: %v", desc, err)
+				w.Warn("Optional hook failed: %s: %v", desc, err)
 				continue
 			}
 			return completed, fmt.Errorf("post-install hook failed: %s: %w", desc, err)
 		}
 		completed = append(completed, desc)
-		output.PrintDim("  Hook completed: %s", desc)
+		w.PrintDim("  Hook completed: %s", desc)
 	}
 
 	return completed, nil
