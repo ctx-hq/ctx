@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/ctx-hq/ctx/compare/v0.27.0...v0.27.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* **output:** add --human format flag and split per-stream color detection ([5f0fa26](https://github.com/ctx-hq/ctx/commit/5f0fa263305d3531d0f7411519fe03fad5459143))
+
 ## [0.27.0](https://github.com/ctx-hq/ctx/compare/v0.26.0...v0.27.0) (2026-04-03)
 
 
