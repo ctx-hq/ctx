@@ -440,23 +440,21 @@ func parseInitSource(input initInput) (initMeta, error) {
 			}
 			meta := metaFromFrontmatter(fm, body, dirName)
 			meta.skillEntry = found[0]
+			// SKILL.md exists in both skill and cli types — don't assume type,
+			// let the user choose via the type prompt.
+			meta.pkgType = ""
 			autoDetectMeta(&meta, cwd)
 			return meta, nil
 		}
 
 		meta := initMeta{
-			name:        dirName,
+			name:        slugify(dirName),
 			description: fmt.Sprintf("A %s package", dirName),
 			version:     "0.1.0",
 			invocable:   true,
 			// pkgType left empty — will be prompted in promptMetadata
 		}
-		// Auto-detect metadata from git and filesystem
-		meta.author = gitutil.Author(cwd)
-		meta.repository = gitutil.RemoteURL(cwd)
-		if lr := license.Detect(cwd); lr.SPDX != "" {
-			meta.license = lr.SPDX
-		}
+		autoDetectMeta(&meta, cwd)
 		return meta, nil
 
 	case initFromFile:
@@ -627,13 +625,18 @@ func parseDirSource(dirPath string) (initMeta, error) {
 		if err == nil {
 			meta := metaFromFrontmatter(fm, body, dirName)
 			meta.skillEntry = found[0]
+			// SKILL.md exists in both skill and cli types — don't assume type,
+			// let the user choose via the type prompt.
+			meta.pkgType = ""
 			autoDetectMeta(&meta, dirPath)
 			return meta, nil
 		}
 	}
 
-	// Nothing found — scaffold from directory name
+	// Nothing found — scaffold from directory name with default triggers,
+	// then clear pkgType so the interactive type prompt will trigger.
 	meta := metaFromFrontmatter(nil, "", dirName)
+	meta.pkgType = ""
 	autoDetectMeta(&meta, dirPath)
 	return meta, nil
 }
@@ -678,6 +681,24 @@ func readAndParseSkillMD(path string) (*manifest.SkillFrontmatter, string, error
 func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	var err error
 
+	// 1. Type selection FIRST — type determines the entire subsequent flow.
+	// Skipped when pre-set (e.g., --type flag, initFromFile auto-detection,
+	// or initFromDirectory with existing ctx.yaml).
+	if meta.pkgType == "" {
+		typeLabels := []string{
+			"skill - Reusable AI agent instructions",
+			"mcp   - MCP server (stdio/sse/http)",
+			"cli   - CLI tool wrapper",
+		}
+		types := []manifest.PackageType{manifest.TypeSkill, manifest.TypeMCP, manifest.TypeCLI}
+		typeIdx, err := p.Select("Package type", typeLabels, 0)
+		if err != nil {
+			return meta, err
+		}
+		meta.pkgType = types[typeIdx]
+	}
+
+	// 2. Common prompts
 	meta.name, err = p.Text("Package name", meta.name)
 	if err != nil {
 		return meta, err
@@ -708,17 +729,7 @@ func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 		return meta, err
 	}
 
-	// Package type selection (only for from-scratch mode where type isn't pre-set)
-	if meta.pkgType == "" {
-		typeIdx, err := p.Select("Package type", []string{"skill", "cli", "mcp"}, 0)
-		if err != nil {
-			return meta, err
-		}
-		types := []manifest.PackageType{manifest.TypeSkill, manifest.TypeCLI, manifest.TypeMCP}
-		meta.pkgType = types[typeIdx]
-	}
-
-	// Type-specific prompts
+	// 3. Type-specific prompts
 	switch meta.pkgType {
 	case manifest.TypeCLI:
 		meta, err = promptCLIMeta(p, meta)

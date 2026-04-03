@@ -240,6 +240,11 @@ Does cool things.
 	if meta.description != "A cool skill" {
 		t.Errorf("description = %q", meta.description)
 	}
+	// SKILL.md exists in both skill and cli types — pkgType must be empty
+	// so the interactive type prompt triggers.
+	if meta.pkgType != "" {
+		t.Errorf("pkgType = %q, want empty (should prompt user)", meta.pkgType)
+	}
 }
 
 func TestParseDirSource_Empty(t *testing.T) {
@@ -259,6 +264,10 @@ func TestParseDirSource_Empty(t *testing.T) {
 	}
 	if meta.version != "0.1.0" {
 		t.Errorf("version = %q", meta.version)
+	}
+	// Empty directory — pkgType must be empty so the interactive type prompt triggers.
+	if meta.pkgType != "" {
+		t.Errorf("pkgType = %q, want empty (should prompt user)", meta.pkgType)
 	}
 }
 
@@ -703,6 +712,136 @@ func TestInitCmd_AcceptsArgs(t *testing.T) {
 }
 
 // --- findAllSkillMD tests ---
+
+func TestParseDirSource_WithCtxYaml_PreservesType(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "my-mcp")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	m := manifest.Scaffold(manifest.TypeMCP, "testuser", "my-mcp")
+	m.Version = "1.0.0"
+	m.Description = "An MCP server"
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ctx.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseDirSource(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Type from existing ctx.yaml must be preserved (skip type prompt).
+	if meta.pkgType != manifest.TypeMCP {
+		t.Errorf("pkgType = %q, want %q", meta.pkgType, manifest.TypeMCP)
+	}
+}
+
+func TestParseInitSource_ScratchWithSkillMD_NoTypeForced(t *testing.T) {
+	dir := t.TempDir()
+	// Create SKILL.md in the scratch directory
+	content := `---
+name: my-skill
+description: A skill
+invocable: true
+---
+
+# My Skill
+`
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save and restore cwd since parseInitSource uses os.Getwd()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	input := initInput{mode: initFromScratch}
+	meta, err := parseInitSource(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// SKILL.md exists but pkgType must be empty — user should choose type.
+	if meta.pkgType != "" {
+		t.Errorf("pkgType = %q, want empty (should prompt user)", meta.pkgType)
+	}
+	// Metadata from SKILL.md should still be extracted.
+	if meta.name != "my-skill" {
+		t.Errorf("name = %q, want %q", meta.name, "my-skill")
+	}
+	if meta.skillEntry != "SKILL.md" {
+		t.Errorf("skillEntry = %q, want %q", meta.skillEntry, "SKILL.md")
+	}
+}
+
+func TestParseFileSource_AutoSetsSkillType(t *testing.T) {
+	tmp := t.TempDir()
+	content := "# My Skill\n\nDoes things.\n"
+	mdFile := filepath.Join(tmp, "my-skill.md")
+	if err := os.WriteFile(mdFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := parseFileSource(mdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File mode (.md) is a clear signal — type must be auto-set to skill.
+	if meta.pkgType != manifest.TypeSkill {
+		t.Errorf("pkgType = %q, want %q", meta.pkgType, manifest.TypeSkill)
+	}
+}
+
+func TestPromptMetadata_TypeFirst_NoopDefaults(t *testing.T) {
+	p := prompt.NoopPrompter{}
+	// pkgType empty — NoopPrompter returns default index 0 = skill
+	meta := initMeta{
+		name:        "test",
+		description: "A test",
+		version:     "0.1.0",
+	}
+
+	result, err := promptMetadata(p, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NoopPrompter default index 0 = skill (first in the list)
+	if result.pkgType != manifest.TypeSkill {
+		t.Errorf("pkgType = %q, want %q", result.pkgType, manifest.TypeSkill)
+	}
+}
+
+func TestPromptMetadata_TypePreset_SkipsSelect(t *testing.T) {
+	p := prompt.NoopPrompter{}
+	// pkgType pre-set — type selection should be skipped
+	meta := initMeta{
+		name:        "test",
+		description: "A test",
+		version:     "0.1.0",
+		pkgType:     manifest.TypeMCP,
+	}
+
+	result, err := promptMetadata(p, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-set type must be preserved, not overwritten by Select default.
+	if result.pkgType != manifest.TypeMCP {
+		t.Errorf("pkgType = %q, want %q (should preserve pre-set type)", result.pkgType, manifest.TypeMCP)
+	}
+}
 
 func TestFindAllSkillMD_RootOnly(t *testing.T) {
 	dir := t.TempDir()
