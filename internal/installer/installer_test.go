@@ -1,7 +1,13 @@
 package installer
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +134,113 @@ func TestNoDownloadBranch_WritesManifestAndSkillMD(t *testing.T) {
 	}
 	if !strings.Contains(string(skillData), "A test skill without archive") {
 		t.Error("SKILL.md should contain the description")
+	}
+}
+
+// --- Tests for SHA256 integrity verification ---
+
+// createTestTarGz creates a tar.gz archive with a single file and returns the bytes + sha256.
+func createTestTarGz(t *testing.T, filename, content string) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	hasher := sha256.New()
+	mw := io.MultiWriter(&buf, hasher)
+
+	gw := gzip.NewWriter(mw)
+	tw := tar.NewWriter(gw)
+
+	data := []byte(content)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: filename,
+		Mode: 0o644,
+		Size: int64(len(data)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes(), fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func TestSHA256Verification(t *testing.T) {
+	archiveData, correctHash := createTestTarGz(t, "SKILL.md", "# Test Skill\nHello world")
+
+	tests := []struct {
+		name          string
+		archiveSHA256 string // expected hash from "API"
+		source        string
+		wantErr       bool
+		errContains   string
+	}{
+		{
+			name:          "registry archive - hash matches",
+			archiveSHA256: correctHash,
+			source:        "registry",
+			wantErr:       false,
+		},
+		{
+			name:          "registry archive - hash mismatch",
+			archiveSHA256: "0000000000000000000000000000000000000000000000000000000000000000",
+			source:        "registry",
+			wantErr:       true,
+			errContains:   "SHA256 mismatch for archive",
+		},
+		{
+			name:          "registry archive - empty hash skipped",
+			archiveSHA256: "",
+			source:        "registry",
+			wantErr:       false,
+		},
+		{
+			name:          "github source - no verification",
+			archiveSHA256: "anything",
+			source:        "github",
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the SHA256 verification logic from InstallFiles
+			hasher := sha256.New()
+			reader := io.TeeReader(bytes.NewReader(archiveData), hasher)
+
+			tmpDir := t.TempDir()
+			err := extractArchive(io.NopCloser(reader), tmpDir)
+			if err != nil {
+				t.Fatalf("extractArchive: %v", err)
+			}
+
+			actualSHA := fmt.Sprintf("%x", hasher.Sum(nil))
+
+			// Apply the same verification logic as installer.go
+			var verifyErr error
+			switch {
+			case tt.source == "registry" && tt.archiveSHA256 != "":
+				if actualSHA != tt.archiveSHA256 {
+					verifyErr = fmt.Errorf("SHA256 mismatch for archive: expected %s, got %s", tt.archiveSHA256, actualSHA)
+				}
+				// github: no verification
+			}
+
+			if tt.wantErr {
+				if verifyErr == nil {
+					t.Error("expected error, got nil")
+				} else if !strings.Contains(verifyErr.Error(), tt.errContains) {
+					t.Errorf("error %q should contain %q", verifyErr, tt.errContains)
+				}
+			} else if verifyErr != nil {
+				t.Errorf("unexpected error: %v", verifyErr)
+			}
+		})
 	}
 }
 

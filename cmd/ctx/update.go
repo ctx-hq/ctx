@@ -193,6 +193,7 @@ Examples:
 								Type:        string(m.Type),
 								InstallPath: inst.CurrentLink(res.FullName),
 								Source:      res.Source,
+								SHA256:      res.ArchiveSHA256,
 							}
 						}
 						results[i] = r

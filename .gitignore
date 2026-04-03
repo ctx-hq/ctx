@@ -10,6 +10,9 @@ dist/
 # Claude Code
 .claude/
 
+# Ops
+handbook.md
+
 # OS
 .DS_Store
 Thumbs.db

@@ -17,6 +17,8 @@ type PackageState struct {
 	FullName      string       `json:"full_name"`
 	Version       string       `json:"version"`
 	Type          string       `json:"type"`
+	Source        string       `json:"source,omitempty"`         // "registry", "github", "push"
+	ArchiveSHA256 string       `json:"archive_sha256,omitempty"` // SHA256 of downloaded archive for integrity audit
 	InstalledAt   time.Time    `json:"installed_at"`
 	UpdatedAt     time.Time    `json:"updated_at"`
 	CLI           *CLIState    `json:"cli,omitempty"`

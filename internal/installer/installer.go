@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -56,6 +55,7 @@ type InstallResult struct {
 	Type        string `json:"type"`
 	InstallPath string `json:"install_path"`
 	Source      string `json:"source"`
+	SHA256      string `json:"sha256,omitempty"` // archive SHA256 for lockfile integrity
 	IsNew       bool   `json:"is_new"`
 }
 
@@ -149,13 +149,9 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 		if body != nil {
 			defer func() { _ = body.Close() }()
 
-			// For artifact downloads, wrap reader with SHA256 hasher for integrity check
-			var hashReader io.Reader = body
-			var hasher hash.Hash
-			if isArtifact {
-				hasher = sha256.New()
-				hashReader = io.TeeReader(body, hasher)
-			}
+			// Wrap all downloads with SHA256 hasher for integrity verification
+			hasher := sha256.New()
+			hashReader := io.TeeReader(body, hasher)
 
 			// Extract to a temp dir first, then atomically move to version dir
 			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
@@ -171,12 +167,21 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 				return nil, nil, fmt.Errorf("extract package: %w", err)
 			}
 
-			// Verify SHA256 integrity for artifact downloads
-			if hasher != nil {
-				actualSHA := fmt.Sprintf("%x", hasher.Sum(nil))
+			// Verify SHA256 integrity for all downloads
+			actualSHA := fmt.Sprintf("%x", hasher.Sum(nil))
+			switch {
+			case isArtifact:
 				if actualSHA != artifactSHA256 {
-					return nil, nil, fmt.Errorf("SHA256 mismatch: expected %s, got %s", artifactSHA256, actualSHA)
+					return nil, nil, fmt.Errorf("SHA256 mismatch for artifact: expected %s, got %s", artifactSHA256, actualSHA)
 				}
+			case resolution.Source == "registry" && resolution.ArchiveSHA256 != "":
+				if actualSHA != resolution.ArchiveSHA256 {
+					return nil, nil, fmt.Errorf("SHA256 mismatch for archive: expected %s, got %s", resolution.ArchiveSHA256, actualSHA)
+				}
+			default:
+				// GitHub downloads: skip verification (archives are dynamically generated)
+				// Store computed hash for lockfile integrity
+				resolution.ArchiveSHA256 = actualSHA
 			}
 
 			// Write manifest into the temp dir
@@ -248,6 +253,7 @@ func (i *Installer) Install(ctx context.Context, ref string) (*InstallResult, er
 		Type:        string(m.Type),
 		InstallPath: currentPath,
 		Source:      resolution.Source,
+		SHA256:      resolution.ArchiveSHA256,
 		IsNew:       isNew,
 	}
 

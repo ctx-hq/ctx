@@ -240,10 +240,12 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 	// Collect state for tracking
 	pkgDir := filepath.Dir(result.InstallPath)
 	state := &installstate.PackageState{
-		FullName:    result.FullName,
-		Version:     result.Version,
-		Type:        result.Type,
-		InstalledAt: time.Now().UTC(),
+		FullName:      result.FullName,
+		Version:       result.Version,
+		Type:          result.Type,
+		Source:        result.Source,
+		ArchiveSHA256: result.SHA256,
+		InstalledAt:   time.Now().UTC(),
 	}
 
 	switch manifest.PackageType(result.Type) {

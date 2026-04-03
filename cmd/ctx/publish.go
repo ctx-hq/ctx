@@ -13,6 +13,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/prompt"
 	"github.com/ctx-hq/ctx/internal/publishcheck"
 	"github.com/ctx-hq/ctx/internal/registry"
+	"github.com/ctx-hq/ctx/internal/securityscan"
 	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
 )
@@ -119,6 +120,33 @@ Examples:
 				return output.ErrUsageHint(
 					fmt.Sprintf("%d install method(s) failed validation", issues),
 					"Fix your ctx.yaml or use --force to publish anyway",
+				)
+			}
+		}
+
+		// Security scan
+		scanResult, scanErr := securityscan.Scan(dir)
+		if scanErr != nil {
+			output.Warn("Security scan error: %v", scanErr)
+		} else if len(scanResult.Findings) > 0 {
+			for _, f := range scanResult.Findings {
+				switch f.Severity {
+				case securityscan.Critical:
+					output.Warn("[CRITICAL] %s:%d — %s", f.File, f.Line, f.Message)
+				case securityscan.High:
+					output.Warn("[HIGH] %s:%d — %s", f.File, f.Line, f.Message)
+				case securityscan.Medium:
+					output.Info("[MEDIUM] %s:%d — %s", f.File, f.Line, f.Message)
+				}
+			}
+			if !scanResult.Passed() && !flagForce {
+				severity := "high-severity"
+				if scanResult.HasCritical() {
+					severity = "critical"
+				}
+				return output.ErrUsageHint(
+					fmt.Sprintf("security scan found %s issues", severity),
+					"Review findings above. Use --force to publish anyway",
 				)
 			}
 		}
@@ -291,6 +319,33 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 			"validation failed: "+errs[0],
 			"Fix errors and try again",
 		)
+	}
+
+	// Security scan (same gate as single-package publish)
+	scanResult, scanErr := securityscan.Scan(dir)
+	if scanErr != nil {
+		output.Warn("Security scan error for %s: %v", m.Name, scanErr)
+	} else if len(scanResult.Findings) > 0 {
+		for _, f := range scanResult.Findings {
+			switch f.Severity {
+			case securityscan.Critical:
+				output.Warn("[CRITICAL] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+			case securityscan.High:
+				output.Warn("[HIGH] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+			case securityscan.Medium:
+				output.Info("[MEDIUM] %s/%s:%d — %s", m.Name, f.File, f.Line, f.Message)
+			}
+		}
+		if !scanResult.Passed() && !flagForce {
+			severity := "high-severity"
+			if scanResult.HasCritical() {
+				severity = "critical"
+			}
+			return output.ErrUsageHint(
+				fmt.Sprintf("security scan found %s issues in %s", severity, m.Name),
+				"Review findings above. Use --force to publish anyway",
+			)
+		}
 	}
 
 	// Marshal manifest

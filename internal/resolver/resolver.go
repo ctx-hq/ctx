@@ -11,13 +11,14 @@ import (
 
 // Resolution holds the result of resolving a package reference.
 type Resolution struct {
-	FullName    string
-	Version     string
-	Manifest    string // JSON-encoded manifest
-	DownloadURL string
-	SHA256      string
-	Source      string // "registry", "github", "local"
-	Artifacts   []registry.ArtifactInfo
+	FullName      string
+	Version       string
+	Manifest      string // JSON-encoded manifest
+	DownloadURL   string
+	SHA256        string
+	ArchiveSHA256 string // SHA256 of the archive blob for integrity verification
+	Source        string // "registry", "github", "local"
+	Artifacts     []registry.ArtifactInfo
 }
 
 // Resolver resolves package references to installable versions.
@@ -58,13 +59,14 @@ func (r *Resolver) resolveRegistry(ctx context.Context, fullName, constraint str
 	}
 
 	return &Resolution{
-		FullName:    fullName,
-		Version:     resolved.Version,
-		Manifest:    resolved.Manifest,
-		DownloadURL: resolved.DownloadURL,
-		SHA256:      resolved.SHA256,
-		Source:      "registry",
-		Artifacts:   resolved.Artifacts,
+		FullName:      fullName,
+		Version:       resolved.Version,
+		Manifest:      resolved.Manifest,
+		DownloadURL:   resolved.DownloadURL,
+		SHA256:        resolved.SHA256,
+		ArchiveSHA256: resolved.ArchiveSHA256,
+		Source:        "registry",
+		Artifacts:     resolved.Artifacts,
 	}, nil
 }
 

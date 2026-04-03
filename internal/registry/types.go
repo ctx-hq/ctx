@@ -127,11 +127,12 @@ type ResolveResponse struct {
 
 // ResolvedPackage is one entry in the resolve response.
 type ResolvedPackage struct {
-	Version     string         `json:"version"`
-	Manifest    string         `json:"manifest"`
-	DownloadURL string         `json:"download_url"`
-	SHA256      string         `json:"sha256"`
-	Artifacts   []ArtifactInfo `json:"artifacts,omitempty"`
+	Version       string         `json:"version"`
+	Manifest      string         `json:"manifest"`
+	DownloadURL   string         `json:"download_url"`
+	SHA256        string         `json:"sha256"`
+	ArchiveSHA256 string         `json:"archive_sha256"`
+	Artifacts     []ArtifactInfo `json:"artifacts,omitempty"`
 }
 
 // ArtifactInfo describes a platform-specific artifact.
