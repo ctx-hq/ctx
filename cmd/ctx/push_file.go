@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -288,9 +289,11 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 
 	// 15. Output
+	packageURL, _ := url.JoinPath(cfg.WebURL(), "p", result.FullName)
 	return w.OK(result,
 		output.WithSummary(fmt.Sprintf("Published %s@%s (%s)", result.FullName, result.Version, opts.defaultVisibility)),
 		output.WithBreadcrumbs(
+			output.Breadcrumb{Action: "view", Command: packageURL, Description: "View on getctx.org"},
 			output.Breadcrumb{Action: "install", Command: "ctx install " + result.FullName, Description: "Install on another device"},
 			output.Breadcrumb{Action: "update", Command: "ctx push " + dest, Description: "Push updates from local dir"},
 			output.Breadcrumb{Action: "bump", Command: "ctx push " + dest + " --bump patch", Description: "Bump version and push"},

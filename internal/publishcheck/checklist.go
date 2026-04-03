@@ -11,8 +11,11 @@ import (
 func FormatChecklist(m *manifest.Manifest, results []CheckResult) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("Pre-publish checklist for %s@%s\n", m.Name, m.Version))
-	b.WriteString(check(true, "Name", m.Name))
+	shortName := m.ShortName()
+	scope := m.Scope()
+
+	b.WriteString(fmt.Sprintf("Pre-publish checklist for %s@%s\n", shortName, m.Version))
+	b.WriteString(check(true, "Name", fmt.Sprintf("%s (@%s)", shortName, scope)))
 	b.WriteString(check(true, "Version", m.Version))
 	b.WriteString(check(true, "Type", string(m.Type)))
 
@@ -83,9 +86,9 @@ func FormatChecklist(m *manifest.Manifest, results []CheckResult) string {
 }
 
 func check(ok bool, label, value string) string {
-	marker := "[x]"
+	marker := "✓"
 	if !ok {
-		marker = "[!]"
+		marker = "✗"
 	}
 	return fmt.Sprintf("  %s %-14s %s\n", marker, label, value)
 }

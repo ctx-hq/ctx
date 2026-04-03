@@ -109,6 +109,15 @@ var skipDirs = map[string]bool{
 	".venv": true, "vendor": true, ".next": true,
 }
 
+// skipFiles are documentation file names (compared case-insensitively) that
+// are never executed or injected into agent prompts, so scanning them only
+// produces false positives (e.g. install instructions showing curl|bash).
+var skipFiles = map[string]bool{
+	"readme.md": true, "changelog.md": true, "contributing.md": true,
+	"code_of_conduct.md": true, "security.md": true, "history.md": true,
+	"license.md": true,
+}
+
 // maxFileSize is the maximum file size to scan (1MB).
 const maxFileSize = 1 << 20
 
@@ -116,6 +125,7 @@ const maxFileSize = 1 << 20
 func Scan(dir string) (*ScanResult, error) {
 	result := &ScanResult{}
 
+	dir = filepath.Clean(dir)
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip unreadable entries
@@ -124,6 +134,13 @@ func Scan(dir string) (*ScanResult, error) {
 			if skipDirs[d.Name()] {
 				return fs.SkipDir
 			}
+			return nil
+		}
+
+		// Skip known documentation files only at the root level — files in
+		// subdirectories (e.g. references/README.md) may be referenced by
+		// SKILL.md and should still be scanned.
+		if filepath.Dir(path) == dir && skipFiles[strings.ToLower(d.Name())] {
 			return nil
 		}
 

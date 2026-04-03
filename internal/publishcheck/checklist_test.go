@@ -29,13 +29,18 @@ func TestFormatChecklistCLI(t *testing.T) {
 
 	out := FormatChecklist(m, results)
 
-	if !strings.Contains(out, "@test/fizzy-cli@0.1.2") {
-		t.Error("should contain package name and version")
+	// Header uses short name
+	if !strings.Contains(out, "fizzy-cli@0.1.2") {
+		t.Error("header should contain short name and version")
+	}
+	// Name row shows short name with scope in parens
+	if !strings.Contains(out, "fizzy-cli (@test)") {
+		t.Error("Name row should show short name with scope in parens")
 	}
 	if !strings.Contains(out, "fizzy") {
 		t.Error("should contain binary name")
 	}
-	if !strings.Contains(out, "[x]") {
+	if !strings.Contains(out, "✓") {
 		t.Error("should contain check marks")
 	}
 	if !strings.Contains(out, "Auth hint") {
@@ -63,7 +68,7 @@ func TestFormatChecklistWithIssues(t *testing.T) {
 
 	out := FormatChecklist(m, results)
 
-	if !strings.Contains(out, "[!]") {
+	if !strings.Contains(out, "✗") {
 		t.Error("should contain failure markers")
 	}
 	if !strings.Contains(out, "formula not found") {
@@ -83,6 +88,14 @@ func TestFormatChecklistSkill(t *testing.T) {
 
 	if !strings.Contains(out, "skill") {
 		t.Error("should contain type")
+	}
+	// Name row shows short name with scope
+	if !strings.Contains(out, "my-skill (@test)") {
+		t.Error("Name row should show short name with scope in parens")
+	}
+	// Header uses short name
+	if !strings.Contains(out, "my-skill@1.0.0") {
+		t.Error("header should use short name")
 	}
 	// Skills don't have install methods
 	if strings.Contains(out, "Install") {

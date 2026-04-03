@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,4 +78,20 @@ func (c *Config) RegistryURL() string {
 		return v
 	}
 	return c.Registry
+}
+
+// WebURL derives the public web origin from the registry URL.
+// "https://registry.getctx.org" → "https://getctx.org";
+// URLs without a "registry." host prefix are returned as-is.
+func (c *Config) WebURL() string {
+	raw := c.RegistryURL()
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if after, ok := strings.CutPrefix(u.Host, "registry."); ok {
+		u.Host = after
+	}
+	u.Path = ""
+	return strings.TrimRight(u.String(), "/")
 }

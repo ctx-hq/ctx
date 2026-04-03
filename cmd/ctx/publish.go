@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -219,7 +220,9 @@ Examples:
 			return err
 		}
 
+		packageURL, _ := url.JoinPath(cfg.WebURL(), "p", result.FullName)
 		pubBreadcrumbs := []output.Breadcrumb{
+			{Action: "view", Command: packageURL, Description: "View on getctx.org"},
 			{Action: "info", Command: "ctx info " + result.FullName, Description: "View package"},
 		}
 		if m.Type == manifest.TypeCLI {

@@ -122,6 +122,32 @@ func TestSkillsDir(t *testing.T) {
 	}
 }
 
+func TestConfig_WebURL(t *testing.T) {
+	tests := []struct {
+		registry string
+		want     string
+	}{
+		{"https://registry.getctx.org", "https://getctx.org"},
+		{"https://staging.getctx.org", "https://staging.getctx.org"},
+		{"https://registry.staging.example.com", "https://staging.example.com"},
+		{"http://localhost:8080", "http://localhost:8080"},
+	}
+	for _, tt := range tests {
+		cfg := &Config{Registry: tt.registry}
+		if got := cfg.WebURL(); got != tt.want {
+			t.Errorf("WebURL(%q) = %q, want %q", tt.registry, got, tt.want)
+		}
+	}
+}
+
+func TestConfig_WebURL_EnvOverride(t *testing.T) {
+	t.Setenv("CTX_REGISTRY", "https://registry.custom.dev")
+	cfg := &Config{Registry: DefaultRegistry}
+	if got := cfg.WebURL(); got != "https://custom.dev" {
+		t.Errorf("WebURL with CTX_REGISTRY = %q, want %q", got, "https://custom.dev")
+	}
+}
+
 func TestConfig_PrivacyFieldsYAML(t *testing.T) {
 	f := false
 	cfg := &Config{
