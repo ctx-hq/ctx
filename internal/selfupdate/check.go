@@ -13,6 +13,15 @@ import (
 	"github.com/ctx-hq/ctx/internal/config"
 )
 
+// githubToken returns a GitHub token from environment for API auth.
+// Checks GH_TOKEN (gh CLI convention) then GITHUB_TOKEN.
+func githubToken() string {
+	if t := os.Getenv("GH_TOKEN"); t != "" {
+		return t
+	}
+	return os.Getenv("GITHUB_TOKEN")
+}
+
 const (
 	checkInterval = 24 * time.Hour
 	repo          = "ctx-hq/ctx"
@@ -76,6 +85,9 @@ func fetchLatestVersion() string {
 		return ""
 	}
 	req.Header.Set("User-Agent", config.UserAgent())
+	if token := githubToken(); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return ""

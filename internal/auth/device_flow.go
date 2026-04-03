@@ -51,6 +51,13 @@ func StartDeviceFlow(ctx context.Context, registryURL string) (*DeviceFlowRespon
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		var errBody struct {
+			Message string `json:"message"`
+			Error   string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil && errBody.Message != "" {
+			return nil, fmt.Errorf("device flow failed (%d): %s", resp.StatusCode, errBody.Message)
+		}
 		return nil, fmt.Errorf("device flow returned status %d", resp.StatusCode)
 	}
 
