@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultRegistry = "https://api.getctx.org"
+	DefaultRegistry = "https://registry.getctx.org"
 )
 
 // Config represents the CLI configuration stored at ~/.ctx/config.yaml.

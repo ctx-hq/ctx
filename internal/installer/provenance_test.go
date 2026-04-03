@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewProvenance(t *testing.T) {
-	p := NewProvenance("registry", "https://api.getctx.org/v1/download/...", "^1.0", "1.5.0")
+	p := NewProvenance("registry", "https://registry.getctx.org/v1/download/...", "^1.0", "1.5.0")
 	if p.Source != "registry" {
 		t.Errorf("source = %q, want registry", p.Source)
 	}
