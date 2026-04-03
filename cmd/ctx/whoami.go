@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/ctx-hq/ctx/internal/config"
@@ -132,6 +133,7 @@ var whoamiCmd = &cobra.Command{
 		}
 
 		return w.OK(info,
+			output.WithDetailView(),
 			output.WithSummary(summary),
 			output.WithBreadcrumbs(
 				output.Breadcrumb{Action: "switch", Command: "ctx profile use <name>", Description: "Switch active profile"},
@@ -156,6 +158,7 @@ func whoamiCached(w *output.Writer, res *profile.ResolveResult) error {
 		Registry: res.Profile.RegistryURL(),
 	}
 	return w.OK(info,
+		output.WithDetailView(),
 		output.WithSummary(fmt.Sprintf("logged in as %s (profile: %s, cached)", res.Profile.Username, res.Name)),
 		output.WithBreadcrumbs(
 			output.Breadcrumb{Action: "switch", Command: "ctx profile use <name>", Description: "Switch active profile"},
@@ -202,6 +205,10 @@ func whoamiAll(w *output.Writer) error {
 		}
 		entries = append(entries, e)
 	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
 
 	return w.OK(entries,
 		output.WithSummary(fmt.Sprintf("%d profiles", len(entries))),

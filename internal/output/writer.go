@@ -42,6 +42,7 @@ type Response struct {
 	Notice      string         `json:"notice,omitempty"`
 	Breadcrumbs []Breadcrumb   `json:"breadcrumbs,omitempty"`
 	Meta        map[string]any `json:"meta,omitempty"`
+	Detail      bool           `json:"-"` // render single object as vertical key-value detail
 }
 
 // ErrorResponse is the standard JSON envelope for errors.
@@ -68,6 +69,11 @@ func WithNotice(s string) ResponseOption {
 // WithBreadcrumbs adds navigation hints for users/agents.
 func WithBreadcrumbs(b ...Breadcrumb) ResponseOption {
 	return func(r *Response) { r.Breadcrumbs = append(r.Breadcrumbs, b...) }
+}
+
+// WithDetailView renders a single object as vertical key-value pairs.
+func WithDetailView() ResponseOption {
+	return func(r *Response) { r.Detail = true }
 }
 
 // WithMeta adds arbitrary metadata to the response.
@@ -387,10 +393,14 @@ func (w *Writer) writeQuiet(resp *Response) error {
 func (w *Writer) writeHuman(resp *Response) error {
 	items := toSlice(resp.Data)
 	if items == nil {
-		// Single object — try to render as a map row, fallback to notice/summary
+		// Single object
 		if resp.Data != nil {
 			if m, ok := asMap(resp.Data); ok {
-				w.printMapRow(m)
+				if resp.Detail {
+					w.printMapDetail(resp.Data, m)
+				} else {
+					w.printMapRow(m)
+				}
 			}
 		}
 		w.writeHumanMeta(resp)
@@ -523,6 +533,62 @@ func (w *Writer) printMapRow(m map[string]any) {
 		}
 		_, _ = fmt.Fprintf(w.stdout, "  %s\n", strings.Join(parts, " "))
 	}
+}
+
+// printMapDetail renders a map as vertical key-value pairs for detail views.
+// It uses orderedKeys to preserve struct field order when available.
+func (w *Writer) printMapDetail(data any, m map[string]any) {
+	keys := orderedKeys(data, m)
+	if len(keys) == 0 {
+		return
+	}
+
+	// Find max key length for alignment
+	maxLen := 0
+	for _, k := range keys {
+		if len(k) > maxLen {
+			maxLen = len(k)
+		}
+	}
+
+	for _, k := range keys {
+		v := fmt.Sprintf("%v", m[k])
+		if v == "" {
+			continue
+		}
+		label := w.outStyler.Dim(PadRight(k, maxLen))
+		_, _ = fmt.Fprintf(w.stdout, "  %s  %s\n", label, v)
+	}
+}
+
+// orderedKeys returns map keys in struct field order (via json tags) if the
+// original value is a struct, otherwise falls back to sorted keys.
+func orderedKeys(original any, m map[string]any) []string {
+	if original == nil {
+		return sortedKeys(m)
+	}
+	rv := reflect.ValueOf(original)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return sortedKeys(m)
+	}
+
+	rt := rv.Type()
+	keys := make([]string, 0, rt.NumField())
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		tag := f.Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		name := strings.Split(tag, ",")[0]
+		if _, ok := m[name]; ok {
+			keys = append(keys, name)
+		}
+	}
+	return keys
 }
 
 // toSlice converts data to a []any if it's a slice type, or nil otherwise.
