@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.0](https://github.com/ctx-hq/ctx/compare/v0.26.0...v0.27.0) (2026-04-03)
+
+
+### Features
+
+* **profile:** add multi-profile support and fix login/registry resolve chain ([eb96408](https://github.com/ctx-hq/ctx/commit/eb96408b06c048fb198680bd4ede0f15e068e51e))
+* **security:** add package audit command and SHA256 integrity verification ([4105d4a](https://github.com/ctx-hq/ctx/commit/4105d4a0038a700d3042e9d93690ea249d88d550))
+
 ## [0.26.0](https://github.com/ctx-hq/ctx/compare/v0.25.0...v0.26.0) (2026-04-02)
 
 
