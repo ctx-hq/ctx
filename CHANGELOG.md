@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/ctx-hq/ctx/compare/v0.28.0...v0.29.0) (2026-04-03)
+
+
+### Features
+
+* improve publish UX with clearer display and smarter security scan ([1c39084](https://github.com/ctx-hq/ctx/commit/1c3908435365e9f149ea93e6bd36779e662872e8))
+
 ## [0.28.0](https://github.com/ctx-hq/ctx/compare/v0.27.2...v0.28.0) (2026-04-03)
 
 
