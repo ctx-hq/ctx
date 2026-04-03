@@ -2,9 +2,9 @@ package resolver
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
+
+	libsemver "github.com/Masterminds/semver/v3"
 )
 
 // Version represents a parsed semver version.
@@ -14,56 +14,33 @@ type Version struct {
 	Patch      int
 	Prerelease string
 	Raw        string
+	inner      *libsemver.Version
 }
-
-var semverRe = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-([a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*))?$`)
 
 // ParseVersion parses a semver string.
 func ParseVersion(s string) (*Version, error) {
-	m := semverRe.FindStringSubmatch(s)
-	if m == nil {
+	v, err := libsemver.StrictNewVersion(strings.TrimPrefix(s, "v"))
+	if err != nil {
 		return nil, fmt.Errorf("invalid semver: %q", s)
 	}
-	major, _ := strconv.Atoi(m[1])
-	minor, _ := strconv.Atoi(m[2])
-	patch, _ := strconv.Atoi(m[3])
 	return &Version{
-		Major:      major,
-		Minor:      minor,
-		Patch:      patch,
-		Prerelease: m[5],
+		Major:      int(v.Major()),
+		Minor:      int(v.Minor()),
+		Patch:      int(v.Patch()),
+		Prerelease: v.Prerelease(),
 		Raw:        s,
+		inner:      v,
 	}, nil
 }
 
 // String returns the canonical semver string.
 func (v *Version) String() string {
-	s := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
-	if v.Prerelease != "" {
-		s += "-" + v.Prerelease
-	}
-	return s
+	return v.inner.String()
 }
 
 // Compare returns -1, 0, or 1.
 func (v *Version) Compare(other *Version) int {
-	if c := cmpInt(v.Major, other.Major); c != 0 {
-		return c
-	}
-	if c := cmpInt(v.Minor, other.Minor); c != 0 {
-		return c
-	}
-	if c := cmpInt(v.Patch, other.Patch); c != 0 {
-		return c
-	}
-	// No prerelease > has prerelease
-	if v.Prerelease == "" && other.Prerelease != "" {
-		return 1
-	}
-	if v.Prerelease != "" && other.Prerelease == "" {
-		return -1
-	}
-	return comparePrerelease(v.Prerelease, other.Prerelease)
+	return v.inner.Compare(other.inner)
 }
 
 // Constraint represents a version constraint like ^1.0.0 or ~1.2.
@@ -71,6 +48,7 @@ type Constraint struct {
 	Op      string // "^", "~", "=", ">=", "<=", ">", "<", "*"
 	Version *Version
 	Raw     string
+	inner   *libsemver.Constraints
 }
 
 // ParseConstraint parses a version constraint string.
@@ -80,22 +58,33 @@ func ParseConstraint(s string) (*Constraint, error) {
 		return &Constraint{Op: "*", Raw: s}, nil
 	}
 
-	for _, op := range []string{">=", "<=", "^", "~", ">", "<", "="} {
-		if strings.HasPrefix(s, op) {
-			v, err := ParseVersion(strings.TrimSpace(s[len(op):]))
-			if err != nil {
-				return nil, fmt.Errorf("parse constraint %q: %w", s, err)
-			}
-			return &Constraint{Op: op, Version: v, Raw: s}, nil
+	// Determine the operator and version string.
+	op := "="
+	vStr := s
+	for _, candidate := range []string{">=", "<=", "^", "~", ">", "<", "="} {
+		if strings.HasPrefix(s, candidate) {
+			op = candidate
+			vStr = strings.TrimSpace(s[len(candidate):])
+			break
 		}
 	}
-
-	// Exact version
-	v, err := ParseVersion(s)
+	ver, err := ParseVersion(vStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse constraint %q: %w", s, err)
 	}
-	return &Constraint{Op: "=", Version: v, Raw: s}, nil
+
+	// Build the library constraint string.
+	// The Masterminds library uses different syntax for some operators.
+	libStr := s
+	// Ensure no 'v' prefix on the version portion for the library.
+	libStr = op + " " + strings.TrimPrefix(vStr, "v")
+
+	inner, err := libsemver.NewConstraint(libStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse constraint %q: %w", s, err)
+	}
+
+	return &Constraint{Op: op, Version: ver, Raw: s, inner: inner}, nil
 }
 
 // Match checks if a version satisfies the constraint.
@@ -103,36 +92,7 @@ func (c *Constraint) Match(v *Version) bool {
 	if c.Op == "*" {
 		return v.Prerelease == "" // exclude prereleases from wildcard
 	}
-
-	switch c.Op {
-	case "=":
-		return v.Compare(c.Version) == 0
-	case ">":
-		return v.Compare(c.Version) > 0
-	case ">=":
-		return v.Compare(c.Version) >= 0
-	case "<":
-		return v.Compare(c.Version) < 0
-	case "<=":
-		return v.Compare(c.Version) <= 0
-	case "^":
-		// ^1.2.3 means >=1.2.3 <2.0.0 (same major)
-		if v.Compare(c.Version) < 0 {
-			return false
-		}
-		if c.Version.Major == 0 {
-			// ^0.x.y is more restrictive: same minor
-			return v.Major == 0 && v.Minor == c.Version.Minor
-		}
-		return v.Major == c.Version.Major
-	case "~":
-		// ~1.2.3 means >=1.2.3 <1.3.0 (same major.minor)
-		if v.Compare(c.Version) < 0 {
-			return false
-		}
-		return v.Major == c.Version.Major && v.Minor == c.Version.Minor
-	}
-	return false
+	return c.inner.Check(v.inner)
 }
 
 // BestMatch finds the highest version matching the constraint.
@@ -147,43 +107,4 @@ func BestMatch(versions []*Version, constraint *Constraint) *Version {
 		}
 	}
 	return best
-}
-
-// comparePrerelease compares prerelease identifiers per semver spec:
-// numeric identifiers are compared as integers, string identifiers lexicographically.
-func comparePrerelease(a, b string) int {
-	partsA := strings.Split(a, ".")
-	partsB := strings.Split(b, ".")
-	minLen := len(partsA)
-	if len(partsB) < minLen {
-		minLen = len(partsB)
-	}
-	for i := 0; i < minLen; i++ {
-		numA, errA := strconv.Atoi(partsA[i])
-		numB, errB := strconv.Atoi(partsB[i])
-		if errA == nil && errB == nil {
-			if c := cmpInt(numA, numB); c != 0 {
-				return c
-			}
-		} else if errA == nil {
-			return -1 // numeric < string
-		} else if errB == nil {
-			return 1 // string > numeric
-		} else {
-			if c := strings.Compare(partsA[i], partsB[i]); c != 0 {
-				return c
-			}
-		}
-	}
-	return cmpInt(len(partsA), len(partsB))
-}
-
-func cmpInt(a, b int) int {
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
 }

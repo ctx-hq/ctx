@@ -6,6 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.0.2
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.2
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/charmbracelet/glamour v0.8.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.41.0

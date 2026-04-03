@@ -56,36 +56,38 @@ func TestIsUpToDate(t *testing.T) {
 	}
 }
 
-func TestParseSemver(t *testing.T) {
+func TestParseCoreVersion(t *testing.T) {
 	tests := []struct {
-		input string
-		want  []int
+		input   string
+		wantNil bool
+		major   uint64
+		minor   uint64
+		patch   uint64
 	}{
-		{"0.3.0", []int{0, 3, 0}},
-		{"v1.2.3", []int{1, 2, 3}},
-		{"1.0.0-beta", []int{1, 0, 0}},
-		{"10.20.30", []int{10, 20, 30}},
-		{"invalid", nil},
-		{"", nil},
-		{"1.2", nil},
-		{"a.b.c", nil},
+		{"0.3.0", false, 0, 3, 0},
+		{"v1.2.3", false, 1, 2, 3},
+		{"1.0.0-beta", false, 1, 0, 0},
+		{"10.20.30", false, 10, 20, 30},
+		{"1.2", false, 1, 2, 0},
+		{"invalid", true, 0, 0, 0},
+		{"", true, 0, 0, 0},
+		{"a.b.c", true, 0, 0, 0},
 	}
 	for _, tt := range tests {
-		got := parseSemver(tt.input)
-		if tt.want == nil {
+		got := parseCoreVersion(tt.input)
+		if tt.wantNil {
 			if got != nil {
-				t.Errorf("parseSemver(%q) = %v, want nil", tt.input, got)
+				t.Errorf("parseCoreVersion(%q) = %v, want nil", tt.input, got)
 			}
 			continue
 		}
 		if got == nil {
-			t.Errorf("parseSemver(%q) = nil, want %v", tt.input, tt.want)
+			t.Errorf("parseCoreVersion(%q) = nil, want %d.%d.%d", tt.input, tt.major, tt.minor, tt.patch)
 			continue
 		}
-		for i := range tt.want {
-			if got[i] != tt.want[i] {
-				t.Errorf("parseSemver(%q)[%d] = %d, want %d", tt.input, i, got[i], tt.want[i])
-			}
+		if got.Major() != tt.major || got.Minor() != tt.minor || got.Patch() != tt.patch {
+			t.Errorf("parseCoreVersion(%q) = %d.%d.%d, want %d.%d.%d",
+				tt.input, got.Major(), got.Minor(), got.Patch(), tt.major, tt.minor, tt.patch)
 		}
 	}
 }

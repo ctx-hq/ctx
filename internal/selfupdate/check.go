@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	semver "github.com/Masterminds/semver/v3"
 	"github.com/ctx-hq/ctx/internal/config"
 )
 
@@ -95,66 +96,43 @@ func fetchLatestVersion() string {
 // IsNewer returns true if latest is a higher semver than current.
 // Returns false if either version cannot be parsed as semver.
 // Handles "v" prefixes transparently.
+// Pre-release suffixes are stripped so that "0.4.0-beta" compares as "0.4.0"
+// for upgrade-check purposes.
 func IsNewer(latest, current string) bool {
-	if latest == "" || current == "" {
+	lv, cv := parseCoreVersion(latest), parseCoreVersion(current)
+	if lv == nil || cv == nil {
 		return false
 	}
-	lp := parseSemver(latest)
-	cp := parseSemver(current)
-	if lp == nil || cp == nil {
-		return false
-	}
-	if lp[0] != cp[0] {
-		return lp[0] > cp[0]
-	}
-	if lp[1] != cp[1] {
-		return lp[1] > cp[1]
-	}
-	return lp[2] > cp[2]
+	return lv.GreaterThan(cv)
 }
 
 // IsUpToDate returns true only when both versions are valid semver and
 // current >= latest. Returns false if either version cannot be parsed
 // (e.g. "dev", empty), meaning the caller should NOT skip the upgrade.
 func IsUpToDate(latest, current string) bool {
-	if latest == "" || current == "" {
+	lv, cv := parseCoreVersion(latest), parseCoreVersion(current)
+	if lv == nil || cv == nil {
 		return false
 	}
-	lp := parseSemver(latest)
-	cp := parseSemver(current)
-	if lp == nil || cp == nil {
-		return false // unparseable → not confidently up to date
-	}
-	// current >= latest
-	if cp[0] != lp[0] {
-		return cp[0] > lp[0]
-	}
-	if cp[1] != lp[1] {
-		return cp[1] > lp[1]
-	}
-	return cp[2] >= lp[2]
+	return !cv.LessThan(lv) // current >= latest
 }
 
-func parseSemver(v string) []int {
-	v = strings.TrimPrefix(v, "v")
-	parts := strings.SplitN(v, ".", 3)
-	if len(parts) != 3 {
+// parseCoreVersion parses a version string, stripping the pre-release suffix
+// so that upgrade checks compare only major.minor.patch.
+func parseCoreVersion(v string) *semver.Version {
+	if v == "" {
 		return nil
 	}
-	result := make([]int, 3)
-	for i, p := range parts {
-		// Handle pre-release suffixes like "1.0.0-beta"
-		p = strings.SplitN(p, "-", 2)[0]
-		n := 0
-		for _, c := range p {
-			if c < '0' || c > '9' {
-				return nil
-			}
-			n = n*10 + int(c-'0')
-		}
-		result[i] = n
+	sv, err := semver.NewVersion(v)
+	if err != nil {
+		return nil
 	}
-	return result
+	// Strip pre-release for upgrade comparison (e.g. 0.4.0-beta → 0.4.0).
+	if sv.Prerelease() != "" {
+		core, _ := semver.NewVersion(fmt.Sprintf("%d.%d.%d", sv.Major(), sv.Minor(), sv.Patch()))
+		return core
+	}
+	return sv
 }
 
 func loadCache(path string) (*UpdateCache, error) {

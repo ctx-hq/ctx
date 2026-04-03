@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	semver "github.com/Masterminds/semver/v3"
 	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
@@ -88,43 +89,45 @@ func extractVersion(s string) string {
 	return ""
 }
 
-// versionSatisfies checks if detected >= required using simple major.minor.patch comparison.
+// versionSatisfies checks if detected >= required using semver comparison.
+// Tolerates non-standard version strings by falling back to coercion.
 func versionSatisfies(detected, required string) bool {
-	d := parseVersionParts(detected)
-	r := parseVersionParts(required)
-	for i := 0; i < 3; i++ {
-		if d[i] > r[i] {
-			return true
-		}
-		if d[i] < r[i] {
-			return false
-		}
+	d := coerceVersion(detected)
+	r := coerceVersion(required)
+	if d == nil || r == nil {
+		return false
 	}
-	return true // equal
+	return !d.LessThan(r) // detected >= required
 }
 
-func parseVersionParts(v string) [3]int {
-	var parts [3]int
-	// Strip prerelease suffix
+// coerceVersion attempts to parse a version string, stripping pre-release
+// suffixes and trailing non-numeric characters (e.g. "27.3.1," from Docker).
+func coerceVersion(v string) *semver.Version {
+	// Strip prerelease suffix.
 	if idx := strings.IndexByte(v, '-'); idx >= 0 {
 		v = v[:idx]
 	}
-	for i, s := range strings.SplitN(v, ".", 3) {
-		if i >= 3 {
-			break
+	// Strip trailing non-digit characters (e.g. commas from "27.3.1,").
+	v = strings.TrimRight(v, ",;:)")
+	// Pad to 3-part semver if needed (e.g. "3.12" → "3.12.0").
+	parts := strings.SplitN(v, ".", 3)
+	// Clean each part: keep only leading digits.
+	for i, p := range parts {
+		idx := strings.IndexFunc(p, func(r rune) bool { return r < '0' || r > '9' })
+		if idx >= 0 {
+			parts[i] = p[:idx]
 		}
-		n := 0
-		for _, c := range s {
-			if c >= '0' && c <= '9' {
-				n = n*10 + int(c-'0')
-			} else {
-				break
-			}
-		}
-		parts[i] = n
 	}
-	return parts
+	for len(parts) < 3 {
+		parts = append(parts, "0")
+	}
+	sv, err := semver.StrictNewVersion(strings.Join(parts[:3], "."))
+	if err != nil {
+		return nil
+	}
+	return sv
 }
+
 
 // installHint returns a user-friendly install suggestion for common binaries.
 func installHint(bin string) string {

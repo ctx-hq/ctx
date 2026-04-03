@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/ctx-hq/ctx/internal/auth"
@@ -80,13 +81,13 @@ var loginCmd = &cobra.Command{
 			output.PrintDim("  Could not open browser automatically")
 		}
 
-		fmt.Println()
-		fmt.Printf("  Open:  %s\n", resp.VerificationURI)
-		fmt.Printf("  Code:  %s%s%s\n", output.Bold, resp.UserCode, output.Reset)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr, "  Open:  %s\n", resp.VerificationURI)
+		fmt.Fprintf(os.Stderr, "  Code:  %s%s%s\n", output.Bold, resp.UserCode, output.Reset)
 		if resp.VerificationURIComplete != "" {
-			fmt.Printf("\n  Or visit: %s\n", resp.VerificationURIComplete)
+			fmt.Fprintf(os.Stderr, "\n  Or visit: %s\n", resp.VerificationURIComplete)
 		}
-		fmt.Println()
+		fmt.Fprintln(os.Stderr)
 		output.Info("Waiting for authorization...")
 
 		ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(resp.ExpiresIn)*time.Second)

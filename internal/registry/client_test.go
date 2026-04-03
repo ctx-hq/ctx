@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClientSearch(t *testing.T) {
@@ -365,5 +366,29 @@ func TestClientErrorParsing(t *testing.T) {
 	}
 	if err.Error() != "API error (404): Package not found" {
 		t.Errorf("error = %q", err.Error())
+	}
+}
+
+func TestNewClientTransportTimeouts(t *testing.T) {
+	c := New("https://registry.getctx.org", "tok_test")
+
+	// No global timeout — streaming downloads/uploads must not be hard-cut.
+	if c.HTTPClient.Timeout != 0 {
+		t.Fatalf("expected no global timeout, got %v", c.HTTPClient.Timeout)
+	}
+
+	tr, ok := c.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("expected *http.Transport")
+	}
+	if tr.TLSHandshakeTimeout != 10*time.Second {
+		t.Fatalf("TLSHandshakeTimeout = %v, want 10s", tr.TLSHandshakeTimeout)
+	}
+	if tr.ResponseHeaderTimeout != 30*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 30s", tr.ResponseHeaderTimeout)
+	}
+	// Proxy must be preserved from DefaultTransport.
+	if tr.Proxy == nil {
+		t.Fatal("expected Proxy to be non-nil (inherited from DefaultTransport)")
 	}
 }

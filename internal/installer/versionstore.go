@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
+
+	semver "github.com/Masterminds/semver/v3"
 )
 
 // VersionDir returns the versioned install path: ~/.ctx/packages/@scope/name/{version}/
@@ -57,44 +58,33 @@ func (i *Installer) InstalledVersions(fullName string) []string {
 	return versions
 }
 
-// compareSemver compares two semver strings numerically.
-// Returns -1, 0, or 1. Falls back to lexicographic comparison for non-semver strings.
+// compareSemver compares two version strings.
+// Valid semver versions always sort after non-semver strings (e.g. branch names
+// like "main") so that PruneVersions keeps real releases and discards refs first.
+// Within each group the comparison is numeric (semver) or lexicographic (non-semver).
 func compareSemver(a, b string) int {
-	aParts := strings.SplitN(a, ".", 3)
-	bParts := strings.SplitN(b, ".", 3)
+	va, errA := semver.NewVersion(a)
+	vb, errB := semver.NewVersion(b)
 
-	maxLen := len(aParts)
-	if len(bParts) > maxLen {
-		maxLen = len(bParts)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		var av, bv int
-		if i < len(aParts) {
-			// Strip pre-release suffix for numeric comparison
-			num := strings.SplitN(aParts[i], "-", 2)[0]
-			av, _ = strconv.Atoi(num)
+	switch {
+	case errA == nil && errB == nil:
+		return va.Compare(vb)
+	case errA == nil:
+		// a is semver, b is not → a sorts after b
+		return 1
+	case errB == nil:
+		// b is semver, a is not → a sorts before b
+		return -1
+	default:
+		// Neither is semver — lexicographic.
+		if a < b {
+			return -1
 		}
-		if i < len(bParts) {
-			num := strings.SplitN(bParts[i], "-", 2)[0]
-			bv, _ = strconv.Atoi(num)
-		}
-		if av != bv {
-			if av < bv {
-				return -1
-			}
+		if a > b {
 			return 1
 		}
+		return 0
 	}
-
-	// Numeric parts equal — fall back to string comparison for pre-release
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
 // SwitchCurrent atomically switches the `current` symlink to point to newVersion.

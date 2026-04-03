@@ -133,21 +133,35 @@ func TestVersionSatisfies(t *testing.T) {
 	}
 }
 
-func TestParseVersionParts(t *testing.T) {
+func TestCoerceVersion(t *testing.T) {
 	tests := []struct {
-		input string
-		want  [3]int
+		input   string
+		wantNil bool
+		major   uint64
+		minor   uint64
+		patch   uint64
 	}{
-		{"22.1.0", [3]int{22, 1, 0}},
-		{"18.0.0", [3]int{18, 0, 0}},
-		{"1.0.0-beta.1", [3]int{1, 0, 0}},
-		{"3.12", [3]int{3, 12, 0}},
-		{"27.3.1,", [3]int{27, 3, 1}},
+		{"22.1.0", false, 22, 1, 0},
+		{"18.0.0", false, 18, 0, 0},
+		{"1.0.0-beta.1", false, 1, 0, 0},
+		{"3.12", false, 3, 12, 0},
+		{"27.3.1,", false, 27, 3, 1},
 	}
 	for _, tt := range tests {
-		got := parseVersionParts(tt.input)
-		if got != tt.want {
-			t.Errorf("parseVersionParts(%q) = %v, want %v", tt.input, got, tt.want)
+		got := coerceVersion(tt.input)
+		if tt.wantNil {
+			if got != nil {
+				t.Errorf("coerceVersion(%q) = %v, want nil", tt.input, got)
+			}
+			continue
+		}
+		if got == nil {
+			t.Errorf("coerceVersion(%q) = nil, want %d.%d.%d", tt.input, tt.major, tt.minor, tt.patch)
+			continue
+		}
+		if got.Major() != tt.major || got.Minor() != tt.minor || got.Patch() != tt.patch {
+			t.Errorf("coerceVersion(%q) = %d.%d.%d, want %d.%d.%d",
+				tt.input, got.Major(), got.Minor(), got.Patch(), tt.major, tt.minor, tt.patch)
 		}
 	}
 }

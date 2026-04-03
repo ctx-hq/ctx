@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/output"
@@ -24,11 +26,20 @@ type Client struct {
 }
 
 // New creates a new registry client.
+// Transport is cloned from http.DefaultTransport to preserve proxy, HTTP/2, and
+// connection pooling defaults; only dial/TLS/response-header timeouts are overridden.
+// No global http.Client.Timeout is set so that large downloads and uploads can
+// stream without being hard-cut — callers control deadlines via context.
 func New(baseURL, token string) *Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: 10 * time.Second}).DialContext
+	tr.TLSHandshakeTimeout = 10 * time.Second
+	tr.ResponseHeaderTimeout = 30 * time.Second
+
 	return &Client{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
 		Token:      token,
-		HTTPClient: http.DefaultClient,
+		HTTPClient: &http.Client{Transport: tr},
 	}
 }
 

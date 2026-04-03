@@ -288,6 +288,71 @@ func TestDirSize(t *testing.T) {
 	}
 }
 
+func TestInstalledVersions_MixedSemverAndRefs(t *testing.T) {
+	dir := t.TempDir()
+	pkgDir := filepath.Join(dir, "@community", "tool")
+
+	// Mix of semver versions and git branch/ref names
+	for _, v := range []string{"main", "1.0.0", "develop", "2.0.0", "1.10.0", "1.2.0"} {
+		if err := os.MkdirAll(filepath.Join(pkgDir, v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	inst := &Installer{DataDir: dir}
+	versions := inst.InstalledVersions("@community/tool")
+
+	// Non-semver refs should sort before semver versions,
+	// then semver versions in numeric order.
+	want := []string{"develop", "main", "1.0.0", "1.2.0", "1.10.0", "2.0.0"}
+	if len(versions) != len(want) {
+		t.Fatalf("expected %d versions, got %d: %v", len(want), len(versions), versions)
+	}
+	for i, v := range want {
+		if versions[i] != v {
+			t.Errorf("versions[%d] = %q, want %q", i, versions[i], v)
+		}
+	}
+}
+
+func TestPruneVersions_MixedSemverAndRefs(t *testing.T) {
+	dir := t.TempDir()
+	pkgDir := filepath.Join(dir, "@community", "tool")
+
+	// Create mixed versions with some content
+	for _, v := range []string{"main", "1.0.0", "2.0.0"} {
+		vDir := filepath.Join(pkgDir, v)
+		if err := os.MkdirAll(vDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(vDir, "SKILL.md"), []byte("v-"+v), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// current points to 2.0.0
+	if err := os.Symlink("2.0.0", filepath.Join(pkgDir, "current")); err != nil {
+		t.Fatal(err)
+	}
+
+	inst := &Installer{DataDir: dir}
+	// Keep 1 — should keep current (2.0.0), prune "main" and "1.0.0"
+	removed, _, err := inst.PruneVersions("@community/tool", 1)
+	if err != nil {
+		t.Fatalf("PruneVersions: %v", err)
+	}
+
+	// "main" sorts first (non-semver), then "1.0.0", then "2.0.0" (current, kept)
+	// So "main" and "1.0.0" should be pruned.
+	if len(removed) != 2 {
+		t.Fatalf("removed %d, want 2: %v", len(removed), removed)
+	}
+
+	remaining := inst.InstalledVersions("@community/tool")
+	if len(remaining) != 1 || remaining[0] != "2.0.0" {
+		t.Errorf("remaining = %v, want [2.0.0]", remaining)
+	}
+}
+
 func TestIsHidden(t *testing.T) {
 	tests := []struct {
 		name string
