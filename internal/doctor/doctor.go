@@ -14,6 +14,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/installstate"
+	"github.com/ctx-hq/ctx/internal/profile"
 )
 
 // Check represents a single diagnostic check result.
@@ -69,14 +70,22 @@ func RunChecks(version, token string) *Result {
 
 	// 3. Auth
 	if cfg != nil && token != "" {
-		add("auth", "pass", fmt.Sprintf("logged in as %s", cfg.Username))
+		username := ""
+		if res, err := profile.Resolve(""); err == nil {
+			username = res.Profile.Username
+		}
+		if username != "" {
+			add("auth", "pass", fmt.Sprintf("logged in as %s (profile: %s)", username, resolvedProfileName()))
+		} else {
+			add("auth", "pass", "logged in")
+		}
 	} else {
 		addHint("auth", "warn", "not logged in", "Run 'ctx login' to authenticate")
 	}
 
-	// 4. Registry connectivity
+	// 4. Registry connectivity — use profile-resolved registry for consistency.
 	if cfg != nil {
-		registryURL := cfg.RegistryURL()
+		registryURL := resolvedRegistryURL()
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Get(registryURL + "/v1/health")
 		if err != nil {
@@ -231,4 +240,27 @@ func RunChecks(version, token string) *Result {
 	}
 
 	return result
+}
+
+// resolvedProfileName returns the resolved profile name, or "default".
+func resolvedProfileName() string {
+	res, err := profile.Resolve("")
+	if err != nil {
+		return "default"
+	}
+	return res.Name
+}
+
+// resolvedRegistryURL returns the registry URL from the resolved profile,
+// falling back to config, then the default.
+func resolvedRegistryURL() string {
+	res, err := profile.Resolve("")
+	if err == nil && res.Profile.Registry != "" {
+		return res.Profile.Registry
+	}
+	cfg, cfgErr := config.Load()
+	if cfgErr == nil {
+		return cfg.RegistryURL()
+	}
+	return config.DefaultRegistry
 }

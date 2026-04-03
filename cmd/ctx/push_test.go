@@ -203,7 +203,7 @@ func TestResolveSkillByName_Found(t *testing.T) {
 	}
 	writeTestManifest(t, skillDir, "@alice/gc", "0.1.0")
 
-	cfg := &config.Config{Username: "alice"}
+	cfg := &config.Config{}
 	dir, err := resolveSkillByName("gc", cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func TestResolveSkillByName_NotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{Username: "alice"}
+	cfg := &config.Config{}
 	_, err := resolveSkillByName("nonexistent", cfg)
 	if err == nil {
 		t.Fatal("expected error for nonexistent skill")
@@ -244,7 +244,7 @@ func TestResolveSkillByName_Ambiguous(t *testing.T) {
 		writeTestManifest(t, dir, "@"+scope+"/gc", "0.1.0")
 	}
 
-	cfg := &config.Config{Username: ""}
+	cfg := &config.Config{}
 	_, err := resolveSkillByName("gc", cfg)
 	if err == nil {
 		t.Fatal("expected error for ambiguous skill")
@@ -265,7 +265,7 @@ func TestResolveSkillByName_FullName(t *testing.T) {
 	}
 	writeTestManifest(t, skillDir, "@alice/gc", "0.1.0")
 
-	cfg := &config.Config{Username: ""}
+	cfg := &config.Config{}
 	dir, err := resolveSkillByName("alice/gc", cfg)
 	if err != nil {
 		t.Fatal(err)

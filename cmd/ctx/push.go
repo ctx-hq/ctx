@@ -257,8 +257,8 @@ func resolveSkillByName(name string, cfg *config.Config) (string, error) {
 	switch len(matches) {
 	case 0:
 		// Also try matching by logged-in username scope first.
-		if cfg.Username != "" {
-			dir := filepath.Join(skillsDir, cfg.Username, name)
+		if username := resolvedUsername(); username != "" {
+			dir := filepath.Join(skillsDir, username, name)
 			if _, statErr := os.Stat(filepath.Join(dir, manifest.FileName)); statErr == nil {
 				return dir, nil
 			}
@@ -832,7 +832,7 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 			)
 		}
 		output.Info("Found SKILL.md, auto-creating ctx.yaml...")
-		scope := cfg.Username
+		scope := resolvedUsername()
 		if scope == "" {
 			scope = "your-scope"
 		}
@@ -868,9 +868,9 @@ func pushDirectory(cmd *cobra.Command, dir string, w *output.Writer, cfg *config
 
 	// Auto-fill scope from logged-in user.
 	if scope := m.Scope(); scope == "your-scope" || scope == "" {
-		if cfg.Username != "" {
+		if username := resolvedUsername(); username != "" {
 			_, name := manifest.ParseFullName(m.Name)
-			m.Name = manifest.FormatFullName(cfg.Username, name)
+			m.Name = manifest.FormatFullName(username, name)
 			needsWrite = true
 		}
 	}

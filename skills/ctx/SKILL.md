@@ -58,6 +58,11 @@ triggers:
   - mcp server mode
   - ctx config
   - ctx upgrade
+  - ctx profile
+  - switch account
+  - switch profile
+  - multi account
+  - change identity
   - ctx notifications
   - ctx mcp test
 invocable: true
@@ -142,7 +147,15 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx access grant <pkg> <user...>` | | Grant access to users |
 | `ctx access revoke <pkg> <user...>` | | Revoke access from users |
 | `ctx login` | | Authenticate via GitHub |
+| `ctx login --profile <name>` | | Login to a named profile |
 | `ctx whoami` | | Show current authenticated user |
+| `ctx whoami --all` | | Show all profiles |
+| `ctx profile list` | `ctx profile ls` | List all profiles |
+| `ctx profile use <name>` | | Switch active profile |
+| `ctx profile show [name]` | | Show profile details |
+| `ctx profile remove <name>` | `ctx profile rm` | Remove a profile |
+| `ctx profile link <name>` | | Bind current project to profile |
+| `ctx profile unlink` | | Remove project profile binding |
 | `ctx skill install` | | Install ctx's own skill to agents |
 | `ctx workspace list` | `ctx ws ls` | List workspace members |
 | `ctx workspace init` | `ctx ws init` | Initialize workspace from existing repo |
@@ -199,6 +212,7 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `--caller` | Identify calling agent (e.g., `--caller claude`) |
 | `--offline` | Disable all network access |
 | `-v, --verbose` | Show verbose diagnostic output |
+| `-p, --profile` | Use a specific profile for this command |
 
 ## Common Workflows
 
@@ -245,6 +259,32 @@ ctx invitations accept <id>                    # (as alice) Accept invitation
 ctx access grant @myteam/pkg alice bob              # Grant access to specific users
 ctx org packages myteam                        # List team's packages
 ctx org remove myteam alice                    # Remove member (cascades access cleanup)
+```
+
+### Multi-Account & Profile Management
+```bash
+# Add accounts
+ctx login                            # Default profile
+ctx login --profile work             # Named profile (different GitHub account)
+
+# Switch globally
+ctx profile use work                 # All commands now use "work" identity
+
+# Per-project binding (like .nvmrc)
+cd ~/company-project
+ctx profile link work                # Creates .ctx-profile
+ctx push                             # Uses "work" identity automatically
+
+# Temporary override (no global switch)
+ctx publish --profile personal       # One-off, doesn't change active
+
+# CI/CD
+CTX_PROFILE=work ctx publish         # Env var override
+CTX_TOKEN=xxx ctx publish            # Direct token (highest priority)
+
+# View status
+ctx profile list                     # All profiles
+ctx whoami                           # Current identity + source
 ```
 
 ### Dist-tag Management

@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/doctor"
 	"github.com/ctx-hq/ctx/internal/installer"
+	"github.com/ctx-hq/ctx/internal/profile"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
 )
@@ -127,7 +129,17 @@ func RegisterDefaultTools(s *Server) {
 }
 
 func getToken() string {
-	token, err := auth.GetToken()
+	if envToken := os.Getenv("CTX_TOKEN"); envToken != "" {
+		return envToken
+	}
+	res, err := profile.Resolve("")
+	if err != nil {
+		if !errors.Is(err, profile.ErrNoProfile) {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		}
+		return ""
+	}
+	token, err := auth.GetProfileToken(res.Name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 		return ""
@@ -136,11 +148,31 @@ func getToken() string {
 }
 
 func getClient() (*registry.Client, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, err
+	registryURL := config.DefaultRegistry
+	token := ""
+
+	if envToken := os.Getenv("CTX_TOKEN"); envToken != "" {
+		token = envToken
 	}
-	return registry.New(cfg.RegistryURL(), getToken()), nil
+
+	res, err := profile.Resolve("")
+	if err == nil {
+		registryURL = res.Profile.RegistryURL()
+		if token == "" {
+			token, _ = auth.GetProfileToken(res.Name)
+		}
+	} else if !errors.Is(err, profile.ErrNoProfile) {
+		// A specific profile was referenced but not found — surface the error.
+		return nil, fmt.Errorf("resolve profile: %w", err)
+	} else {
+		// No profiles at all — fall back to config registry.
+		cfg, cfgErr := config.Load()
+		if cfgErr == nil {
+			registryURL = cfg.RegistryURL()
+		}
+	}
+
+	return registry.New(registryURL, token), nil
 }
 
 func handleSearch(ctx context.Context, args json.RawMessage) (any, error) {

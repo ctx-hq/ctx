@@ -61,10 +61,10 @@ var configListCmd = &cobra.Command{
 		}
 
 		settings := map[string]any{
-			"registry":     cfg.RegistryURL(),
+			"registry":     resolvedRegistryURL(),
 			"update_check": cfg.IsUpdateCheckEnabled(),
 			"network_mode": cfg.NetworkMode,
-			"username":     cfg.Username,
+			"username":     resolvedUsername(),
 		}
 		if settings["network_mode"] == "" {
 			settings["network_mode"] = "online"
@@ -95,7 +95,7 @@ var configGetCmd = &cobra.Command{
 		var value any
 		switch key {
 		case "registry":
-			value = cfg.RegistryURL()
+			value = resolvedRegistryURL()
 		case "update_check":
 			value = cfg.IsUpdateCheckEnabled()
 		case "network_mode":
@@ -105,7 +105,7 @@ var configGetCmd = &cobra.Command{
 			}
 			value = v
 		case "username":
-			value = cfg.Username
+			value = resolvedUsername()
 		default:
 			return w.Err(output.ErrUsage(fmt.Sprintf("unknown config key: %s", key)))
 		}

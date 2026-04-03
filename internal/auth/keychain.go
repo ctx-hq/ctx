@@ -7,10 +7,7 @@ type Keychain interface {
 	Delete(service, account string) error
 }
 
-const (
-	keychainService = "ctx-cli"
-	keychainAccount = "auth-token"
-)
+const keychainService = "ctx-cli"
 
 // defaultKeychain is set by platform-specific init code.
 // Falls back to file-based storage if no platform keychain is available.

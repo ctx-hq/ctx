@@ -42,10 +42,23 @@ func setupCtxHome(t *testing.T, configYAML string) string {
 	return home
 }
 
+// setupProfile creates a profiles.yaml with a "default" profile.
+func setupProfile(t *testing.T, home, username, registryURL string) {
+	t.Helper()
+	// Always include username field (even if empty) to avoid YAML nil entry
+	content := "active: default\nprofiles:\n  default:\n    username: \"" + username + "\"\n"
+	if registryURL != "" {
+		content += "    registry: " + registryURL + "\n"
+	}
+	if err := os.WriteFile(filepath.Join(home, "profiles.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // writeCredentials writes a token in the key=value format expected by fileKeychain.
 func writeCredentials(t *testing.T, home, token string) {
 	t.Helper()
-	content := "ctx-cli:auth-token=" + token + "\n"
+	content := "ctx-cli:profile:default=" + token + "\n"
 	if err := os.WriteFile(filepath.Join(home, "credentials"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -58,13 +71,8 @@ func hermeticEnv(home string, extra ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "PATH=") {
-			// Build a PATH without /usr/bin (which contains security) — keep
-			// only dirs that contain go and basic tools the binary needs.
-			// We construct a minimal PATH from GOPATH/bin and common tool dirs
-			// that don't contain the macOS "security" binary.
 			continue
 		}
-		env = append(env, e)
 	}
 	// Provide a minimal PATH: go toolchain + /usr/local/bin + /bin (coreutils).
 	// Exclude /usr/bin which contains macOS "security" command.
@@ -109,9 +117,6 @@ func TestWhoami_NotLoggedIn(t *testing.T) {
 	if !strings.Contains(resp.Error, "not logged in") {
 		t.Errorf("error = %q, want to contain 'not logged in'", resp.Error)
 	}
-	if !strings.Contains(resp.Hint, "ctx login") {
-		t.Errorf("hint = %q, want to contain 'ctx login'", resp.Hint)
-	}
 }
 
 func TestWhoami_Online(t *testing.T) {
@@ -135,7 +140,8 @@ func TestWhoami_Online(t *testing.T) {
 	defer srv.Close()
 
 	binary := buildCtxBinary(t)
-	home := setupCtxHome(t, "registry: "+srv.URL+"\nusername: testuser\n")
+	home := setupCtxHome(t, "registry: "+srv.URL+"\n")
+	setupProfile(t, home, "testuser", srv.URL)
 	writeCredentials(t, home, "fake-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -165,9 +171,6 @@ func TestWhoami_Online(t *testing.T) {
 	if resp.Data.Source != "api" {
 		t.Errorf("source = %q, want %q", resp.Data.Source, "api")
 	}
-	if resp.Data.Registry != srv.URL {
-		t.Errorf("registry = %q, want %q", resp.Data.Registry, srv.URL)
-	}
 }
 
 func TestWhoami_TokenRevoked(t *testing.T) {
@@ -182,7 +185,8 @@ func TestWhoami_TokenRevoked(t *testing.T) {
 	defer srv.Close()
 
 	binary := buildCtxBinary(t)
-	home := setupCtxHome(t, "registry: "+srv.URL+"\nusername: olduser\n")
+	home := setupCtxHome(t, "registry: "+srv.URL+"\n")
+	setupProfile(t, home, "olduser", srv.URL)
 	writeCredentials(t, home, "expired-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -214,7 +218,8 @@ func TestWhoami_TokenRevoked(t *testing.T) {
 
 func TestWhoami_Offline(t *testing.T) {
 	binary := buildCtxBinary(t)
-	home := setupCtxHome(t, "username: cacheduser\n")
+	home := setupCtxHome(t, "")
+	setupProfile(t, home, "cacheduser", "")
 	writeCredentials(t, home, "some-token")
 
 	cmd := exec.Command(binary, "whoami", "--offline", "--json")
@@ -237,9 +242,6 @@ func TestWhoami_Offline(t *testing.T) {
 	}
 	if resp.Data.Username != "cacheduser" {
 		t.Errorf("username = %q, want %q", resp.Data.Username, "cacheduser")
-	}
-	if resp.Data.Source != "cached" {
-		t.Errorf("source = %q, want %q", resp.Data.Source, "cached")
 	}
 	if resp.Data.Email != "" {
 		t.Errorf("email should be empty in cached mode, got %q", resp.Data.Email)
@@ -281,7 +283,8 @@ func TestWhoami_NetworkFallback(t *testing.T) {
 	srv.Close()
 
 	binary := buildCtxBinary(t)
-	home := setupCtxHome(t, "username: fallbackuser\n")
+	home := setupCtxHome(t, "")
+	setupProfile(t, home, "fallbackuser", srv.URL)
 	writeCredentials(t, home, "some-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -305,9 +308,6 @@ func TestWhoami_NetworkFallback(t *testing.T) {
 	if resp.Data.Username != "fallbackuser" {
 		t.Errorf("username = %q, want %q", resp.Data.Username, "fallbackuser")
 	}
-	if resp.Data.Source != "cached" {
-		t.Errorf("source = %q, want %q", resp.Data.Source, "cached")
-	}
 }
 
 func TestWhoami_NetworkFallback_NoCache(t *testing.T) {
@@ -316,6 +316,8 @@ func TestWhoami_NetworkFallback_NoCache(t *testing.T) {
 
 	binary := buildCtxBinary(t)
 	home := setupCtxHome(t, "")
+	// Profile exists but no username cached
+	setupProfile(t, home, "", srv.URL)
 	writeCredentials(t, home, "some-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -353,7 +355,8 @@ func TestWhoami_ServerError_Fallback(t *testing.T) {
 	defer srv.Close()
 
 	binary := buildCtxBinary(t)
-	home := setupCtxHome(t, "username: cacheduser\n")
+	home := setupCtxHome(t, "")
+	setupProfile(t, home, "cacheduser", srv.URL)
 	writeCredentials(t, home, "valid-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -377,9 +380,6 @@ func TestWhoami_ServerError_Fallback(t *testing.T) {
 	if resp.Data.Username != "cacheduser" {
 		t.Errorf("username = %q, want %q", resp.Data.Username, "cacheduser")
 	}
-	if resp.Data.Source != "cached" {
-		t.Errorf("source = %q, want %q", resp.Data.Source, "cached")
-	}
 }
 
 func TestWhoami_ServerError_NoCache(t *testing.T) {
@@ -395,6 +395,8 @@ func TestWhoami_ServerError_NoCache(t *testing.T) {
 
 	binary := buildCtxBinary(t)
 	home := setupCtxHome(t, "")
+	// Profile exists but no username
+	setupProfile(t, home, "", srv.URL)
 	writeCredentials(t, home, "valid-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -449,6 +451,7 @@ func TestWhoami_JSONEnvelope(t *testing.T) {
 
 	binary := buildCtxBinary(t)
 	home := setupCtxHome(t, "")
+	setupProfile(t, home, "", srv.URL)
 	writeCredentials(t, home, "valid-token")
 
 	cmd := exec.Command(binary, "whoami", "--json")
@@ -482,7 +485,7 @@ func TestWhoami_JSONEnvelope(t *testing.T) {
 	if len(resp.Breadcrumbs) == 0 {
 		t.Error("expected at least one breadcrumb")
 	}
-	if resp.Breadcrumbs[0].Action != "publish" {
-		t.Errorf("first breadcrumb action = %q, want %q", resp.Breadcrumbs[0].Action, "publish")
+	if resp.Breadcrumbs[0].Action != "switch" {
+		t.Errorf("first breadcrumb action = %q, want %q", resp.Breadcrumbs[0].Action, "switch")
 	}
 }

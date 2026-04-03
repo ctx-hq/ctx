@@ -58,7 +58,8 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		return err
 	}
 
-	if cfg.Username == "" {
+	username := resolvedUsername()
+	if username == "" {
 		return output.ErrAuth("username not set — run 'ctx login' first")
 	}
 
@@ -108,7 +109,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	skillName = slugify(skillName)
 
 	// Resolve base version from existing local package (if any)
-	scope := cfg.Username
+	scope := username
 	version := resolveBaseVersion(scope, skillName)
 	if opts.versionBump != "" {
 		bumped, bumpErr := manifest.BumpVersion(version, opts.versionBump)

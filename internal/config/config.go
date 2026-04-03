@@ -13,10 +13,9 @@ const (
 )
 
 // Config represents the CLI configuration stored at ~/.ctx/config.yaml.
-// Secrets (tokens) are stored in the system keychain, not here.
+// Identity (username, auth token) is managed by the profile system (profiles.yaml + keychain).
 type Config struct {
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 
 	// Privacy settings
 	UpdateCheck *bool  `yaml:"update_check,omitempty" json:"update_check,omitempty"`

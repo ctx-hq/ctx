@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/introspect"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
@@ -68,8 +67,7 @@ Examples:
 		}
 
 		// Step 5: Determine metadata
-		cfg, _ := config.Load()
-		scope := cfg.Username
+		scope := resolvedUsername()
 		if scope == "" {
 			scope = "community"
 		}

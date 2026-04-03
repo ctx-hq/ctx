@@ -25,6 +25,7 @@ var (
 	flagYes     bool
 	flagOffline bool
 	flagVerbose bool
+	flagProfile string
 )
 
 // writerKey is the context key for the output Writer.
@@ -106,6 +107,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Skip confirmation prompts")
 	rootCmd.PersistentFlags().BoolVar(&flagOffline, "offline", false, "Disable all network access")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show verbose diagnostic output")
+	rootCmd.PersistentFlags().StringVarP(&flagProfile, "profile", "p", "", "Use a specific profile for this command")
 
 	rootCmd.AddCommand(
 		installCmd,
@@ -127,5 +129,6 @@ func init() {
 		enrichCmd,
 		whoamiCmd,
 		workspaceCmd,
+		profileCmd,
 	)
 }

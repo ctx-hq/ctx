@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/gitutil"
 	"github.com/ctx-hq/ctx/internal/initdetect"
 	"github.com/ctx-hq/ctx/internal/license"
@@ -363,12 +362,8 @@ Examples:
 
 // resolveScope returns the user's scope from config, falling back to "local".
 func resolveScope() string {
-	cfg, err := config.Load()
-	if err != nil {
-		return "local"
-	}
-	if cfg.Username != "" {
-		return cfg.Username
+	if username := resolvedUsername(); username != "" {
+		return username
 	}
 	return "local"
 }

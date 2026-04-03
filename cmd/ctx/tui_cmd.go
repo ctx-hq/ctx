@@ -7,8 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/ctx-hq/ctx/internal/auth"
-	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/registry"
@@ -32,17 +30,11 @@ var tuiCmd = &cobra.Command{
 			return output.ErrUsage("TUI is incompatible with --json, --quiet, or --agent flags")
 		}
 
-		// Load config
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-
 		// Get auth token
-		token, _ := auth.GetToken()
+		token := getToken()
 
 		// Create registry client and installer
-		reg := registry.New(cfg.RegistryURL(), token)
+		reg := registry.New(resolvedRegistryURL(), token)
 		res := resolver.New(reg)
 		inst := installer.New(reg, res)
 
@@ -57,7 +49,7 @@ var tuiCmd = &cobra.Command{
 		// Create and run program
 		m := tuiapp.New(svc)
 		p := tea.NewProgram(m)
-		_, err = p.Run()
+		_, err := p.Run()
 		return err
 	},
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/output"
+	"github.com/ctx-hq/ctx/internal/profile"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/spf13/cobra"
 )
@@ -18,9 +19,12 @@ type WhoamiInfo struct {
 	Username  string `json:"username"`
 	Email     string `json:"email,omitempty"`
 	AvatarURL string `json:"avatar_url,omitempty"`
+	Profile   string `json:"profile"`
+	Source    string `json:"source"` // "api", "cached", or resolve source
 	Registry  string `json:"registry"`
-	Source    string `json:"source"` // "api" or "cached"
 }
+
+var flagWhoamiAll bool
 
 var whoamiCmd = &cobra.Command{
 	Use:   "whoami",
@@ -29,22 +33,35 @@ var whoamiCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
 
+		// --all: show all profiles
+		if flagWhoamiAll {
+			return whoamiAll(w)
+		}
+
 		token := getToken()
 		if token == "" {
 			return output.ErrAuth("not logged in")
 		}
 
-		cfg, err := config.Load()
+		res, err := profile.Resolve(flagProfile)
 		if err != nil {
+			if errors.Is(err, profile.ErrNoProfile) {
+				return output.ErrAuth("not logged in")
+			}
 			return err
 		}
 
-		registryURL := cfg.RegistryURL()
-		offline := flagOffline || cfg.IsOffline()
+		registryURL := res.Profile.RegistryURL()
+		offline := flagOffline
+		if !offline {
+			if cfg, err := config.Load(); err == nil {
+				offline = cfg.IsOffline()
+			}
+		}
 
 		// Offline mode: use cached info only
 		if offline {
-			return whoamiCached(w, cfg, registryURL)
+			return whoamiCached(w, res)
 		}
 
 		// Online: try API with timeout
@@ -60,12 +77,11 @@ var whoamiCmd = &cobra.Command{
 				case apiErr.StatusCode == 401:
 					return output.ErrAuth("token expired or revoked")
 				case apiErr.StatusCode >= 500:
-					// Server error: fall back to cached username
-					if cfg.Username != "" {
+					if res.Profile.Username != "" {
 						if w.IsStyled() {
 							output.Warn("registry returned server error, showing cached info")
 						}
-						return whoamiCached(w, cfg, registryURL)
+						return whoamiCached(w, res)
 					}
 					return output.FromHTTPStatus(apiErr.StatusCode, apiErr.Msg)
 				default:
@@ -73,28 +89,31 @@ var whoamiCmd = &cobra.Command{
 				}
 			}
 
-			// JSON decode error (e.g. 200 OK with malformed body) — not a network issue.
+			// JSON decode error
 			var jsonErr *json.SyntaxError
 			var jsonTypeErr *json.UnmarshalTypeError
 			if errors.As(err, &jsonErr) || errors.As(err, &jsonTypeErr) {
 				return output.ErrAPI(502, "unexpected response from registry")
 			}
 
-			// True network/connection error: fall back to cached username
-			if cfg.Username != "" {
+			// True network error: fall back to cached
+			if res.Profile.Username != "" {
 				if w.IsStyled() {
 					output.Warn("could not reach registry, showing cached info")
 				}
-				return whoamiCached(w, cfg, registryURL)
+				return whoamiCached(w, res)
 			}
 			return output.ErrNetwork(err)
 		}
 
 		// Side effect: update cached username if it changed
-		if me.Username != cfg.Username {
-			cfg.Username = me.Username
-			if err := cfg.Save(); err != nil && w.IsStyled() {
-				output.Warn("failed to update cached username: " + err.Error())
+		if me.Username != res.Profile.Username {
+			store, loadErr := profile.Load()
+			if loadErr == nil {
+				if p, ok := store.Profiles[res.Name]; ok {
+					p.Username = me.Username
+					_ = store.Save()
+				}
 			}
 		}
 
@@ -102,32 +121,94 @@ var whoamiCmd = &cobra.Command{
 			Username:  me.Username,
 			Email:     me.Email,
 			AvatarURL: me.AvatarURL,
-			Registry:  registryURL,
+			Profile:   res.Name,
 			Source:    "api",
+			Registry:  registryURL,
+		}
+
+		summary := fmt.Sprintf("logged in as %s (profile: %s)", me.Username, res.Name)
+		if res.Source != "global" && res.Source != "default" {
+			summary += fmt.Sprintf(" [from %s]", res.Source)
 		}
 
 		return w.OK(info,
-			output.WithSummary(fmt.Sprintf("logged in as %s", me.Username)),
+			output.WithSummary(summary),
 			output.WithBreadcrumbs(
-				output.Breadcrumb{Action: "publish", Command: "ctx publish", Description: "Publish a package"},
+				output.Breadcrumb{Action: "switch", Command: "ctx profile use <name>", Description: "Switch active profile"},
+				output.Breadcrumb{Action: "profiles", Command: "ctx profile list", Description: "List all profiles"},
 			),
 		)
 	},
 }
 
-func whoamiCached(w *output.Writer, cfg *config.Config, registryURL string) error {
-	if cfg.Username == "" {
+func init() {
+	whoamiCmd.Flags().BoolVar(&flagWhoamiAll, "all", false, "Show all profiles")
+}
+
+func whoamiCached(w *output.Writer, res *profile.ResolveResult) error {
+	if res.Profile.Username == "" {
 		return output.ErrAuth("not logged in (no cached username)")
 	}
 	info := &WhoamiInfo{
-		Username: cfg.Username,
-		Registry: registryURL,
-		Source:   "cached",
+		Username: res.Profile.Username,
+		Profile:  res.Name,
+		Source:   res.Source,
+		Registry: res.Profile.RegistryURL(),
 	}
 	return w.OK(info,
-		output.WithSummary(fmt.Sprintf("logged in as %s (cached)", cfg.Username)),
+		output.WithSummary(fmt.Sprintf("logged in as %s (profile: %s, cached)", res.Profile.Username, res.Name)),
 		output.WithBreadcrumbs(
-			output.Breadcrumb{Action: "publish", Command: "ctx publish", Description: "Publish a package"},
+			output.Breadcrumb{Action: "switch", Command: "ctx profile use <name>", Description: "Switch active profile"},
 		),
 	)
 }
+
+func whoamiAll(w *output.Writer) error {
+	store, err := profile.Load()
+	if err != nil {
+		return err
+	}
+
+	if len(store.Profiles) == 0 {
+		return output.ErrAuth("no profiles configured")
+	}
+
+	// Resolve current active for marking
+	currentName := ""
+	currentSource := ""
+	if res, err := profile.Resolve(flagProfile); err == nil {
+		currentName = res.Name
+		currentSource = res.Source
+	}
+
+	type profileEntry struct {
+		Name     string `json:"name"`
+		Username string `json:"username"`
+		Registry string `json:"registry"`
+		Active   bool   `json:"active"`
+		Source   string `json:"source,omitempty"`
+	}
+
+	var entries []profileEntry
+	for name, p := range store.Profiles {
+		e := profileEntry{
+			Name:     name,
+			Username: p.Username,
+			Registry: p.RegistryURL(),
+			Active:   name == currentName,
+		}
+		if name == currentName {
+			e.Source = currentSource
+		}
+		entries = append(entries, e)
+	}
+
+	return w.OK(entries,
+		output.WithSummary(fmt.Sprintf("%d profiles", len(entries))),
+		output.WithBreadcrumbs(
+			output.Breadcrumb{Action: "switch", Command: "ctx profile use <name>", Description: "Switch active profile"},
+			output.Breadcrumb{Action: "login", Command: "ctx login --profile <name>", Description: "Add a new profile"},
+		),
+	)
+}
+

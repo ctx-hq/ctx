@@ -78,6 +78,7 @@ func TestVisibilitySet_Online(t *testing.T) {
 
 	binary := buildCtxBinary(t)
 	home := setupCtxHome(t, "")
+	setupProfile(t, home, "testuser", srv.URL)
 	writeCredentials(t, home, "valid-token")
 
 	cmd := exec.Command(binary, "visibility", "@scope/pkg", "private", "--json")
