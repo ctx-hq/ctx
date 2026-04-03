@@ -191,7 +191,7 @@ func TestStyler_TypeBadge_NoColor(t *testing.T) {
 func TestFlag_ColorNever_ForcesASCII(t *testing.T) {
 	// --color=never should always produce ASCII profile (no color)
 	w := NewWriter(WithStdout(&bytes.Buffer{}), WithStderr(&bytes.Buffer{}), WithColorMode(ColorNever))
-	out := w.styler.Bold("test")
+	out := w.errStyler.Bold("test")
 	if out != "test" {
 		t.Errorf("ColorNever: Bold should return plain text, got %q", out)
 	}
@@ -200,7 +200,7 @@ func TestFlag_ColorNever_ForcesASCII(t *testing.T) {
 func TestFlag_ColorAlways_ForcesTrueColor(t *testing.T) {
 	// --color=always should produce TrueColor profile (full color)
 	w := NewWriter(WithStdout(&bytes.Buffer{}), WithStderr(&bytes.Buffer{}), WithColorMode(ColorAlways))
-	out := w.styler.Bold("test")
+	out := w.errStyler.Bold("test")
 	if !strings.Contains(out, "\033[") {
 		t.Errorf("ColorAlways: Bold should contain ANSI, got %q", out)
 	}

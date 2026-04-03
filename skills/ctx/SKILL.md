@@ -202,6 +202,7 @@ Choose the command matching the current platform. Both are zero-interaction — 
 |------|-------------|
 | `--json` | Full JSON envelope with breadcrumbs |
 | `--quiet` | Raw JSON data only |
+| `--human` | Force human-readable output (even in pipes) |
 | `--agent` | Agent mode (quiet + JSON errors) |
 | `--color=auto\|always\|never` | Color output control (respects NO_COLOR) |
 | `--md` | Markdown table output |

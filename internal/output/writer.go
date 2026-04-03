@@ -109,7 +109,8 @@ type Writer struct {
 	colorMode ColorMode
 	stdout    io.Writer
 	stderr    io.Writer
-	styler    *Styler
+	outStyler *Styler // color decisions for stdout
+	errStyler *Styler // color decisions for stderr
 }
 
 // --- Context key for Writer propagation ---
@@ -159,31 +160,32 @@ func NewWriter(opts ...WriterOption) *Writer {
 		opt(w)
 	}
 
-	// Build color profile based on color mode and stdout.
-	w.styler = NewStyler(w.detectProfile())
+	// Build per-stream color profiles. stdout and stderr may point to
+	// different destinations (e.g. `ctx list 2>log`), so each stream
+	// gets its own Styler to avoid writing ANSI into redirected files.
+	//
+	// When --human forces styled output (FormatStyled) and no explicit
+	// --color flag was given, promote stdout to TrueColor so the user
+	// actually sees colors in pipes/redirects.
+	outProfile := w.detectProfileFor(w.stdout)
+	if w.format == FormatStyled && w.colorMode == ColorAuto && outProfile == colorprofile.ASCII {
+		outProfile = colorprofile.TrueColor
+	}
+	w.outStyler = NewStyler(outProfile)
+	w.errStyler = NewStyler(w.detectProfileFor(w.stderr))
 
 	return w
 }
 
-// detectProfile resolves the effective colorprofile.Profile based on ColorMode
-// and the underlying writers. In auto mode, we detect from stdout (where
-// human-readable data rows go) and stderr independently, then use the higher
-// of the two. This avoids the case where `ctx list 2>file` would incorrectly
-// disable color on stdout just because stderr was redirected.
-func (w *Writer) detectProfile() colorprofile.Profile {
+// detectProfileFor resolves the colorprofile.Profile for a specific stream.
+func (w *Writer) detectProfileFor(stream io.Writer) colorprofile.Profile {
 	switch w.colorMode {
 	case ColorNever:
 		return colorprofile.ASCII
 	case ColorAlways:
 		return colorprofile.TrueColor
 	default: // ColorAuto
-		env := os.Environ()
-		outProfile := colorprofile.Detect(w.stdout, env)
-		errProfile := colorprofile.Detect(w.stderr, env)
-		if outProfile > errProfile {
-			return outProfile
-		}
-		return errProfile
+		return colorprofile.Detect(stream, os.Environ())
 	}
 }
 
@@ -209,9 +211,10 @@ func (w *Writer) IsMachine() bool {
 	return f == FormatJSON || f == FormatQuiet || f == FormatIDs || f == FormatCount
 }
 
-// Styler returns the Writer's Styler for direct style access.
+// Styler returns the stderr Styler for direct style access by callers
+// that build custom formatted output to stderr (e.g. push status tables).
 func (w *Writer) Styler() *Styler {
-	return w.styler
+	return w.errStyler
 }
 
 // --- Human-readable status output methods (write to stderr) ---
@@ -219,37 +222,37 @@ func (w *Writer) Styler() *Styler {
 // Success prints a success message with a green checkmark to stderr.
 func (w *Writer) Success(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Success("\u2713"), msg)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Success("\u2713"), msg)
 }
 
 // Errorf prints an error message with a red cross to stderr.
 // Named Errorf to avoid collision with the structured Err() method.
 func (w *Writer) Errorf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Error("\u2717"), msg)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Error("\u2717"), msg)
 }
 
 // Warn prints a warning message with a yellow exclamation to stderr.
 func (w *Writer) Warn(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Warning("!"), msg)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Warning("!"), msg)
 }
 
 // Info prints an info message with a cyan arrow to stderr.
 func (w *Writer) Info(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Info("\u2192"), msg)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Info("\u2192"), msg)
 }
 
 // Header prints a section header in bold to stderr.
 func (w *Writer) Header(text string) {
-	_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.styler.Bold(text))
+	_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.errStyler.Bold(text))
 }
 
 // PrintDim prints dimmed text to stderr.
 func (w *Writer) PrintDim(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s\n", w.styler.Dim(msg))
+	_, _ = fmt.Fprintf(w.stderr, "%s\n", w.errStyler.Dim(msg))
 }
 
 // Verbose prints a diagnostic message to stderr only when verbose mode is active.
@@ -258,7 +261,7 @@ func (w *Writer) Verbose(ctx context.Context, format string, args ...any) {
 		return
 	}
 	msg := fmt.Sprintf(format, args...)
-	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Dim("[verbose]"), msg)
+	_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Dim("[verbose]"), msg)
 }
 
 // --- Structured output helpers (write to stdout) ---
@@ -290,7 +293,7 @@ func (w *Writer) List(items []string) {
 
 // Separator prints a horizontal rule to stderr.
 func (w *Writer) Separator() {
-	_, _ = fmt.Fprintln(w.stderr, w.styler.Dim(strings.Repeat("\u2500", 40)))
+	_, _ = fmt.Fprintln(w.stderr, w.errStyler.Dim(strings.Repeat("\u2500", 40)))
 }
 
 // PrintLinkedAgents prints a compact summary of linked agents.
@@ -306,7 +309,7 @@ func (w *Writer) PrintLinkedAgents(names []string) {
 	} else {
 		display = fmt.Sprintf("%s + %d more", strings.Join(names[:maxShow], ", "), len(names)-maxShow)
 	}
-	_, _ = fmt.Fprintf(w.stderr, "%s Linked to %s\n", w.styler.Success("\u2713"), display)
+	_, _ = fmt.Fprintf(w.stderr, "%s Linked to %s\n", w.errStyler.Success("\u2713"), display)
 }
 
 // --- Structured output (OK / Err) ---
@@ -356,11 +359,11 @@ func (w *Writer) Err(err error) error {
 	}
 
 	// Styled error output
-	if _, err := fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Error("\u2717"), cliErr.Message); err != nil {
+	if _, err := fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Error("\u2717"), cliErr.Message); err != nil {
 		return err
 	}
 	if cliErr.Hint != "" {
-		if _, err := fmt.Fprintf(w.stderr, "  %s\n", w.styler.Dim("Hint: "+cliErr.Hint)); err != nil {
+		if _, err := fmt.Fprintf(w.stderr, "  %s\n", w.errStyler.Dim("Hint: "+cliErr.Hint)); err != nil {
 			return err
 		}
 	}
@@ -396,7 +399,7 @@ func (w *Writer) writeHuman(resp *Response) error {
 
 	if len(items) == 0 {
 		if resp.Summary != "" {
-			_, _ = fmt.Fprintln(w.stderr, w.styler.Dim(resp.Summary))
+			_, _ = fmt.Fprintln(w.stderr, w.errStyler.Dim(resp.Summary))
 		}
 		return nil
 	}
@@ -417,17 +420,17 @@ func (w *Writer) writeHuman(resp *Response) error {
 // writeHumanMeta renders summary, notice, and breadcrumbs for human output.
 func (w *Writer) writeHumanMeta(resp *Response) {
 	if resp.Summary != "" {
-		_, _ = fmt.Fprintf(w.stderr, "\n  %s\n", w.styler.Dim(resp.Summary))
+		_, _ = fmt.Fprintf(w.stderr, "\n  %s\n", w.errStyler.Dim(resp.Summary))
 	}
 	if resp.Notice != "" {
-		_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.styler.Info("\u2192"), resp.Notice)
+		_, _ = fmt.Fprintf(w.stderr, "%s %s\n", w.errStyler.Info("\u2192"), resp.Notice)
 	}
 	if len(resp.Breadcrumbs) > 0 {
-		_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.styler.Dim("Next steps:"))
+		_, _ = fmt.Fprintf(w.stderr, "\n%s\n", w.errStyler.Dim("Next steps:"))
 		for _, b := range resp.Breadcrumbs {
 			_, _ = fmt.Fprintf(w.stderr, "  %s  %s\n",
-				w.styler.Info(b.Command),
-				w.styler.Dim(b.Description))
+				w.errStyler.Info(b.Command),
+				w.errStyler.Dim(b.Description))
 		}
 	}
 }
@@ -508,10 +511,10 @@ func (w *Writer) printMapRow(m map[string]any) {
 	if name != "" {
 		typeBadge := ""
 		if typ != "" {
-			typeBadge = " " + w.styler.TypeBadge(typ)
+			typeBadge = " " + w.outStyler.TypeBadge(typ)
 		}
 		_, _ = fmt.Fprintf(w.stdout, "  %s%s %s\n",
-			PadRight(w.styler.Name(name), 30), typeBadge, w.styler.Dim(extra))
+			PadRight(w.outStyler.Name(name), 30), typeBadge, w.outStyler.Dim(extra))
 	} else {
 		// Fallback: print all keys
 		parts := make([]string, 0)
@@ -595,12 +598,15 @@ func isTTY(w io.Writer) bool {
 
 // ResolveFormat determines the output format from flag values.
 // Returns an error if multiple mutually exclusive flags are set.
-func ResolveFormat(jsonFlag, quietFlag, mdFlag, idsFlag, countFlag, agentFlag bool) (Format, error) {
+func ResolveFormat(jsonFlag, quietFlag, humanFlag, mdFlag, idsFlag, countFlag, agentFlag bool) (Format, error) {
 	count := 0
 	if jsonFlag {
 		count++
 	}
 	if quietFlag {
+		count++
+	}
+	if humanFlag {
 		count++
 	}
 	if mdFlag {
@@ -616,7 +622,7 @@ func ResolveFormat(jsonFlag, quietFlag, mdFlag, idsFlag, countFlag, agentFlag bo
 		count++
 	}
 	if count > 1 {
-		return FormatAuto, ErrUsage("output format flags are mutually exclusive: --json, --quiet, --md, --ids-only, --count, --agent")
+		return FormatAuto, ErrUsage("output format flags are mutually exclusive: --json, --quiet, --human, --md, --ids-only, --count, --agent")
 	}
 
 	switch {
@@ -624,6 +630,8 @@ func ResolveFormat(jsonFlag, quietFlag, mdFlag, idsFlag, countFlag, agentFlag bo
 		return FormatJSON, nil
 	case quietFlag:
 		return FormatQuiet, nil
+	case humanFlag:
+		return FormatStyled, nil
 	case mdFlag:
 		return FormatMarkdown, nil
 	case idsFlag:

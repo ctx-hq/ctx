@@ -256,24 +256,25 @@ func TestErr_PlainError(t *testing.T) {
 func TestResolveFormat(t *testing.T) {
 	tests := []struct {
 		name   string
-		flags  [6]bool // json, quiet, md, ids, count, agent
+		flags  [7]bool // json, quiet, human, md, ids, count, agent
 		want   Format
 		errMsg string
 	}{
-		{"none", [6]bool{}, FormatAuto, ""},
-		{"json", [6]bool{true, false, false, false, false, false}, FormatJSON, ""},
-		{"quiet", [6]bool{false, true, false, false, false, false}, FormatQuiet, ""},
-		{"md", [6]bool{false, false, true, false, false, false}, FormatMarkdown, ""},
-		{"ids", [6]bool{false, false, false, true, false, false}, FormatIDs, ""},
-		{"count", [6]bool{false, false, false, false, true, false}, FormatCount, ""},
-		{"agent", [6]bool{false, false, false, false, false, true}, FormatQuiet, ""},
-		{"mutual_exclusive", [6]bool{true, true, false, false, false, false}, FormatAuto, "mutually exclusive"},
-		{"triple_conflict", [6]bool{true, false, true, true, false, false}, FormatAuto, "mutually exclusive"},
+		{"none", [7]bool{}, FormatAuto, ""},
+		{"json", [7]bool{true, false, false, false, false, false, false}, FormatJSON, ""},
+		{"quiet", [7]bool{false, true, false, false, false, false, false}, FormatQuiet, ""},
+		{"human", [7]bool{false, false, true, false, false, false, false}, FormatStyled, ""},
+		{"md", [7]bool{false, false, false, true, false, false, false}, FormatMarkdown, ""},
+		{"ids", [7]bool{false, false, false, false, true, false, false}, FormatIDs, ""},
+		{"count", [7]bool{false, false, false, false, false, true, false}, FormatCount, ""},
+		{"agent", [7]bool{false, false, false, false, false, false, true}, FormatQuiet, ""},
+		{"mutual_exclusive", [7]bool{true, true, false, false, false, false, false}, FormatAuto, "mutually exclusive"},
+		{"triple_conflict", [7]bool{true, false, false, true, true, false, false}, FormatAuto, "mutually exclusive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.flags
-			got, err := ResolveFormat(f[0], f[1], f[2], f[3], f[4], f[5])
+			got, err := ResolveFormat(f[0], f[1], f[2], f[3], f[4], f[5], f[6])
 			if tt.errMsg != "" {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -775,7 +776,7 @@ func TestWriter_PrintMapRow_NoType(t *testing.T) {
 }
 
 func TestResolveFormat_ErrorMessage(t *testing.T) {
-	_, err := ResolveFormat(true, true, false, false, false, false)
+	_, err := ResolveFormat(true, true, false, false, false, false, false)
 	if err == nil {
 		t.Fatal("expected error for conflicting flags")
 	}

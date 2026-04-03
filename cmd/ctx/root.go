@@ -16,6 +16,7 @@ var (
 	// Global flags
 	flagJSON    bool
 	flagQuiet   bool
+	flagHuman   bool
 	flagColor   string
 	flagMD      bool
 	flagIDsOnly bool
@@ -57,7 +58,7 @@ delegating to native package managers (brew, npm, pip, cargo) when appropriate.
 		}
 
 		// Resolve output format from flags
-		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagMD, flagIDsOnly, flagCount, flagAgent)
+		format, err := output.ResolveFormat(flagJSON, flagQuiet, flagHuman, flagMD, flagIDsOnly, flagCount, flagAgent)
 		if err != nil {
 			return err
 		}
@@ -94,6 +95,7 @@ func init() {
 	// Output format flags (mutually exclusive)
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON envelope")
 	rootCmd.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "Output data only, no envelope")
+	rootCmd.PersistentFlags().BoolVar(&flagHuman, "human", false, "Force human-readable output (even in pipes)")
 	rootCmd.PersistentFlags().BoolVar(&flagMD, "md", false, "Output as Markdown")
 	rootCmd.PersistentFlags().BoolVar(&flagIDsOnly, "ids-only", false, "Output one ID per line")
 	rootCmd.PersistentFlags().BoolVar(&flagCount, "count", false, "Output count only")
