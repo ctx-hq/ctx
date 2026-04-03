@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.0](https://github.com/ctx-hq/ctx/compare/v0.27.2...v0.28.0) (2026-04-03)
+
+
+### Features
+
+* **init:** promote type selection to the first interactive prompt ([98d6e8f](https://github.com/ctx-hq/ctx/commit/98d6e8ff6d2c75755636f5a719fb61841b12719e))
+* **output:** add detail view for single objects, improve whoami output ([8cada71](https://github.com/ctx-hq/ctx/commit/8cada7155d56e302c48026529c5171a665533f74))
+
 ## [0.27.2](https://github.com/ctx-hq/ctx/compare/v0.27.1...v0.27.2) (2026-04-03)
 
 
