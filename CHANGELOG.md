@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.2](https://github.com/ctx-hq/ctx/compare/v0.27.1...v0.27.2) (2026-04-03)
+
+
+### Bug Fixes
+
+* **selfupdate:** use GitHub token for update checks to avoid API rate limiting ([cb4cca9](https://github.com/ctx-hq/ctx/commit/cb4cca90de785057d989241d6518879b4fdd582a))
+
 ## [0.27.1](https://github.com/ctx-hq/ctx/compare/v0.27.0...v0.27.1) (2026-04-03)
 
 
