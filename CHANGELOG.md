@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/ctx-hq/ctx/compare/v0.32.0...v0.33.0) (2026-04-04)
+
+
+### Features
+
+* **init:** auto-detect CLI install methods and require install section for CLI packages ([5c3501a](https://github.com/ctx-hq/ctx/commit/5c3501ae758573e53b66ec8513053a23ec9831cc))
+
 ## [0.32.0](https://github.com/ctx-hq/ctx/compare/v0.31.0...v0.32.0) (2026-04-04)
 
 
