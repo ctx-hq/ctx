@@ -268,7 +268,8 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 				cliState, err := installer.InstallCLI(cmd.Context(), &m)
 				if err != nil {
 					w.Warn("CLI install: %v", err)
-				} else {
+				}
+				if cliState != nil {
 					state.CLI = cliState
 				}
 			}
@@ -276,7 +277,8 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 			cliState, err := installer.InstallCLI(cmd.Context(), &m)
 			if err != nil {
 				w.Warn("CLI install: %v", err)
-			} else {
+			}
+			if cliState != nil {
 				state.CLI = cliState
 			}
 		}

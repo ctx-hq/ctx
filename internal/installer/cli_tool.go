@@ -69,15 +69,17 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) (*installstate.CLISta
 		return state, fmt.Errorf("install via %s: %w", a.Name(), err)
 	}
 
-	// Verify installation
-	if err := adapter.Verify(m.CLI.Binary, m.CLI.Verify); err != nil {
-		return state, fmt.Errorf("installed but verify failed: %w", err)
-	}
-
-	// Resolve binary path
+	// Resolve binary path before verify — needed for uninstall even if verify fails
 	if binaryPath, lookErr := exec.LookPath(m.CLI.Binary); lookErr == nil {
 		state.BinaryPath = binaryPath
 	}
+
+	// Verify installation
+	if err := adapter.Verify(m.CLI.Binary, m.CLI.Verify); err != nil {
+		// State is still returned so uninstall can clean up the binary
+		return state, fmt.Errorf("installed but verify failed: %w", err)
+	}
+
 	state.Verified = true
 	state.Status = "ok"
 
