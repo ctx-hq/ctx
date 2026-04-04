@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.34.0](https://github.com/ctx-hq/ctx/compare/v0.33.0...v0.34.0) (2026-04-04)
+
+
+### Features
+
+* **adapter:** implement ScriptAdapter uninstall with path safety guards ([8c7cb88](https://github.com/ctx-hq/ctx/commit/8c7cb88bb8c2c76b559fffbd8a43baa211234994))
+* **adapter:** pass package metadata env vars to install scripts and simplify publish source checks ([b84cfd3](https://github.com/ctx-hq/ctx/commit/b84cfd3a148c1ac1e2fa5d8250dfb494267da9f0))
+
 ## [0.33.0](https://github.com/ctx-hq/ctx/compare/v0.32.0...v0.33.0) (2026-04-04)
 
 
