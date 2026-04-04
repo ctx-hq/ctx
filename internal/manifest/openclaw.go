@@ -132,18 +132,16 @@ func OpenClawToCtx(fm *openClawFrontmatter) *Manifest {
 		}
 	}
 
-	// Map runtime requirements as keywords (ctx doesn't have a
-	// generic require field on skill type yet, only on CLI).
-	if oc.Requires != nil && (len(oc.Requires.Bins) > 0 || len(oc.Requires.Env) > 0) {
-		if len(oc.Requires.Env) > 0 {
-			for _, env := range oc.Requires.Env {
-				m.Keywords = appendUnique(m.Keywords, "env:"+env)
-			}
+	// Map runtime requirements as keywords. ctx doesn't have a dedicated
+	// requires field on SkillSpec yet, so "env:X"/"bin:X" keywords are the
+	// only landing spot. These are exempt from the reserved-prefix validation
+	// (which applies to hand-authored ctx.yaml, not OpenClaw imports).
+	if oc.Requires != nil {
+		for _, env := range oc.Requires.Env {
+			m.Keywords = appendUnique(m.Keywords, "env:"+env)
 		}
-		if len(oc.Requires.Bins) > 0 {
-			for _, bin := range oc.Requires.Bins {
-				m.Keywords = appendUnique(m.Keywords, "bin:"+bin)
-			}
+		for _, bin := range oc.Requires.Bins {
+			m.Keywords = appendUnique(m.Keywords, "bin:"+bin)
 		}
 	}
 

@@ -428,12 +428,19 @@ func buildManifest(skill importedSkill, scope string, rootDir string, repo strin
 		}
 	}
 
-	// Cap keywords to 10 to avoid noise
+	// Triggers go to both skill.tags (semantic) and keywords (discovery).
+	// skill.tags is the canonical home, but keywords is still needed for
+	// search until skill.tags has end-to-end consumer support.
+	// Cap to 10 to avoid noise.
 	if len(skill.tags) > 0 {
+		if m.Skill == nil {
+			m.Skill = &manifest.SkillSpec{}
+		}
 		tags := skill.tags
 		if len(tags) > 10 {
 			tags = tags[:10]
 		}
+		m.Skill.Tags = tags
 		m.Keywords = tags
 	}
 	return m

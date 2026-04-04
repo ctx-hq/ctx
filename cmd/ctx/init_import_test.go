@@ -272,8 +272,16 @@ func TestBuildSkillManifest(t *testing.T) {
 	if m.Description != "Translate text" {
 		t.Errorf("description = %q", m.Description)
 	}
+	// Triggers go to both skill.tags and keywords
 	if len(m.Keywords) != 2 {
 		t.Errorf("keywords = %v, want 2", m.Keywords)
+	}
+	if m.Skill == nil || len(m.Skill.Tags) != 2 {
+		tags := 0
+		if m.Skill != nil {
+			tags = len(m.Skill.Tags)
+		}
+		t.Errorf("skill.tags = %d, want 2", tags)
 	}
 }
 
@@ -325,15 +333,25 @@ func TestBuildManifest_SkillEntryPath(t *testing.T) {
 	}
 }
 
-func TestBuildManifest_KeywordsCapped(t *testing.T) {
+func TestBuildManifest_TriggersGoToSkillTags(t *testing.T) {
 	tags := make([]string, 30)
 	for i := range tags {
 		tags[i] = fmt.Sprintf("tag-%d", i)
 	}
 	skill := importedSkill{name: "test", tags: tags}
 	m := buildManifest(skill, "", t.TempDir(), "", "")
+	// Triggers go to both skill.tags and keywords (capped at 10)
+	if len(m.Keywords) == 0 {
+		t.Error("keywords should be populated with triggers for search")
+	}
 	if len(m.Keywords) > 10 {
 		t.Errorf("keywords = %d, want <= 10 (should be capped)", len(m.Keywords))
+	}
+	if m.Skill == nil || len(m.Skill.Tags) == 0 {
+		t.Error("skill.tags should be populated with triggers")
+	}
+	if len(m.Skill.Tags) > 10 {
+		t.Errorf("skill.tags = %d, want <= 10 (should be capped)", len(m.Skill.Tags))
 	}
 }
 
@@ -736,9 +754,16 @@ func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
 	if m.Description != "My CLI tool" {
 		t.Errorf("description = %q, want 'My CLI tool'", m.Description)
 	}
-	// Keywords capped
+	// Triggers go to both skill.tags and keywords
 	if len(m.Keywords) != 2 {
 		t.Errorf("keywords = %v, want 2", m.Keywords)
+	}
+	if m.Skill == nil || len(m.Skill.Tags) != 2 {
+		tags := 0
+		if m.Skill != nil {
+			tags = len(m.Skill.Tags)
+		}
+		t.Errorf("skill.tags = %d, want 2", tags)
 	}
 }
 

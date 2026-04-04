@@ -66,6 +66,7 @@ func Validate(m *Manifest) []string {
 		errs = append(errs, validateCLI(m)...)
 	}
 
+	errs = append(errs, validateKeywords(m)...)
 	errs = append(errs, validateSource(m)...)
 	errs = append(errs, validateInstall(m)...)
 	errs = append(errs, validateUpstream(m)...)
@@ -107,6 +108,22 @@ func validateCore(m *Manifest) []string {
 		errs = append(errs, "description must be 1024 characters or less")
 	}
 
+	return errs
+}
+
+// validateKeywords checks keyword count and length.
+// Note: "env:" and "bin:" prefixed keywords are allowed — they originate from
+// OpenClaw requires mappings and have no dedicated field yet.
+func validateKeywords(m *Manifest) []string {
+	var errs []string
+	if len(m.Keywords) > 20 {
+		errs = append(errs, fmt.Sprintf("keywords: %d items exceeds maximum of 20", len(m.Keywords)))
+	}
+	for i, kw := range m.Keywords {
+		if len(kw) > 50 {
+			errs = append(errs, fmt.Sprintf("keywords[%d]: %q exceeds 50 character limit", i, kw))
+		}
+	}
 	return errs
 }
 

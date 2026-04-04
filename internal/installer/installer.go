@@ -92,10 +92,18 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 	versionDir := i.VersionDir(resolution.FullName, resolution.Version)
 	pkgDir := i.PackageDir(resolution.FullName)
 
-	// Check if this exact version is already installed (with valid manifest)
+	// Check if this exact version is already installed (with valid manifest).
+	// For skill packages, also verify SKILL.md exists — older installs may be
+	// missing it (e.g., artifact installs before the overlay logic was added).
 	versionExists := false
 	if _, err := os.Stat(filepath.Join(versionDir, "manifest.json")); err == nil {
 		versionExists = true
+		// Integrity check: skill packages need SKILL.md for agent linking.
+		if m.Skill != nil {
+			if _, err := os.Stat(filepath.Join(versionDir, "SKILL.md")); err != nil {
+				versionExists = false // force re-download to repair
+			}
+		}
 	}
 
 	// Check for platform-specific artifact and override download URL if available
@@ -124,6 +132,31 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 
 	// Download and extract to versioned directory (skip if version already exists)
 	if !versionExists && downloadURL != "" {
+		if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+			return nil, nil, fmt.Errorf("create package dir: %w", err)
+		}
+		tmpDir, err := os.MkdirTemp(pkgDir, ".ctx-install-*")
+		if err != nil {
+			return nil, nil, fmt.Errorf("create temp dir: %w", err)
+		}
+		defer func() { _ = os.RemoveAll(tmpDir) }() // clean up on failure
+
+		// For artifact installs with bundled skills, first download the registry
+		// archive to get skill files (ctx.yaml, SKILL.md), then overlay the
+		// platform binary from the artifact on top.
+		if isArtifact && m.Skill != nil && resolution.Source == "registry" {
+			archiveBody, dlErr := i.Registry.Download(ctx, resolution.FullName, resolution.Version)
+			if dlErr == nil {
+				if exErr := extractArchive(archiveBody, tmpDir); exErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to extract skill files from registry archive: %v\n", exErr)
+				}
+				_ = archiveBody.Close()
+			} else {
+				fmt.Fprintf(os.Stderr, "warning: failed to download skill files from registry: %v\n", dlErr)
+			}
+			// Non-fatal: skill linking won't work but binary install continues
+		}
+
 		var body io.ReadCloser
 		switch resolution.Source {
 		case "registry":
@@ -153,16 +186,6 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 			hasher := sha256.New()
 			hashReader := io.TeeReader(body, hasher)
 
-			// Extract to a temp dir first, then atomically move to version dir
-			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
-				return nil, nil, fmt.Errorf("create package dir: %w", err)
-			}
-			tmpDir, err := os.MkdirTemp(pkgDir, ".ctx-install-*")
-			if err != nil {
-				return nil, nil, fmt.Errorf("create temp dir: %w", err)
-			}
-			defer func() { _ = os.RemoveAll(tmpDir) }() // clean up on failure
-
 			if err := extractArchive(io.NopCloser(hashReader), tmpDir); err != nil {
 				return nil, nil, fmt.Errorf("extract package: %w", err)
 			}
@@ -183,20 +206,22 @@ func (i *Installer) InstallFiles(ctx context.Context, ref string) (*resolver.Res
 				// Store computed hash for lockfile integrity
 				resolution.ArchiveSHA256 = actualSHA
 			}
+		} else {
+			return nil, nil, fmt.Errorf("unsupported source %q for download", resolution.Source)
+		}
 
-			// Write manifest into the temp dir
-			manifestData, err := json.MarshalIndent(m, "", "  ")
-			if err != nil {
-				return nil, nil, fmt.Errorf("marshal manifest: %w", err)
-			}
-			if err := os.WriteFile(filepath.Join(tmpDir, "manifest.json"), manifestData, 0o644); err != nil {
-				return nil, nil, fmt.Errorf("write manifest: %w", err)
-			}
+		// Write manifest into the temp dir
+		manifestData, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal manifest: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, "manifest.json"), manifestData, 0o644); err != nil {
+			return nil, nil, fmt.Errorf("write manifest: %w", err)
+		}
 
-			// Atomic move: rename temp to version dir
-			if err := os.Rename(tmpDir, versionDir); err != nil {
-				return nil, nil, fmt.Errorf("rename to version dir: %w", err)
-			}
+		// Atomic move: rename temp to version dir
+		if err := os.Rename(tmpDir, versionDir); err != nil {
+			return nil, nil, fmt.Errorf("rename to version dir: %w", err)
 		}
 	} else if !versionExists && downloadURL == "" {
 		// No download URL — create version dir with manifest and content

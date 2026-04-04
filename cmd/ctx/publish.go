@@ -99,6 +99,11 @@ Examples:
 			}
 		}
 
+		// Apply --version: override version from ctx.yaml (for CI: git tag version)
+		if flagVersion != "" {
+			m.Version = flagVersion
+		}
+
 		// Apply --tag: append prerelease suffix (temporary, does not modify ctx.yaml)
 		if flagPublishTag != "" {
 			m.Version = appendPrerelease(m.Version, flagPublishTag)

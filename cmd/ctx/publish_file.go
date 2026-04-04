@@ -19,6 +19,7 @@ import (
 var flagBump string
 var flagForce bool
 var flagPrivate bool
+var flagVersion string
 
 var (
 	flagPublishAll           bool
@@ -29,6 +30,7 @@ var (
 )
 
 func init() {
+	publishCmd.Flags().StringVar(&flagVersion, "version", "", "Override version (for CI: pass git tag version)")
 	publishCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().BoolVar(&flagForce, "force", false, "Skip install method validation")
 	publishCmd.Flags().BoolVar(&flagPrivate, "private", false, "Publish as a private package")

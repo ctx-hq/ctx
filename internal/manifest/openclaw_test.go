@@ -128,7 +128,7 @@ func TestOpenClawToCtx_RequiresEnv(t *testing.T) {
 	if m.Name != "padel" {
 		t.Errorf("Name = %q, want padel", m.Name)
 	}
-	// Check keywords contain env and bin markers.
+	// Runtime requirements are preserved as keywords (no dedicated field yet).
 	envFound := 0
 	binFound := 0
 	for _, kw := range m.Keywords {
@@ -165,6 +165,7 @@ func TestOpenClawToCtx_RequiresBins(t *testing.T) {
 		t.Fatal("expected non-nil manifest")
 	}
 
+	// Runtime requirements are preserved as keywords (no dedicated field yet).
 	binCount := 0
 	for _, kw := range m.Keywords {
 		if kw == "bin:ffmpeg" || kw == "bin:ffprobe" {

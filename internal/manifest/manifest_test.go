@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -1313,4 +1314,81 @@ func TestValidateHookCommandSafety(t *testing.T) {
 	if !hasErr {
 		t.Errorf("expected metacharacter error for hook command, got: %v", errs)
 	}
+}
+
+func TestValidateKeywords(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			Name:        "@test/pkg",
+			Version:     "1.0.0",
+			Type:        TypeSkill,
+			Description: "test",
+			Skill:       &SkillSpec{Entry: "SKILL.md"},
+		}
+	}
+
+	t.Run("valid keywords pass", func(t *testing.T) {
+		m := base()
+		m.Keywords = []string{"database", "api", "testing"}
+		errs := Validate(&m)
+		for _, e := range errs {
+			if strings.Contains(e, "keywords") {
+				t.Errorf("unexpected keyword error: %s", e)
+			}
+		}
+	})
+
+	t.Run("empty keywords pass", func(t *testing.T) {
+		m := base()
+		errs := Validate(&m)
+		for _, e := range errs {
+			if strings.Contains(e, "keywords") {
+				t.Errorf("unexpected keyword error: %s", e)
+			}
+		}
+	})
+
+	t.Run("too many keywords", func(t *testing.T) {
+		m := base()
+		m.Keywords = make([]string, 21)
+		for i := range m.Keywords {
+			m.Keywords[i] = fmt.Sprintf("kw-%d", i)
+		}
+		errs := Validate(&m)
+		found := false
+		for _, e := range errs {
+			if strings.Contains(e, "maximum of 20") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected max keywords error, got: %v", errs)
+		}
+	})
+
+	t.Run("keyword too long", func(t *testing.T) {
+		m := base()
+		m.Keywords = []string{strings.Repeat("a", 51)}
+		errs := Validate(&m)
+		found := false
+		for _, e := range errs {
+			if strings.Contains(e, "50 character") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected length error, got: %v", errs)
+		}
+	})
+
+	t.Run("env and bin prefixes allowed", func(t *testing.T) {
+		m := base()
+		m.Keywords = []string{"env:GITHUB_TOKEN", "bin:node"}
+		errs := Validate(&m)
+		for _, e := range errs {
+			if strings.Contains(e, "keyword") {
+				t.Errorf("unexpected keyword error: %s", e)
+			}
+		}
+	})
 }
