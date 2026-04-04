@@ -263,7 +263,6 @@ Examples:
 
 		switch pkgType {
 		case manifest.TypeSkill:
-			m.Keywords = meta.triggers
 			m.Skill.Entry = skillEntry
 			m.Skill.UserInvocable = &meta.invocable
 
@@ -547,9 +546,6 @@ func parseDirSource(dirPath string) (initMeta, error) {
 			version:     m.Version,
 			pkgType:     m.Type,
 		}
-		if m.Keywords != nil {
-			meta.triggers = m.Keywords
-		}
 		if m.Skill != nil && m.Skill.UserInvocable != nil {
 			meta.invocable = *m.Skill.UserInvocable
 		}
@@ -607,6 +603,9 @@ func parseDirSource(dirPath string) (initMeta, error) {
 			meta.body = body
 			if fm != nil {
 				meta.argHint = fm.ArgumentHint
+				if len(fm.Triggers) > 0 {
+					meta.triggers = fm.Triggers
+				}
 			}
 		}
 

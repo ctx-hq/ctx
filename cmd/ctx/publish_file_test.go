@@ -145,7 +145,6 @@ func TestBuildManifestFromFile(t *testing.T) {
 	m := manifest.Scaffold(manifest.TypeSkill, scope, fm.Name)
 	m.Version = "0.1.0"
 	m.Description = fm.Description
-	m.Keywords = fm.Triggers
 	m.Visibility = "private"
 	invocable := true
 	m.Skill.UserInvocable = &invocable
@@ -180,7 +179,6 @@ func TestStagingIntegration(t *testing.T) {
 	m := manifest.Scaffold(manifest.TypeSkill, "testuser", "test-skill")
 	m.Version = "0.1.0"
 	m.Description = fm.Description
-	m.Keywords = fm.Triggers
 	m.Visibility = "private"
 
 	// Marshal

@@ -149,8 +149,6 @@ func publishSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, op
 		triggers = []string{"/" + skillName}
 	}
 
-	keywords := triggers
-
 	invocable := true
 	if fm != nil {
 		invocable = fm.Invocable
@@ -167,7 +165,6 @@ func publishSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, op
 	m := manifest.Scaffold(manifest.TypeSkill, scope, skillName)
 	m.Version = version
 	m.Description = description
-	m.Keywords = keywords
 	m.Visibility = opts.defaultVisibility
 	if m.Skill == nil {
 		m.Skill = &manifest.SkillSpec{}

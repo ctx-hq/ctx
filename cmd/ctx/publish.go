@@ -548,12 +548,7 @@ func enrichFromSkillMD(m *manifest.Manifest, dir string, w *output.Writer) {
 		}
 	}
 
-	if len(m.Keywords) == 0 && len(fm.Triggers) > 0 {
-		m.Keywords = fm.Triggers
-		if w != nil {
-			w.Info("Auto-filled keywords from SKILL.md triggers")
-		}
-	}
+	// Don't auto-fill keywords from triggers — they serve different purposes.
 }
 
 // autoEnrichManifest fills in missing optional metadata fields from

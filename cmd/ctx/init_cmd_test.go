@@ -178,7 +178,6 @@ func TestParseDirSource_WithCtxYaml(t *testing.T) {
 	m := manifest.Scaffold(manifest.TypeSkill, "testuser", "my-skill")
 	m.Version = "1.2.0"
 	m.Description = "A test skill"
-	m.Keywords = []string{"/my-skill", "test"}
 	data, err := manifest.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
@@ -201,8 +200,9 @@ func TestParseDirSource_WithCtxYaml(t *testing.T) {
 	if meta.description != "A test skill" {
 		t.Errorf("description = %q", meta.description)
 	}
-	if len(meta.triggers) != 2 {
-		t.Errorf("triggers len = %d, want 2", len(meta.triggers))
+	// No SKILL.md present, so triggers should fall back to default
+	if len(meta.triggers) != 1 || meta.triggers[0] != "/my-skill" {
+		t.Errorf("triggers = %v, want [/my-skill]", meta.triggers)
 	}
 }
 

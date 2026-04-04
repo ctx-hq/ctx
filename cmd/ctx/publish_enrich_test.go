@@ -72,7 +72,7 @@ func TestEnrichFromSkillMD_NoFrontmatter(t *testing.T) {
 	}
 }
 
-func TestEnrichFromSkillMD_FillsKeywords(t *testing.T) {
+func TestEnrichFromSkillMD_TriggersNotCopiedToKeywords(t *testing.T) {
 	dir := t.TempDir()
 	content := "---\nname: test\ndescription: Test\ntriggers:\n  - /gc\n  - git commit\n---\n# Content\n"
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
@@ -85,11 +85,8 @@ func TestEnrichFromSkillMD_FillsKeywords(t *testing.T) {
 	}
 	enrichFromSkillMD(m, dir, nil)
 
-	if len(m.Keywords) != 2 {
-		t.Fatalf("keywords count = %d, want 2", len(m.Keywords))
-	}
-	if m.Keywords[0] != "/gc" || m.Keywords[1] != "git commit" {
-		t.Errorf("keywords = %v, want [/gc, git commit]", m.Keywords)
+	if len(m.Keywords) != 0 {
+		t.Errorf("keywords = %v, want empty (triggers should not become keywords)", m.Keywords)
 	}
 }
 
