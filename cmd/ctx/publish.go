@@ -1,8 +1,9 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
 )
+
+var errUpgradeCancelled = errors.New("upgrade cancelled")
 
 var publishCmd = &cobra.Command{
 	Use:   "publish [path]",
@@ -182,6 +185,15 @@ Examples:
 		// Publish
 		reg := registry.New(cfg.RegistryURL(), getToken())
 
+		// Auto-upgrade private→target visibility if needed.
+		if err := maybeUpgradeVisibility(cmd.Context(), reg, w, m.Name, m.Visibility, flagYes); err != nil {
+			if errors.Is(err, errUpgradeCancelled) {
+				w.Info("Cancelled.")
+				return nil
+			}
+			return err
+		}
+
 		w.Info("Publishing %s@%s...", m.Name, m.Version)
 
 		// Stage only package files (whitelist) and create archive.
@@ -220,7 +232,7 @@ Examples:
 			return err
 		}
 
-		packageURL, _ := url.JoinPath(cfg.WebURL(), "p", result.FullName)
+		packageURL := cfg.PackageWebURL(result.FullName)
 		pubBreadcrumbs := []output.Breadcrumb{
 			{Action: "view", Command: packageURL, Description: "View on getctx.org"},
 			{Action: "info", Command: "ctx info " + result.FullName, Description: "View package"},
@@ -384,12 +396,74 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 	}
 	defer func() { _ = archive.Close() }()
 
+	// Auto-upgrade private→target visibility if needed.
+	if err := maybeUpgradeVisibility(cmd.Context(), reg, w, m.Name, m.Visibility, true); err != nil {
+		return err
+	}
+
 	result, err := reg.Publish(cmd.Context(), data, archive, nil)
 	if err != nil {
 		return err
 	}
 
 	w.Success("Published %s@%s", result.FullName, result.Version)
+	return nil
+}
+
+// maybeUpgradeVisibility checks whether an existing private package needs its
+// visibility upgraded before publish. It respects targetVis from the manifest:
+//   - "" (unspecified) defaults to "public"
+//   - "private" → no upgrade, the user wants to stay private
+//   - "public" / "unlisted" → upgrade to that value
+//
+// NOTE: upgrade (freeze + visibility change) and publish are not atomic.
+// If publish fails after upgrade, the package visibility will already be changed.
+func maybeUpgradeVisibility(ctx context.Context, reg *registry.Client, w *output.Writer, fullName string, targetVis string, skipConfirm bool) error {
+	if targetVis == "" {
+		targetVis = "public"
+	}
+	if targetVis == "private" {
+		return nil
+	}
+
+	existing, err := reg.GetPackage(ctx, fullName)
+	if err != nil {
+		if registry.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if existing.Visibility != "private" {
+		return nil
+	}
+
+	if !skipConfirm {
+		p := prompt.DefaultPrompter()
+		confirmed, pErr := p.Confirm(
+			fmt.Sprintf("Package %s is currently private. Make it %s?", fullName, targetVis),
+			true,
+		)
+		if pErr != nil {
+			return pErr
+		}
+		if !confirmed {
+			return errUpgradeCancelled
+		}
+	}
+
+	if existing.Mutable {
+		w.Info("Freezing %s (mutable → immutable)...", fullName)
+		if err := reg.SetMutable(ctx, fullName, false); err != nil {
+			return fmt.Errorf("set mutable=false: %w", err)
+		}
+	}
+
+	w.Info("Making %s %s...", fullName, targetVis)
+	if err := reg.SetVisibility(ctx, fullName, targetVis); err != nil {
+		return fmt.Errorf("change visibility: %w", err)
+	}
+
 	return nil
 }
 

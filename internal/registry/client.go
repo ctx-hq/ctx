@@ -366,6 +366,12 @@ func (c *Client) SetVisibility(ctx context.Context, fullName, visibility string)
 	return c.doPatch(ctx, path, map[string]string{"visibility": visibility})
 }
 
+// SetMutable changes a package's mutable flag.
+func (c *Client) SetMutable(ctx context.Context, fullName string, mutable bool) error {
+	path := fmt.Sprintf("/v1/packages/%s/mutable", url.PathEscape(fullName))
+	return c.doPatch(ctx, path, map[string]bool{"mutable": mutable})
+}
+
 // --- Dist-tag APIs ---
 
 // ListTags lists dist-tags for a package.

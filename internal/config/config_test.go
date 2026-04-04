@@ -148,6 +148,25 @@ func TestConfig_WebURL_EnvOverride(t *testing.T) {
 	}
 }
 
+func TestConfig_PackageWebURL(t *testing.T) {
+	tests := []struct {
+		registry string
+		fullName string
+		want     string
+	}{
+		{"https://registry.getctx.org", "@scope/name", "https://getctx.org/package/@scope/name"},
+		{"https://registry.getctx.org", "@biao29/fastmail", "https://getctx.org/package/@biao29/fastmail"},
+		{"http://localhost:8080", "@test/pkg", "http://localhost:8080/package/@test/pkg"},
+		{"https://staging.getctx.org", "@org/tool", "https://staging.getctx.org/package/@org/tool"},
+	}
+	for _, tt := range tests {
+		cfg := &Config{Registry: tt.registry}
+		if got := cfg.PackageWebURL(tt.fullName); got != tt.want {
+			t.Errorf("PackageWebURL(%q, %q) = %q, want %q", tt.registry, tt.fullName, got, tt.want)
+		}
+	}
+}
+
 func TestConfig_PrivacyFieldsYAML(t *testing.T) {
 	f := false
 	cfg := &Config{

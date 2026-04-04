@@ -1,8 +1,8 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,6 +247,16 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	defer func() { _ = archive.Close() }()
 
 	reg := registry.New(cfg.RegistryURL(), token)
+
+	// Auto-upgrade private→target visibility if needed.
+	if err := maybeUpgradeVisibility(cmd.Context(), reg, w, fullName, opts.defaultVisibility, opts.skipConfirm); err != nil {
+		if errors.Is(err, errUpgradeCancelled) {
+			w.Info("Cancelled.")
+			return nil
+		}
+		return err
+	}
+
 	result, err := reg.Publish(cmd.Context(), manifestData, archive, nil)
 	if err != nil {
 		return err
@@ -289,7 +299,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 
 	// 15. Output
-	packageURL, _ := url.JoinPath(cfg.WebURL(), "p", result.FullName)
+	packageURL := cfg.PackageWebURL(result.FullName)
 	return w.OK(result,
 		output.WithSummary(fmt.Sprintf("Published %s@%s (%s)", result.FullName, result.Version, opts.defaultVisibility)),
 		output.WithBreadcrumbs(

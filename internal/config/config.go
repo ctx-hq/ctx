@@ -95,3 +95,11 @@ func (c *Config) WebURL() string {
 	u.Path = ""
 	return strings.TrimRight(u.String(), "/")
 }
+
+// PackageWebURL returns the web URL for a package detail page.
+// SSOT for all user-facing package URLs in the CLI.
+// Example: "https://getctx.org/package/@scope/name"
+func (c *Config) PackageWebURL(fullName string) string {
+	u, _ := url.JoinPath(c.WebURL(), "package", fullName)
+	return u
+}
