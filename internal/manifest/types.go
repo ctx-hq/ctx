@@ -46,7 +46,6 @@ type Manifest struct {
 	Dependencies map[string]string `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 
 	Visibility string `yaml:"visibility,omitempty" json:"visibility,omitempty"` // public, unlisted, private
-	Mutable    bool   `yaml:"mutable,omitempty" json:"mutable,omitempty"`       // allow version overwrite (private only)
 }
 
 // SourceSpec describes an external source for adapter packages (Homebrew formula pattern).

@@ -26,7 +26,7 @@ func requestKey(r *http.Request) string {
 // upgradeTestServer creates a test server that tracks API calls and responds
 // based on the given initial package state. Returns the server and a function
 // to retrieve the recorded calls.
-func upgradeTestServer(t *testing.T, visibility string, mutable bool, exists bool) (*httptest.Server, func() []string) {
+func upgradeTestServer(t *testing.T, visibility string, exists bool) (*httptest.Server, func() []string) {
 	t.Helper()
 	var mu sync.Mutex
 	var calls []string
@@ -48,12 +48,6 @@ func upgradeTestServer(t *testing.T, visibility string, mutable bool, exists boo
 				"full_name":  "@test/pkg",
 				"type":       "skill",
 				"visibility": visibility,
-				"mutable":    mutable,
-			})
-		case r.Method == "PATCH" && strings.HasSuffix(r.URL.Path, "/mutable"):
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"full_name": "@test/pkg",
-				"mutable":   false,
 			})
 		case r.Method == "PATCH" && strings.HasSuffix(r.URL.Path, "/visibility"):
 			var body map[string]string
@@ -88,7 +82,7 @@ func hasPATCH(calls []string, suffix string) bool {
 }
 
 func TestMaybeUpgradeVisibility_PrivateToPublic(t *testing.T) {
-	srv, getCalls := upgradeTestServer(t, "private", true, true)
+	srv, getCalls := upgradeTestServer(t, "private", true)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -99,12 +93,9 @@ func TestMaybeUpgradeVisibility_PrivateToPublic(t *testing.T) {
 	}
 
 	calls := getCalls()
-	// GET + PATCH mutable + PATCH visibility
-	if len(calls) != 3 {
-		t.Fatalf("expected 3 calls, got %d: %v", len(calls), calls)
-	}
-	if !hasPATCH(calls, "mutable") {
-		t.Error("expected PATCH mutable call")
+	// GET + PATCH visibility
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d: %v", len(calls), calls)
 	}
 	if !hasPATCH(calls, "visibility") {
 		t.Error("expected PATCH visibility call")
@@ -112,8 +103,7 @@ func TestMaybeUpgradeVisibility_PrivateToPublic(t *testing.T) {
 }
 
 func TestMaybeUpgradeVisibility_PrivateToPublic_DefaultEmpty(t *testing.T) {
-	// targetVis="" should default to "public" and trigger upgrade
-	srv, getCalls := upgradeTestServer(t, "private", true, true)
+	srv, getCalls := upgradeTestServer(t, "private", true)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -130,7 +120,7 @@ func TestMaybeUpgradeVisibility_PrivateToPublic_DefaultEmpty(t *testing.T) {
 }
 
 func TestMaybeUpgradeVisibility_PrivateToUnlisted(t *testing.T) {
-	srv, getCalls := upgradeTestServer(t, "private", false, true)
+	srv, getCalls := upgradeTestServer(t, "private", true)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -141,17 +131,13 @@ func TestMaybeUpgradeVisibility_PrivateToUnlisted(t *testing.T) {
 	}
 
 	calls := getCalls()
-	if hasPATCH(calls, "mutable") {
-		t.Error("should NOT call SetMutable when already immutable")
-	}
 	if !hasPATCH(calls, "visibility") {
 		t.Error("expected PATCH visibility call")
 	}
 }
 
 func TestMaybeUpgradeVisibility_TargetPrivate_NoUpgrade(t *testing.T) {
-	// When targetVis is "private", no API calls should be made at all
-	srv, getCalls := upgradeTestServer(t, "private", true, true)
+	srv, getCalls := upgradeTestServer(t, "private", true)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -168,7 +154,7 @@ func TestMaybeUpgradeVisibility_TargetPrivate_NoUpgrade(t *testing.T) {
 }
 
 func TestMaybeUpgradeVisibility_AlreadyPublic_NoUpgrade(t *testing.T) {
-	srv, getCalls := upgradeTestServer(t, "public", false, true)
+	srv, getCalls := upgradeTestServer(t, "public", true)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -186,7 +172,7 @@ func TestMaybeUpgradeVisibility_AlreadyPublic_NoUpgrade(t *testing.T) {
 }
 
 func TestMaybeUpgradeVisibility_NewPackage_NoUpgrade(t *testing.T) {
-	srv, getCalls := upgradeTestServer(t, "", false, false)
+	srv, getCalls := upgradeTestServer(t, "", false)
 	defer srv.Close()
 
 	w := output.NewWriter()
@@ -200,26 +186,5 @@ func TestMaybeUpgradeVisibility_NewPackage_NoUpgrade(t *testing.T) {
 	// Only GET (404), no PATCH
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 call (GET 404), got %d: %v", len(calls), calls)
-	}
-}
-
-func TestMaybeUpgradeVisibility_NotMutable_SkipFreeze(t *testing.T) {
-	srv, getCalls := upgradeTestServer(t, "private", false, true)
-	defer srv.Close()
-
-	w := output.NewWriter()
-	reg := registry.New(srv.URL, "test-token")
-	err := maybeUpgradeVisibility(context.Background(), reg, w, "@test/pkg", "public", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	calls := getCalls()
-	// GET + PATCH visibility (no PATCH mutable)
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 calls, got %d: %v", len(calls), calls)
-	}
-	if hasPATCH(calls, "mutable") {
-		t.Error("should NOT call SetMutable when already immutable")
 	}
 }

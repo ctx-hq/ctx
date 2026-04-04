@@ -147,7 +147,6 @@ func TestBuildManifestFromFile(t *testing.T) {
 	m.Description = fm.Description
 	m.Keywords = fm.Triggers
 	m.Visibility = "private"
-	m.Mutable = true
 	invocable := true
 	m.Skill.UserInvocable = &invocable
 
@@ -183,7 +182,6 @@ func TestStagingIntegration(t *testing.T) {
 	m.Description = fm.Description
 	m.Keywords = fm.Triggers
 	m.Visibility = "private"
-	m.Mutable = true
 
 	// Marshal
 	manifestData, err := manifest.Marshal(m)

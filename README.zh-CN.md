@@ -138,7 +138,7 @@ ctx whoami                          # 查看当前登录用户
 ctx init                            # 交互式生成 ctx.yaml
 ctx validate                        # 验证清单文件
 ctx publish                         # 发布到注册表（公开）
-ctx push                            # 推送为私有包（零摩擦）
+ctx publish --private               # 发布为私有包
 
 # 组织管理
 ctx org create <name>               # 创建组织

@@ -85,7 +85,6 @@ type PackageDetail struct {
 	Homepage   string           `json:"homepage,omitempty"`
 	Author     string           `json:"author,omitempty"`
 	Visibility string           `json:"visibility,omitempty"`
-	Mutable    bool             `json:"mutable,omitempty"`
 	Owner      *OwnerInfo       `json:"owner,omitempty"`
 	Versions   []VersionSummary `json:"versions,omitempty"`
 	CreatedAt  FlexTime         `json:"created_at"`

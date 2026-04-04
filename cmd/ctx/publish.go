@@ -48,10 +48,14 @@ Examples:
 
 		// Detect single-file input
 		if len(args) > 0 && isSingleFile(args[0]) {
-			return pushSingleFile(cmd, args[0], w, singleFileOpts{
-				defaultVisibility: "public",
-				mutable:           false,
+			vis := "public"
+			if flagPrivate {
+				vis = "private"
+			}
+			return publishSingleFile(cmd, args[0], w, singleFileOpts{
+				defaultVisibility: vis,
 				versionBump:       flagBump,
+				publishTag:        flagPublishTag,
 				skipConfirm:       flagYes,
 			})
 		}
@@ -498,13 +502,6 @@ func maybeUpgradeVisibility(ctx context.Context, reg *registry.Client, w *output
 		}
 		if !confirmed {
 			return errUpgradeCancelled
-		}
-	}
-
-	if existing.Mutable {
-		w.Info("Freezing %s (mutable → immutable)...", fullName)
-		if err := reg.SetMutable(ctx, fullName, false); err != nil {
-			return fmt.Errorf("set mutable=false: %w", err)
 		}
 	}
 

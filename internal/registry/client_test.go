@@ -393,48 +393,13 @@ func TestNewClientTransportTimeouts(t *testing.T) {
 	}
 }
 
-func TestClientSetMutable_PathAndMethod(t *testing.T) {
-	var gotMethod, gotRawPath string
-	var gotBody map[string]interface{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotRawPath = r.URL.RawPath
-		if gotRawPath == "" {
-			gotRawPath = r.URL.Path
-		}
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"full_name": "@test/pkg",
-			"mutable":   false,
-		})
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL, "tok")
-	err := c.SetMutable(context.Background(), "@test/pkg", false)
-	if err != nil {
-		t.Fatalf("SetMutable error: %v", err)
-	}
-	if gotMethod != "PATCH" {
-		t.Errorf("method = %q, want PATCH", gotMethod)
-	}
-	wantPath := "/v1/packages/@test%2Fpkg/mutable"
-	if gotRawPath != wantPath {
-		t.Errorf("raw path = %q, want %q", gotRawPath, wantPath)
-	}
-	if gotBody["mutable"] != false {
-		t.Errorf("body mutable = %v, want false", gotBody["mutable"])
-	}
-}
-
-func TestClientGetPackage_MutableField(t *testing.T) {
+func TestClientGetPackage_VisibilityField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"full_name":   "@test/pkg",
 			"type":        "skill",
 			"description": "test",
 			"visibility":  "private",
-			"mutable":     true,
 		})
 	}))
 	defer srv.Close()
@@ -443,9 +408,6 @@ func TestClientGetPackage_MutableField(t *testing.T) {
 	pkg, err := c.GetPackage(context.Background(), "@test/pkg")
 	if err != nil {
 		t.Fatalf("GetPackage error: %v", err)
-	}
-	if !pkg.Mutable {
-		t.Error("expected Mutable=true")
 	}
 	if pkg.Visibility != "private" {
 		t.Errorf("Visibility = %q, want private", pkg.Visibility)

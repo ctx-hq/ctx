@@ -11,7 +11,6 @@ import (
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
-	"github.com/ctx-hq/ctx/internal/pushstate"
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/staging"
 	"github.com/spf13/cobra"
@@ -30,7 +29,6 @@ var (
 )
 
 func init() {
-	pushCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().StringVar(&flagBump, "bump", "", "Version bump strategy (patch, minor, major)")
 	publishCmd.Flags().BoolVar(&flagForce, "force", false, "Skip install method validation")
 	publishCmd.Flags().BoolVar(&flagPrivate, "private", false, "Publish as a private package")
@@ -42,17 +40,17 @@ func init() {
 	publishCmd.Flags().StringVar(&flagPublishTag, "tag", "", "Publish with prerelease tag (e.g., canary, beta, rc)")
 }
 
-// singleFileOpts configures push vs publish behavior for single-file skills.
+// singleFileOpts configures behavior for single-file skill publishing.
 type singleFileOpts struct {
-	defaultVisibility string // "private" for push, "public" for publish
-	mutable           bool   // true for push
+	defaultVisibility string // "public" (default) or "private" (--private flag)
 	versionBump       string // "patch"/"minor"/"major"/""
+	publishTag        string // prerelease tag (canary, beta, rc)
 	skipConfirm       bool   // --yes flag
 	dryRun            bool   // --dry-run flag
 }
 
-// pushSingleFile handles `ctx push <file.md>` and `ctx publish <file.md>`.
-func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts singleFileOpts) error {
+// publishSingleFile handles `ctx publish <file.md>`.
+func publishSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts singleFileOpts) error {
 	// 1. Auth check
 	token := getToken()
 	if token == "" {
@@ -124,6 +122,10 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		}
 		version = bumped
 	}
+	if opts.publishTag != "" {
+		version = appendPrerelease(version, opts.publishTag)
+		w.Info("Publishing as prerelease: %s", version)
+	}
 	version, err = p.Text("Version", version)
 	if err != nil {
 		return err
@@ -167,7 +169,6 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	m.Description = description
 	m.Keywords = keywords
 	m.Visibility = opts.defaultVisibility
-	m.Mutable = opts.mutable
 	if m.Skill == nil {
 		m.Skill = &manifest.SkillSpec{}
 	}
@@ -190,7 +191,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 
 	// 9. Stage
-	stg, err := staging.New("ctx-push-")
+	stg, err := staging.New("ctx-publish-")
 	if err != nil {
 		return err
 	}
@@ -230,7 +231,7 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 			"full_name": fullName,
 			"version":   version,
 			"file":      filePath,
-		}, output.WithSummary(fmt.Sprintf("Would push %s@%s", fullName, version)))
+		}, output.WithSummary(fmt.Sprintf("Would publish %s@%s", fullName, version)))
 	}
 
 	// 12. Confirm
@@ -279,14 +280,6 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 	}
 	w.Success("Saved to %s", dest)
 
-	// Record push state.
-	if pst, loadErr := pushstate.Load(); loadErr == nil {
-		if h, hErr := pushstate.HashDir(dest); hErr == nil {
-			pst.RecordPush(fullName, h, result.Version, dest)
-			_ = pst.Save()
-		}
-	}
-
 	// 14. Link back to original location
 	absFilePath, _ := filepath.Abs(filePath)
 	skillMDPath := filepath.Join(dest, "SKILL.md")
@@ -310,8 +303,8 @@ func pushSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, opts 
 		output.WithBreadcrumbs(
 			output.Breadcrumb{Action: "view", Command: packageURL, Description: "View on getctx.org"},
 			output.Breadcrumb{Action: "install", Command: "ctx install " + result.FullName, Description: "Install on another device"},
-			output.Breadcrumb{Action: "update", Command: "ctx push " + dest, Description: "Push updates from local dir"},
-			output.Breadcrumb{Action: "bump", Command: "ctx push " + dest + " --bump patch", Description: "Bump version and push"},
+			output.Breadcrumb{Action: "update", Command: "ctx publish " + dest, Description: "Publish updates"},
+			output.Breadcrumb{Action: "bump", Command: "ctx publish " + dest + " --bump patch", Description: "Bump version and publish"},
 		),
 	)
 }

@@ -11,7 +11,6 @@ func ScaffoldWithVisibility(pkgType PackageType, scope, name, visibility string)
 func ScaffoldPrivate(scope, name string) *Manifest {
 	m := Scaffold(TypeSkill, scope, name)
 	m.Visibility = "private"
-	m.Mutable = true
 	return m
 }
 

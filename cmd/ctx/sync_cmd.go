@@ -71,7 +71,7 @@ var syncExportCmd = &cobra.Command{
 			output.WithSummary(fmt.Sprintf("Exported %d packages (%d syncable, %d unsyncable)", len(profile.Packages), syncable, unsyncable)),
 		}
 		if unsyncable > 0 {
-			opts = append(opts, output.WithNotice(fmt.Sprintf("%d packages have no remote source. Run 'ctx push' in their directories to make them syncable.", unsyncable)))
+			opts = append(opts, output.WithNotice(fmt.Sprintf("%d packages have no remote source. Run 'ctx publish' in their directories to make them syncable.", unsyncable)))
 		}
 
 		opts = append(opts, output.WithBreadcrumbs(

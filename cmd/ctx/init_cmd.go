@@ -355,7 +355,7 @@ Examples:
 			)
 		} else {
 			breadcrumbs = append(breadcrumbs,
-				output.Breadcrumb{Action: "publish", Command: "ctx push " + outDir, Description: "Publish to registry"},
+				output.Breadcrumb{Action: "publish", Command: "ctx publish " + outDir, Description: "Publish to registry"},
 			)
 		}
 		return w.OK(

@@ -117,7 +117,6 @@ func init() {
 		infoCmd,
 		listCmd,
 		publishCmd,
-		pushCmd,
 		loginCmd,
 		logoutCmd,
 		initCmd,

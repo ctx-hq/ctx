@@ -138,7 +138,7 @@ ctx whoami                          # show current authenticated user
 ctx init                            # interactive manifest scaffold
 ctx validate                        # validate your manifest
 ctx publish                         # publish to the registry (public)
-ctx push                            # push as private package (zero friction)
+ctx publish --private               # publish as private package
 
 # Organizations
 ctx org create <name>               # create an organization
