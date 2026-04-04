@@ -153,8 +153,28 @@ ARCHIVE_NAME="${BINARY}-${PLATFORM}.tar.gz"
 ARCHIVE_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE_NAME}"
 CHECKSUM_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
 
-download "$ARCHIVE_URL" "$TMPDIR/${ARCHIVE_NAME}" || die "failed to download ${ARCHIVE_URL}"
-download "$CHECKSUM_URL" "$TMPDIR/checksums.txt"  || die "failed to download checksums"
+download_with_retry() {
+  _url="$1"
+  _dest="$2"
+  _retries=3
+  _delay=5
+  _i=1
+  while [ "$_i" -le "$_retries" ]; do
+    if download "$_url" "$_dest"; then
+      return 0
+    fi
+    if [ "$_i" -lt "$_retries" ]; then
+      warn "download failed (attempt ${_i}/${_retries}), retrying in ${_delay}s..."
+      sleep "$_delay"
+      _delay=$((_delay * 2))
+    fi
+    _i=$((_i + 1))
+  done
+  return 1
+}
+
+download_with_retry "$ARCHIVE_URL" "$TMPDIR/${ARCHIVE_NAME}" || die "failed to download ${ARCHIVE_URL}"
+download_with_retry "$CHECKSUM_URL" "$TMPDIR/checksums.txt"  || die "failed to download checksums"
 
 # Exact match on archive name (avoid SBOM filename collision)
 EXPECTED=$(grep "  ${ARCHIVE_NAME}$" "$TMPDIR/checksums.txt" | awk '{print $1}')
