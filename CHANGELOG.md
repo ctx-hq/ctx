@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.34.1](https://github.com/ctx-hq/ctx/compare/v0.34.0...v0.34.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* **installer:** resolve binary path before verify so uninstall can clean up on failure ([cfc5623](https://github.com/ctx-hq/ctx/commit/cfc562355449c37ec0e6a02e9d764f3d652c531d))
+* **publish:** stop conflating triggers with keywords ([d178479](https://github.com/ctx-hq/ctx/commit/d178479d1f328aac05c27da00ba43f39d9dd5cea))
+
 ## [0.34.0](https://github.com/ctx-hq/ctx/compare/v0.33.0...v0.34.0) (2026-04-04)
 
 
