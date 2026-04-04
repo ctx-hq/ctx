@@ -262,6 +262,9 @@ func validateCLI(m *Manifest) []string {
 
 // hasInstallMethod returns true if at least one concrete install method is declared.
 func hasInstallMethod(i *InstallSpec) bool {
+	if i.Source == "artifact" {
+		return true
+	}
 	if i.Script != "" || i.Brew != "" || i.Npm != "" || i.Pip != "" || i.Gem != "" || i.Cargo != "" {
 		return true
 	}
@@ -334,11 +337,12 @@ func validateInstall(m *Manifest) []string {
 
 	if m.Install != nil {
 		if m.Install.Source != "" {
-			if !strings.HasPrefix(m.Install.Source, "github:") &&
+			if m.Install.Source != "artifact" &&
+				!strings.HasPrefix(m.Install.Source, "github:") &&
 				!strings.HasPrefix(m.Install.Source, "npm:") &&
 				!strings.HasPrefix(m.Install.Source, "pip:") &&
 				!strings.HasPrefix(m.Install.Source, "https://") {
-				errs = append(errs, fmt.Sprintf("install.source %q must start with github:, npm:, pip:, or https://", m.Install.Source))
+				errs = append(errs, fmt.Sprintf("install.source %q must be \"artifact\" or start with github:, npm:, pip:, or https://", m.Install.Source))
 			}
 		}
 		if m.Install.Script != "" && !strings.HasPrefix(m.Install.Script, "https://") {
