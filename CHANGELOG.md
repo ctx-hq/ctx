@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.30.0](https://github.com/ctx-hq/ctx/compare/v0.29.0...v0.30.0) (2026-04-04)
+
+
+### Features
+
+* **init:** add --import mode and enhance publish with --changed/--tag flags ([55b545e](https://github.com/ctx-hq/ctx/commit/55b545e63408bb7975d071ab9afa7af07b8b0c68))
+* **publish:** unify private-to-public visibility upgrade across all publish paths ([20aa1da](https://github.com/ctx-hq/ctx/commit/20aa1da2fa8e32de3715881e3914a501f2fc1655))
+
 ## [0.29.0](https://github.com/ctx-hq/ctx/compare/v0.28.0...v0.29.0) (2026-04-03)
 
 
