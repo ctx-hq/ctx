@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.0](https://github.com/ctx-hq/ctx/compare/v0.34.1...v0.35.0) (2026-04-04)
+
+
+### Features
+
+* **manifest:** support install.source=artifact for ctx-hosted binaries ([2dbc204](https://github.com/ctx-hq/ctx/commit/2dbc2044e7bdf5631d11d3e330ffaa74ca443671))
+* **publish:** add --version flag and fix artifact install with bundled skills ([38f8254](https://github.com/ctx-hq/ctx/commit/38f8254e3f30ddcff1adbee0972a110a572f2f32))
+
 ## [0.34.1](https://github.com/ctx-hq/ctx/compare/v0.34.0...v0.34.1) (2026-04-04)
 
 
