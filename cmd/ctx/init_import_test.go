@@ -483,6 +483,283 @@ func TestWriteReleasePleaseConfig(t *testing.T) {
 	}
 }
 
+// --- applyTypeOverride tests ---
+
+func TestApplyTypeOverride_NoFlag(t *testing.T) {
+	m := &manifest.Manifest{Type: manifest.TypeSkill, Name: "@test/pkg"}
+	old := flagInitType
+	flagInitType = ""
+	defer func() { flagInitType = old }()
+
+	applyTypeOverride(m)
+	if m.Type != manifest.TypeSkill {
+		t.Errorf("type = %q, want skill (no override)", m.Type)
+	}
+}
+
+func TestApplyTypeOverride_ForceCLI(t *testing.T) {
+	m := &manifest.Manifest{
+		Type: manifest.TypeSkill,
+		Name: "@test/myapp",
+	}
+	old := flagInitType
+	flagInitType = "cli"
+	defer func() { flagInitType = old }()
+
+	applyTypeOverride(m)
+	if m.Type != manifest.TypeCLI {
+		t.Errorf("type = %q, want cli", m.Type)
+	}
+	if m.CLI == nil {
+		t.Fatal("cli section should be auto-created")
+	}
+	if m.CLI.Binary != "myapp" {
+		t.Errorf("cli.binary = %q, want myapp", m.CLI.Binary)
+	}
+	if m.CLI.Verify != "myapp --version" {
+		t.Errorf("cli.verify = %q, want 'myapp --version'", m.CLI.Verify)
+	}
+}
+
+func TestApplyTypeOverride_ForceSkill(t *testing.T) {
+	// Force a CLI-detected project back to skill
+	m := &manifest.Manifest{
+		Type: manifest.TypeCLI,
+		Name: "@test/pkg",
+		CLI:  &manifest.CLISpec{Binary: "pkg"},
+	}
+	old := flagInitType
+	flagInitType = "skill"
+	defer func() { flagInitType = old }()
+
+	applyTypeOverride(m)
+	if m.Type != manifest.TypeSkill {
+		t.Errorf("type = %q, want skill (forced)", m.Type)
+	}
+	// CLI section still present (override only changes type, doesn't remove sections)
+}
+
+func TestApplyTypeOverride_CLIPreservesExisting(t *testing.T) {
+	// If CLI section already exists, don't overwrite it
+	m := &manifest.Manifest{
+		Type: manifest.TypeSkill,
+		Name: "@test/myapp",
+		CLI:  &manifest.CLISpec{Binary: "custom-bin", Verify: "custom-bin check"},
+	}
+	old := flagInitType
+	flagInitType = "cli"
+	defer func() { flagInitType = old }()
+
+	applyTypeOverride(m)
+	if m.CLI.Binary != "custom-bin" {
+		t.Errorf("cli.binary = %q, want custom-bin (should preserve existing)", m.CLI.Binary)
+	}
+}
+
+// --- detectProjectType extended tests ---
+
+func TestDetectProjectType_Extended(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(dir string)
+		want  manifest.PackageType
+	}{
+		{
+			name: "go_cli_with_cmd",
+			setup: func(dir string) {
+				writeFixture(t, dir, "go.mod", "module test\ngo 1.24\n")
+				os.MkdirAll(filepath.Join(dir, "cmd", "app"), 0o755)
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "go_library_no_cmd",
+			setup: func(dir string) {
+				writeFixture(t, dir, "go.mod", "module test\n")
+				// No cmd/ directory → not a CLI
+			},
+			want: manifest.TypeSkill,
+		},
+		{
+			name: "rust_cli",
+			setup: func(dir string) {
+				writeFixture(t, dir, "Cargo.toml", "[package]\nname = \"mycli\"\n")
+				writeFixture(t, dir, "src/main.rs", "fn main() {}\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "rust_library",
+			setup: func(dir string) {
+				writeFixture(t, dir, "Cargo.toml", "[package]\nname = \"mylib\"\n")
+				writeFixture(t, dir, "src/lib.rs", "pub fn hello() {}\n")
+				// No src/main.rs → not a CLI
+			},
+			want: manifest.TypeSkill,
+		},
+		{
+			name: "python_setup_py",
+			setup: func(dir string) {
+				writeFixture(t, dir, "setup.py", "from setuptools import setup\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "goreleaser_yaml",
+			setup: func(dir string) {
+				writeFixture(t, dir, ".goreleaser.yaml", "builds:\n  - main: ./cmd/app\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "goreleaser_yml",
+			setup: func(dir string) {
+				writeFixture(t, dir, ".goreleaser.yml", "builds:\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "go_with_makefile",
+			setup: func(dir string) {
+				writeFixture(t, dir, "go.mod", "module test\n")
+				writeFixture(t, dir, "Makefile", "build:\n\tgo build\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "empty_dir",
+			setup: func(dir string) {},
+			want:  manifest.TypeSkill,
+		},
+		{
+			name: "skill_with_references",
+			setup: func(dir string) {
+				writeFixture(t, dir, "SKILL.md", "---\nname: test\n---\n")
+				writeFixture(t, dir, "references/guide.md", "# Guide\n")
+			},
+			want: manifest.TypeSkill,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tt.setup(dir)
+			got := detectProjectType(dir)
+			if got != tt.want {
+				t.Errorf("detectProjectType = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// --- deduplicateSkills tests ---
+
+func TestDeduplicateSkills(t *testing.T) {
+	skills := []importedSkill{
+		{name: "a", dir: "dir1"},
+		{name: "b", dir: "dir2"},
+		{name: "a", dir: "dir3"}, // duplicate name
+		{name: "c", dir: "dir4"},
+		{name: "b", dir: "dir5"}, // duplicate name
+	}
+	got := deduplicateSkills(skills)
+	if len(got) != 3 {
+		t.Fatalf("dedup count = %d, want 3", len(got))
+	}
+	// First occurrence wins
+	if got[0].dir != "dir1" || got[1].dir != "dir2" || got[2].dir != "dir4" {
+		t.Errorf("dedup = %v, want dirs [dir1 dir2 dir4]", got)
+	}
+}
+
+func TestDeduplicateSkills_Empty(t *testing.T) {
+	got := deduplicateSkills(nil)
+	if len(got) != 0 {
+		t.Errorf("dedup(nil) = %v, want empty", got)
+	}
+}
+
+func TestDeduplicateSkills_AllUnique(t *testing.T) {
+	skills := []importedSkill{{name: "a"}, {name: "b"}, {name: "c"}}
+	got := deduplicateSkills(skills)
+	if len(got) != 3 {
+		t.Errorf("dedup(all unique) = %d, want 3", len(got))
+	}
+}
+
+// --- end-to-end: CLI project import shape ---
+
+func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
+	dir := t.TempDir()
+	// Simulate a Go CLI project with SKILL.md in subdirectory
+	writeFixture(t, dir, "go.mod", "module github.com/example/mycli\n\ngo 1.24\n")
+	os.MkdirAll(filepath.Join(dir, "cmd", "mycli"), 0o755)
+	writeFixture(t, dir, "skills/mycli/SKILL.md", "---\nname: mycli\ndescription: My CLI tool\ntriggers:\n  - /mycli\n  - run mycli\n---\n# Usage\n")
+
+	det, err := detectImportFormat(dir)
+	if err != nil {
+		t.Fatalf("detectImportFormat: %v", err)
+	}
+	if det.format != importFormatSingleSkill {
+		t.Fatalf("format = %v, want single-skill", det.format)
+	}
+	if len(det.skills) != 1 {
+		t.Fatalf("skills = %d, want 1", len(det.skills))
+	}
+
+	skill := det.skills[0]
+	m := buildManifest(skill, "user", dir)
+
+	// Should be CLI type
+	if m.Type != manifest.TypeCLI {
+		t.Errorf("type = %q, want cli", m.Type)
+	}
+	// CLI section should exist
+	if m.CLI == nil {
+		t.Fatal("cli section is nil")
+	}
+	if m.CLI.Binary != "mycli" {
+		t.Errorf("cli.binary = %q, want mycli", m.CLI.Binary)
+	}
+	// Skill entry should include subdirectory path
+	if m.Skill == nil || m.Skill.Entry != filepath.Join("skills/mycli", "SKILL.md") {
+		entry := ""
+		if m.Skill != nil {
+			entry = m.Skill.Entry
+		}
+		t.Errorf("skill.entry = %q, want skills/mycli/SKILL.md", entry)
+	}
+	// Description from SKILL.md
+	if m.Description != "My CLI tool" {
+		t.Errorf("description = %q, want 'My CLI tool'", m.Description)
+	}
+	// Keywords capped
+	if len(m.Keywords) != 2 {
+		t.Errorf("keywords = %v, want 2", m.Keywords)
+	}
+}
+
+func TestImport_PureSkillProject_NoCliSection(t *testing.T) {
+	dir := t.TempDir()
+	// Pure skill — no go.mod, no cmd/
+	writeFixture(t, dir, "SKILL.md", "---\nname: my-skill\ndescription: A pure skill\n---\n# Content\n")
+
+	det, err := detectImportFormat(dir)
+	if err != nil {
+		t.Fatalf("detectImportFormat: %v", err)
+	}
+
+	skill := det.skills[0]
+	m := buildManifest(skill, "user", dir)
+
+	if m.Type != manifest.TypeSkill {
+		t.Errorf("type = %q, want skill", m.Type)
+	}
+	if m.CLI != nil {
+		t.Errorf("cli section should be nil for pure skill, got %+v", m.CLI)
+	}
+}
+
 func TestWriteReleasePleaseConfig_SkipsExisting(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "release-please-config.json", `{"existing": true}`)
