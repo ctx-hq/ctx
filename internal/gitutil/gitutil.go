@@ -30,6 +30,23 @@ func Author(dir string) string {
 	return gitCmd(dir, "config", "user.name")
 }
 
+// DefaultBranch returns the default branch name (e.g. "main", "master")
+// for the repository containing dir by inspecting the origin HEAD ref.
+// Returns "" on any error.
+func DefaultBranch(dir string) string {
+	// "git symbolic-ref refs/remotes/origin/HEAD" → "refs/remotes/origin/main"
+	ref := gitCmd(dir, "symbolic-ref", "refs/remotes/origin/HEAD")
+	if ref == "" {
+		return ""
+	}
+	// Strip prefix to get just the branch name
+	const prefix = "refs/remotes/origin/"
+	if strings.HasPrefix(ref, prefix) {
+		return strings.TrimPrefix(ref, prefix)
+	}
+	return ""
+}
+
 // LatestTag returns the latest semver tag (without leading "v") for the
 // repository containing dir. Returns "" if no tags exist or any error occurs.
 func LatestTag(dir string) string {

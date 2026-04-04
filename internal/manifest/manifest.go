@@ -250,7 +250,25 @@ func validateCLI(m *Manifest) []string {
 		}
 	}
 
+	// CLI packages must declare how to install the binary
+	if m.Install == nil {
+		errs = append(errs, "install section is required for type=cli (users need a way to obtain the binary)")
+	} else if !hasInstallMethod(m.Install) {
+		errs = append(errs, "install section must specify at least one install method (script, brew, npm, pip, gem, cargo, or platforms)")
+	}
+
 	return errs
+}
+
+// hasInstallMethod returns true if at least one concrete install method is declared.
+func hasInstallMethod(i *InstallSpec) bool {
+	if i.Script != "" || i.Brew != "" || i.Npm != "" || i.Pip != "" || i.Gem != "" || i.Cargo != "" {
+		return true
+	}
+	if len(i.Platforms) > 0 {
+		return true
+	}
+	return false
 }
 
 // validateWorkspace checks the workspace section.
@@ -397,6 +415,9 @@ func Scaffold(pkgType PackageType, scope, name string) *Manifest {
 		m.CLI = &CLISpec{
 			Binary: name,
 			Verify: fmt.Sprintf("%s --version", name),
+		}
+		m.Install = &InstallSpec{
+			Script: fmt.Sprintf("https://raw.githubusercontent.com/OWNER/%s/main/scripts/install.sh", name),
 		}
 	}
 

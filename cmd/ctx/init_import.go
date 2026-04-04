@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/ctx-hq/ctx/internal/gitutil"
 	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
@@ -296,7 +298,7 @@ func writeSingleSkillCtxYaml(rootDir string, skill importedSkill, scope, author,
 		return 0, nil
 	}
 
-	m := buildManifest(skill, scope, rootDir)
+	m := buildManifest(skill, scope, rootDir, repo, "")
 	applyTypeOverride(m)
 	m.Author = author
 	m.License = lic
@@ -350,7 +352,7 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 		// so entry stays relative to skill dir (not root).
 		memberSkill := skill
 		memberSkill.dir = "." // prevent buildManifest from prepending dir to entry
-		m := buildManifest(memberSkill, "", filepath.Join(rootDir, skill.dir))
+		m := buildManifest(memberSkill, "", filepath.Join(rootDir, skill.dir), repo, skill.dir)
 		// Scope will be applied by workspace defaults at load time.
 		// Set the bare name so ApplyDefaults can prepend scope.
 		m.Name = skill.name
@@ -374,7 +376,10 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 }
 
 // buildManifest creates a Manifest for a detected skill, auto-detecting CLI projects.
-func buildManifest(skill importedSkill, scope string, rootDir string) *manifest.Manifest {
+// repo is the git remote URL (e.g. "https://github.com/owner/repo") used
+// to construct install.source and install.script for CLI packages.
+// repoRelDir is the directory of the skill relative to the repo root (empty for root-level skills).
+func buildManifest(skill importedSkill, scope string, rootDir string, repo string, repoRelDir string) *manifest.Manifest {
 	name := skill.name
 	if scope != "" {
 		name = manifest.FormatFullName(scope, skill.name)
@@ -407,10 +412,19 @@ func buildManifest(skill importedSkill, scope string, rootDir string) *manifest.
 
 	// CLI-specific fields
 	if pkgType == manifest.TypeCLI {
+		// Try to extract precise binary name from goreleaser config
 		binary := skill.name
+		if grBinary, ok := detectCLIFromGoreleaser(rootDir); ok {
+			binary = grBinary
+		}
 		m.CLI = &manifest.CLISpec{
 			Binary: binary,
 			Verify: binary + " --version",
+		}
+
+		// Auto-detect install methods from project files
+		if spec := detectInstallSpec(rootDir, repo, repoRelDir); spec != nil {
+			m.Install = spec
 		}
 	}
 
@@ -824,4 +838,87 @@ func deduplicateSkills(skills []importedSkill) []importedSkill {
 		}
 	}
 	return unique
+}
+
+// --- CLI install detection ---
+
+// goreleaserConfig is a minimal representation of .goreleaser.yaml,
+// only extracting the fields we need.
+type goreleaserConfig struct {
+	Builds []struct {
+		Binary string `yaml:"binary"`
+	} `yaml:"builds"`
+}
+
+// detectCLIFromGoreleaser parses .goreleaser.yaml/.yml to extract the
+// primary binary name from builds[0].binary.
+func detectCLIFromGoreleaser(dir string) (string, bool) {
+	for _, name := range []string{".goreleaser.yaml", ".goreleaser.yml"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var cfg goreleaserConfig
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			continue
+		}
+		if len(cfg.Builds) > 0 && cfg.Builds[0].Binary != "" {
+			return cfg.Builds[0].Binary, true
+		}
+	}
+	return "", false
+}
+
+// detectInstallSpec auto-detects install methods from project files and git remote.
+// It checks for scripts/install.sh and constructs install.source from the repo URL.
+// repoRelDir is the directory of the package relative to the repo root (empty for root-level).
+// Returns nil if no concrete install method (script, brew, etc.) is detected —
+// source alone is not sufficient for installation.
+func detectInstallSpec(dir, repo, repoRelDir string) *manifest.InstallSpec {
+	spec := &manifest.InstallSpec{}
+	hasMethod := false
+
+	ownerRepo := githubOwnerRepo(repo)
+	if ownerRepo != "" {
+		spec.Source = "github:" + ownerRepo
+
+		// Check for scripts/install.sh → construct raw.githubusercontent URL
+		if fileExistsAt(filepath.Join(dir, "scripts", "install.sh")) {
+			branch := gitutil.DefaultBranch(dir)
+			if branch == "" {
+				branch = "main"
+			}
+			scriptPath := "scripts/install.sh"
+			if repoRelDir != "" {
+				scriptPath = filepath.ToSlash(filepath.Join(repoRelDir, scriptPath))
+			}
+			spec.Script = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", ownerRepo, branch, scriptPath)
+			hasMethod = true
+		}
+	}
+
+	if !hasMethod {
+		return nil
+	}
+	return spec
+}
+
+// githubOwnerRepo extracts "owner/repo" from a GitHub HTTPS URL.
+// Returns "" if the URL is not a GitHub URL.
+func githubOwnerRepo(repoURL string) string {
+	// Handle https://github.com/owner/repo or https://github.com/owner/repo.git
+	const prefix = "https://github.com/"
+	if !strings.HasPrefix(repoURL, prefix) {
+		return ""
+	}
+	path := strings.TrimPrefix(repoURL, prefix)
+	path = strings.TrimSuffix(path, ".git")
+	path = strings.TrimSuffix(path, "/")
+	// Must be exactly owner/repo
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return path
 }

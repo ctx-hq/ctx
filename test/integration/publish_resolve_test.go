@@ -97,6 +97,9 @@ func TestPublishResolveFlow_ManifestWithMetadata(t *testing.T) {
 			Binary: "testbin",
 			Verify: "testbin --version",
 		},
+		Install: &manifest.InstallSpec{
+			Script: "https://example.com/install.sh",
+		},
 	}
 
 	// Validate passes with metadata fields

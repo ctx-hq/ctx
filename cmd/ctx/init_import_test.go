@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ctx-hq/ctx/internal/manifest"
@@ -261,7 +262,7 @@ func TestBuildSkillManifest(t *testing.T) {
 		version:     "1.2.0",
 		tags:        []string{"i18n", "translate"},
 	}
-	m := buildManifest(skill, "baoyu", t.TempDir())
+	m := buildManifest(skill, "baoyu", t.TempDir(), "", "")
 	if m.Name != "@baoyu/translate" {
 		t.Errorf("name = %q, want @baoyu/translate", m.Name)
 	}
@@ -278,7 +279,7 @@ func TestBuildSkillManifest(t *testing.T) {
 
 func TestBuildManifest_Defaults(t *testing.T) {
 	skill := importedSkill{name: "test"}
-	m := buildManifest(skill, "", t.TempDir())
+	m := buildManifest(skill, "", t.TempDir(), "", "")
 	if m.Name != "test" {
 		t.Errorf("name = %q, want 'test' (no scope)", m.Name)
 	}
@@ -291,10 +292,12 @@ func TestBuildManifest_CLIDetection(t *testing.T) {
 	// Simulate a Go CLI project
 	dir := t.TempDir()
 	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
-	os.MkdirAll(filepath.Join(dir, "cmd", "myapp"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "cmd", "myapp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	skill := importedSkill{name: "myapp", description: "A CLI tool"}
-	m := buildManifest(skill, "user", dir)
+	m := buildManifest(skill, "user", dir, "", "")
 
 	if m.Type != manifest.TypeCLI {
 		t.Errorf("type = %q, want cli (go.mod + cmd/ detected)", m.Type)
@@ -315,7 +318,7 @@ func TestBuildManifest_SkillEntryPath(t *testing.T) {
 		dir:   "skills/fastmail",
 		entry: "SKILL.md",
 	}
-	m := buildManifest(skill, "user", t.TempDir())
+	m := buildManifest(skill, "user", t.TempDir(), "", "")
 	want := filepath.Join("skills/fastmail", "SKILL.md")
 	if m.Skill.Entry != want {
 		t.Errorf("skill.entry = %q, want %q", m.Skill.Entry, want)
@@ -328,7 +331,7 @@ func TestBuildManifest_KeywordsCapped(t *testing.T) {
 		tags[i] = fmt.Sprintf("tag-%d", i)
 	}
 	skill := importedSkill{name: "test", tags: tags}
-	m := buildManifest(skill, "", t.TempDir())
+	m := buildManifest(skill, "", t.TempDir(), "", "")
 	if len(m.Keywords) > 10 {
 		t.Errorf("keywords = %d, want <= 10 (should be capped)", len(m.Keywords))
 	}
@@ -708,7 +711,7 @@ func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
 	}
 
 	skill := det.skills[0]
-	m := buildManifest(skill, "user", dir)
+	m := buildManifest(skill, "user", dir, "", "")
 
 	// Should be CLI type
 	if m.Type != manifest.TypeCLI {
@@ -750,7 +753,7 @@ func TestImport_PureSkillProject_NoCliSection(t *testing.T) {
 	}
 
 	skill := det.skills[0]
-	m := buildManifest(skill, "user", dir)
+	m := buildManifest(skill, "user", dir, "", "")
 
 	if m.Type != manifest.TypeSkill {
 		t.Errorf("type = %q, want skill", m.Type)
@@ -776,5 +779,230 @@ func TestWriteReleasePleaseConfig_SkipsExisting(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("files written = %d, want 0 (should skip existing)", n)
+	}
+}
+
+// --- detectCLIFromGoreleaser tests ---
+
+func TestDetectCLIFromGoreleaser_Yaml(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".goreleaser.yaml", `
+builds:
+  - binary: fastmail
+    main: ./cmd/fastmail
+`)
+	binary, ok := detectCLIFromGoreleaser(dir)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if binary != "fastmail" {
+		t.Errorf("binary = %q, want fastmail", binary)
+	}
+}
+
+func TestDetectCLIFromGoreleaser_Yml(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".goreleaser.yml", `
+builds:
+  - binary: myapp
+`)
+	binary, ok := detectCLIFromGoreleaser(dir)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if binary != "myapp" {
+		t.Errorf("binary = %q, want myapp", binary)
+	}
+}
+
+func TestDetectCLIFromGoreleaser_MultipleBuilds(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".goreleaser.yaml", `
+builds:
+  - id: primary
+    binary: fastmail
+  - id: alias
+    binary: fm
+`)
+	binary, ok := detectCLIFromGoreleaser(dir)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if binary != "fastmail" {
+		t.Errorf("binary = %q, want fastmail (first build)", binary)
+	}
+}
+
+func TestDetectCLIFromGoreleaser_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	_, ok := detectCLIFromGoreleaser(dir)
+	if ok {
+		t.Fatal("expected ok=false when no goreleaser config")
+	}
+}
+
+func TestDetectCLIFromGoreleaser_EmptyBuilds(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".goreleaser.yaml", "version: 2\n")
+	_, ok := detectCLIFromGoreleaser(dir)
+	if ok {
+		t.Fatal("expected ok=false when no builds section")
+	}
+}
+
+// --- detectInstallSpec tests ---
+
+func TestDetectInstallSpec_WithScriptAndRepo(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\necho install")
+
+	spec := detectInstallSpec(dir, "https://github.com/biao29/fastmail-cli", "")
+	if spec == nil {
+		t.Fatal("expected non-nil install spec")
+	}
+	if spec.Source != "github:biao29/fastmail-cli" {
+		t.Errorf("source = %q, want github:biao29/fastmail-cli", spec.Source)
+	}
+	if spec.Script == "" {
+		t.Fatal("expected script URL to be set")
+	}
+	if !strings.Contains(spec.Script, "raw.githubusercontent.com/biao29/fastmail-cli") {
+		t.Errorf("script = %q, should contain raw.githubusercontent URL", spec.Script)
+	}
+}
+
+func TestDetectInstallSpec_WithScriptAndRepoRelDir(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\necho install")
+
+	spec := detectInstallSpec(dir, "https://github.com/owner/monorepo", "packages/mycli")
+	if spec == nil {
+		t.Fatal("expected non-nil install spec")
+	}
+	// Script URL should include the repo-relative subdir
+	want := "packages/mycli/scripts/install.sh"
+	if !strings.Contains(spec.Script, want) {
+		t.Errorf("script = %q, should contain %q for workspace member", spec.Script, want)
+	}
+}
+
+func TestDetectInstallSpec_NoScript(t *testing.T) {
+	dir := t.TempDir()
+
+	// No scripts/install.sh → no install method → nil
+	spec := detectInstallSpec(dir, "https://github.com/owner/repo", "")
+	if spec != nil {
+		t.Errorf("expected nil install spec when no install method, got %+v", spec)
+	}
+}
+
+func TestDetectInstallSpec_NoRepo(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\n")
+
+	spec := detectInstallSpec(dir, "", "")
+	if spec != nil {
+		t.Errorf("expected nil install spec when no repo URL, got %+v", spec)
+	}
+}
+
+func TestDetectInstallSpec_NonGitHub(t *testing.T) {
+	dir := t.TempDir()
+
+	spec := detectInstallSpec(dir, "https://gitlab.com/owner/repo", "")
+	if spec != nil {
+		t.Errorf("expected nil install spec for non-GitHub repo, got %+v", spec)
+	}
+}
+
+// --- githubOwnerRepo tests ---
+
+func TestGithubOwnerRepo(t *testing.T) {
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{"https://github.com/biao29/fastmail-cli", "biao29/fastmail-cli"},
+		{"https://github.com/owner/repo.git", "owner/repo"},
+		{"https://github.com/owner/repo/", "owner/repo"},
+		{"https://gitlab.com/owner/repo", ""},
+		{"", ""},
+		{"https://github.com/owner", ""},
+		{"https://github.com/owner/repo/extra", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			got := githubOwnerRepo(tt.url)
+			if got != tt.want {
+				t.Errorf("githubOwnerRepo(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- buildManifest CLI + goreleaser integration ---
+
+func TestBuildManifest_CLIWithGoreleaser(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
+	if err := os.MkdirAll(filepath.Join(dir, "cmd", "myapp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, ".goreleaser.yaml", `
+builds:
+  - binary: myapp
+    main: ./cmd/myapp
+`)
+	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\necho install")
+
+	repo := "https://github.com/user/myapp-cli"
+	skill := importedSkill{name: "myapp", description: "A CLI tool"}
+	m := buildManifest(skill, "user", dir, repo, "")
+
+	if m.Type != manifest.TypeCLI {
+		t.Errorf("type = %q, want cli", m.Type)
+	}
+	if m.CLI == nil {
+		t.Fatal("cli section is nil")
+	}
+	// Binary should come from goreleaser, not directory name
+	if m.CLI.Binary != "myapp" {
+		t.Errorf("cli.binary = %q, want myapp (from goreleaser)", m.CLI.Binary)
+	}
+	// Install should be auto-populated
+	if m.Install == nil {
+		t.Fatal("install section should be auto-populated")
+	}
+	if m.Install.Source != "github:user/myapp-cli" {
+		t.Errorf("install.source = %q, want github:user/myapp-cli", m.Install.Source)
+	}
+	if m.Install.Script == "" {
+		t.Error("install.script should be set (scripts/install.sh exists)")
+	}
+}
+
+func TestBuildManifest_CLIGoreleaserOverridesName(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
+	if err := os.MkdirAll(filepath.Join(dir, "cmd", "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Binary name differs from directory/skill name
+	writeFixture(t, dir, ".goreleaser.yaml", `
+builds:
+  - binary: different-name
+`)
+
+	skill := importedSkill{name: "myskill", description: "A CLI"}
+	m := buildManifest(skill, "user", dir, "", "")
+
+	if m.CLI == nil {
+		t.Fatal("cli section is nil")
+	}
+	if m.CLI.Binary != "different-name" {
+		t.Errorf("cli.binary = %q, want different-name (from goreleaser)", m.CLI.Binary)
+	}
+	if m.CLI.Verify != "different-name --version" {
+		t.Errorf("cli.verify = %q, want 'different-name --version'", m.CLI.Verify)
 	}
 }

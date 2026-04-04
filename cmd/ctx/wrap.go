@@ -62,8 +62,11 @@ Examples:
 		} else if installSpec.Cargo != "" {
 			w.PrintDim("  Install method: cargo (%s)", installSpec.Cargo)
 		} else {
-			w.Warn("No install method detected — users won't be able to install this package.")
-			w.PrintDim("  Edit ctx.yaml to add install.brew, install.npm, install.pip, install.cargo, or install.script before publishing.")
+			w.Warn("No install method detected — edit ctx.yaml before publishing.")
+			w.PrintDim("  Add install.brew, install.npm, install.pip, install.cargo, or install.script")
+			// Set placeholder so manifest is structurally valid (matches Scaffold pattern).
+			// OWNER must be replaced by the user before publishing.
+			installSpec.Script = fmt.Sprintf("https://raw.githubusercontent.com/OWNER/%s/main/scripts/install.sh", binary)
 		}
 
 		// Step 5: Determine metadata

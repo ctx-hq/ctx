@@ -271,6 +271,7 @@ func TestValidate(t *testing.T) {
 				Description: "test",
 				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				CLI:         &CLISpec{},
+				Install:     &InstallSpec{Script: "https://example.com/install.sh"},
 			},
 			wantErr: 1,
 		},
@@ -283,6 +284,62 @@ func TestValidate(t *testing.T) {
 				Description: "test",
 				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 				CLI:         &CLISpec{Binary: "rg"},
+				Install:     &InstallSpec{Script: "https://example.com/install.sh"},
+			},
+			wantErr: 0,
+		},
+		{
+			name: "cli missing install section",
+			m: Manifest{
+				Name:        "@hong/test",
+				Version:     "1.0.0",
+				Type:        TypeCLI,
+				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
+				CLI:         &CLISpec{Binary: "rg"},
+			},
+			wantErr: 1,
+		},
+		{
+			name: "cli install section with no methods",
+			m: Manifest{
+				Name:        "@hong/test",
+				Version:     "1.0.0",
+				Type:        TypeCLI,
+				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
+				CLI:         &CLISpec{Binary: "rg"},
+				Install:     &InstallSpec{Source: "github:owner/repo"},
+			},
+			wantErr: 1,
+		},
+		{
+			name: "cli install with brew",
+			m: Manifest{
+				Name:        "@hong/test",
+				Version:     "1.0.0",
+				Type:        TypeCLI,
+				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
+				CLI:         &CLISpec{Binary: "rg"},
+				Install:     &InstallSpec{Brew: "ripgrep"},
+			},
+			wantErr: 0,
+		},
+		{
+			name: "cli install with platforms",
+			m: Manifest{
+				Name:        "@hong/test",
+				Version:     "1.0.0",
+				Type:        TypeCLI,
+				Description: "test",
+				Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
+				CLI:         &CLISpec{Binary: "rg"},
+				Install: &InstallSpec{
+					Platforms: map[string]*PlatformInstall{
+						"darwin-arm64": {Binary: "https://example.com/rg.tar.gz"},
+					},
+				},
 			},
 			wantErr: 0,
 		},
@@ -385,6 +442,7 @@ func TestValidateCLISkillOriginAndScript(t *testing.T) {
 			Type:        TypeCLI,
 			Description: "test",
 			CLI:         &CLISpec{Binary: "test"},
+			Install:     &InstallSpec{Script: "https://example.com/install.sh"},
 			Skill:       &SkillSpec{Entry: "skills/test/SKILL.md"},
 		}
 	}
