@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 )
 
@@ -259,7 +261,7 @@ func TestBuildSkillManifest(t *testing.T) {
 		version:     "1.2.0",
 		tags:        []string{"i18n", "translate"},
 	}
-	m := buildSkillManifest(skill, "baoyu")
+	m := buildManifest(skill, "baoyu", t.TempDir())
 	if m.Name != "@baoyu/translate" {
 		t.Errorf("name = %q, want @baoyu/translate", m.Name)
 	}
@@ -274,14 +276,102 @@ func TestBuildSkillManifest(t *testing.T) {
 	}
 }
 
-func TestBuildSkillManifest_Defaults(t *testing.T) {
+func TestBuildManifest_Defaults(t *testing.T) {
 	skill := importedSkill{name: "test"}
-	m := buildSkillManifest(skill, "")
+	m := buildManifest(skill, "", t.TempDir())
 	if m.Name != "test" {
 		t.Errorf("name = %q, want 'test' (no scope)", m.Name)
 	}
 	if m.Version != "0.1.0" {
 		t.Errorf("version = %q, want 0.1.0", m.Version)
+	}
+}
+
+func TestBuildManifest_CLIDetection(t *testing.T) {
+	// Simulate a Go CLI project
+	dir := t.TempDir()
+	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
+	os.MkdirAll(filepath.Join(dir, "cmd", "myapp"), 0o755)
+
+	skill := importedSkill{name: "myapp", description: "A CLI tool"}
+	m := buildManifest(skill, "user", dir)
+
+	if m.Type != manifest.TypeCLI {
+		t.Errorf("type = %q, want cli (go.mod + cmd/ detected)", m.Type)
+	}
+	if m.CLI == nil {
+		t.Fatal("cli section is nil")
+	}
+	if m.CLI.Binary != "myapp" {
+		t.Errorf("cli.binary = %q, want myapp", m.CLI.Binary)
+	}
+}
+
+func TestBuildManifest_SkillEntryPath(t *testing.T) {
+	// When skill is in a subdirectory and ctx.yaml is at root,
+	// entry should include the relative path
+	skill := importedSkill{
+		name:  "fastmail",
+		dir:   "skills/fastmail",
+		entry: "SKILL.md",
+	}
+	m := buildManifest(skill, "user", t.TempDir())
+	want := filepath.Join("skills/fastmail", "SKILL.md")
+	if m.Skill.Entry != want {
+		t.Errorf("skill.entry = %q, want %q", m.Skill.Entry, want)
+	}
+}
+
+func TestBuildManifest_KeywordsCapped(t *testing.T) {
+	tags := make([]string, 30)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag-%d", i)
+	}
+	skill := importedSkill{name: "test", tags: tags}
+	m := buildManifest(skill, "", t.TempDir())
+	if len(m.Keywords) > 10 {
+		t.Errorf("keywords = %d, want <= 10 (should be capped)", len(m.Keywords))
+	}
+}
+
+func TestDetectProjectType(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(dir string)
+		want  manifest.PackageType
+	}{
+		{
+			name: "go_cli",
+			setup: func(dir string) {
+				writeFixture(t, dir, "go.mod", "module test\n")
+				os.MkdirAll(filepath.Join(dir, "cmd"), 0o755)
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "goreleaser",
+			setup: func(dir string) {
+				writeFixture(t, dir, ".goreleaser.yaml", "builds:\n")
+			},
+			want: manifest.TypeCLI,
+		},
+		{
+			name: "plain_skill",
+			setup: func(dir string) {
+				writeFixture(t, dir, "SKILL.md", "---\nname: test\n---\n")
+			},
+			want: manifest.TypeSkill,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tt.setup(dir)
+			got := detectProjectType(dir)
+			if got != tt.want {
+				t.Errorf("detectProjectType = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

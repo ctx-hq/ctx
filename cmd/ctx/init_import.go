@@ -296,7 +296,7 @@ func writeSingleSkillCtxYaml(rootDir string, skill importedSkill, scope, author,
 		return 0, nil
 	}
 
-	m := buildSkillManifest(skill, scope)
+	m := buildManifest(skill, scope, rootDir)
 	m.Author = author
 	m.License = lic
 	m.Repository = repo
@@ -345,7 +345,11 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 			continue
 		}
 
-		m := buildSkillManifest(skill, "")
+		// For workspace members, ctx.yaml lives alongside SKILL.md,
+		// so entry stays relative to skill dir (not root).
+		memberSkill := skill
+		memberSkill.dir = "." // prevent buildManifest from prepending dir to entry
+		m := buildManifest(memberSkill, "", filepath.Join(rootDir, skill.dir))
 		// Scope will be applied by workspace defaults at load time.
 		// Set the bare name so ApplyDefaults can prepend scope.
 		m.Name = skill.name
@@ -368,8 +372,8 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 	return total, nil
 }
 
-// buildSkillManifest creates a minimal Manifest for a single skill.
-func buildSkillManifest(skill importedSkill, scope string) *manifest.Manifest {
+// buildManifest creates a Manifest for a detected skill, auto-detecting CLI projects.
+func buildManifest(skill importedSkill, scope string, rootDir string) *manifest.Manifest {
 	name := skill.name
 	if scope != "" {
 		name = manifest.FormatFullName(scope, skill.name)
@@ -378,22 +382,71 @@ func buildSkillManifest(skill importedSkill, scope string) *manifest.Manifest {
 	if version == "" {
 		version = "0.1.0"
 	}
+
+	// Determine the correct skill entry path relative to where ctx.yaml will be written.
+	// For single-skill repos, ctx.yaml is at root, so entry must include the skill dir.
 	entry := skill.entry
 	if entry == "" {
 		entry = "SKILL.md"
 	}
+	if skill.dir != "" && skill.dir != "." {
+		entry = filepath.Join(skill.dir, entry)
+	}
+
+	// Detect package type: CLI projects get type=cli, others get type=skill.
+	pkgType := detectProjectType(rootDir)
 
 	m := &manifest.Manifest{
 		Name:        name,
 		Version:     version,
-		Type:        manifest.TypeSkill,
+		Type:        pkgType,
 		Description: skill.description,
 		Skill:       &manifest.SkillSpec{Entry: entry},
 	}
+
+	// CLI-specific fields
+	if pkgType == manifest.TypeCLI {
+		binary := skill.name
+		m.CLI = &manifest.CLISpec{
+			Binary: binary,
+			Verify: binary + " --version",
+		}
+	}
+
+	// Cap keywords to 10 to avoid noise
 	if len(skill.tags) > 0 {
-		m.Keywords = skill.tags
+		tags := skill.tags
+		if len(tags) > 10 {
+			tags = tags[:10]
+		}
+		m.Keywords = tags
 	}
 	return m
+}
+
+// detectProjectType checks if the directory is a CLI project or a plain skill.
+func detectProjectType(dir string) manifest.PackageType {
+	// Go CLI: go.mod + cmd/ directory
+	if fileExistsAt(filepath.Join(dir, "go.mod")) && dirExistsAt(filepath.Join(dir, "cmd")) {
+		return manifest.TypeCLI
+	}
+	// Rust CLI: Cargo.toml + src/main.rs
+	if fileExistsAt(filepath.Join(dir, "Cargo.toml")) && fileExistsAt(filepath.Join(dir, "src", "main.rs")) {
+		return manifest.TypeCLI
+	}
+	// Python CLI: setup.py or pyproject.toml with [tool.poetry.scripts] or console_scripts
+	if fileExistsAt(filepath.Join(dir, "setup.py")) {
+		return manifest.TypeCLI
+	}
+	// goreleaser config → CLI
+	if fileExistsAt(filepath.Join(dir, ".goreleaser.yaml")) || fileExistsAt(filepath.Join(dir, ".goreleaser.yml")) {
+		return manifest.TypeCLI
+	}
+	// Makefile with "build" target + binary output indicators
+	if fileExistsAt(filepath.Join(dir, "Makefile")) && fileExistsAt(filepath.Join(dir, "go.mod")) {
+		return manifest.TypeCLI
+	}
+	return manifest.TypeSkill
 }
 
 // writeReleasePleaseConfig generates release-please-config.json and
