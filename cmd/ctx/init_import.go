@@ -297,6 +297,7 @@ func writeSingleSkillCtxYaml(rootDir string, skill importedSkill, scope, author,
 	}
 
 	m := buildManifest(skill, scope, rootDir)
+	applyTypeOverride(m)
 	m.Author = author
 	m.License = lic
 	m.Repository = repo
@@ -422,6 +423,23 @@ func buildManifest(skill importedSkill, scope string, rootDir string) *manifest.
 		m.Keywords = tags
 	}
 	return m
+}
+
+// applyTypeOverride applies --type flag if the user explicitly set it,
+// overriding auto-detection. Also adds type-specific sections (e.g., cli.binary).
+func applyTypeOverride(m *manifest.Manifest) {
+	if flagInitType == "" {
+		return
+	}
+	m.Type = manifest.PackageType(flagInitType)
+	// Ensure CLI section exists when type is forced to cli
+	if m.Type == manifest.TypeCLI && m.CLI == nil {
+		binary := m.ShortName()
+		m.CLI = &manifest.CLISpec{
+			Binary: binary,
+			Verify: binary + " --version",
+		}
+	}
 }
 
 // detectProjectType checks if the directory is a CLI project or a plain skill.
