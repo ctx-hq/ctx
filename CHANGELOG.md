@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.1](https://github.com/ctx-hq/ctx/compare/v0.35.0...v0.35.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* **install:** 下载失败时自动重试（最多3次，指数退避） ([bedd014](https://github.com/ctx-hq/ctx/commit/bedd014750c1c6cb20fe1fca076afa698e072f73))
+
 ## [0.35.0](https://github.com/ctx-hq/ctx/compare/v0.34.1...v0.35.0) (2026-04-04)
 
 
