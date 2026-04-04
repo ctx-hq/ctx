@@ -21,6 +21,7 @@ import (
 	"github.com/ctx-hq/ctx/internal/registry"
 	"github.com/ctx-hq/ctx/internal/resolver"
 	"github.com/ctx-hq/ctx/internal/secrets"
+	"github.com/ctx-hq/ctx/internal/shellpath"
 	"github.com/ctx-hq/ctx/internal/tui/inline"
 	"github.com/spf13/cobra"
 )
@@ -124,18 +125,23 @@ Examples:
 		// Show reload hint based on package type
 		skillName := loadShortName(result)
 		hint := reloadHint(result.Type, skillName)
-		// CLI packages: check if ~/.ctx/bin is in PATH, hint if not
+		// CLI packages: auto-configure PATH if ~/.ctx/bin is not in PATH
 		if manifest.PackageType(result.Type) == manifest.TypeCLI {
-			binDir := filepath.Join(filepath.Dir(config.DataDir()), "bin")
-			cleanBinDir := filepath.Clean(binDir)
-			inPath := false
-			for _, p := range filepath.SplitList(os.Getenv("PATH")) {
-				if filepath.Clean(p) == cleanBinDir {
-					inPath = true
-					break
-				}
-			}
-			if !inPath {
+			binDir := config.BinDir()
+			pathResult := shellpath.EnsurePath(binDir)
+			switch {
+			case pathResult.Err != nil:
+				// Auto-config failed, fall back to manual hint
+				hint = fmt.Sprintf("Add %s to your PATH: export PATH=\"%s:$PATH\"", binDir, binDir)
+			case pathResult.AlreadyInPATH:
+				// Nothing to do
+			case len(pathResult.Modified) > 0:
+				hint = fmt.Sprintf("Added %s to PATH in %s — %s", binDir, strings.Join(pathResult.Modified, ", "), pathResult.ReloadHint())
+			case pathResult.AlreadyInRC:
+				hint = fmt.Sprintf("%s is configured in your shell profile but not in current PATH. Restart your terminal.", binDir)
+			case pathResult.Skipped == "ci":
+				// Silent in CI
+			case pathResult.Skipped == "opt-out":
 				hint = fmt.Sprintf("Add %s to your PATH: export PATH=\"%s:$PATH\"", binDir, binDir)
 			}
 			// Also add skill hint if applicable
@@ -280,7 +286,7 @@ func runPostInstall(cmd *cobra.Command, result *installer.InstallResult, caller 
 			binName := m.CLI.Binary
 			binSrc := filepath.Join(result.InstallPath, binName)
 			if _, statErr := os.Stat(binSrc); statErr == nil {
-				binDir := filepath.Join(filepath.Dir(config.DataDir()), "bin")
+				binDir := config.BinDir()
 				if mkErr := os.MkdirAll(binDir, 0o755); mkErr == nil {
 					binLink := filepath.Join(binDir, binName)
 					_ = os.Remove(binLink) // remove stale symlink

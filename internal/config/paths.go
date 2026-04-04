@@ -50,6 +50,11 @@ func CacheDir() string {
 	return filepath.Join(homeDir(), ".cache", appName)
 }
 
+// BinDir returns the directory for linked CLI binaries (~/.ctx/bin).
+func BinDir() string {
+	return filepath.Join(Dir(), "bin")
+}
+
 // SkillsDir returns the skills authoring workspace directory (~/.ctx/skills/).
 func SkillsDir() string {
 	return filepath.Join(Dir(), "skills")
