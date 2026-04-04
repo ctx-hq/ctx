@@ -210,27 +210,32 @@ func resolveRC(shell, dir, home, goos string) []rcEntry {
 }
 
 // resolveBashRC handles macOS vs Linux bash profile selection.
-// macOS prefers .bash_profile, Linux prefers .bashrc.
-// If both files exist, write to both (matching install.sh behavior).
+// Matches install.sh semantics: write to whichever rc files already exist.
+// If neither exists, create only the platform-preferred file.
 func resolveBashRC(dir, home, goos, posixLine string) []rcEntry {
 	bashProfile := filepath.Join(home, ".bash_profile")
 	bashrc := filepath.Join(home, ".bashrc")
 
 	var entries []rcEntry
 
+	// Preferred order differs by platform
+	candidates := []string{bashrc, bashProfile}
 	if goos == "darwin" {
-		// macOS: primary is .bash_profile
-		entries = append(entries, rcEntry{path: bashProfile, line: posixLine})
-		if fileExists(bashrc) {
-			entries = append(entries, rcEntry{path: bashrc, line: posixLine})
-		}
-	} else {
-		// Linux: primary is .bashrc
-		entries = append(entries, rcEntry{path: bashrc, line: posixLine})
-		if fileExists(bashProfile) {
-			entries = append(entries, rcEntry{path: bashProfile, line: posixLine})
+		candidates = []string{bashProfile, bashrc}
+	}
+
+	// Write to whichever files already exist
+	for _, f := range candidates {
+		if fileExists(f) {
+			entries = append(entries, rcEntry{path: f, line: posixLine})
 		}
 	}
+
+	// Neither exists — create only the platform-preferred file
+	if len(entries) == 0 {
+		entries = append(entries, rcEntry{path: candidates[0], line: posixLine})
+	}
+
 	return entries
 }
 

@@ -291,7 +291,7 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 		if mData, rErr := os.ReadFile(manifestPath); rErr == nil {
 			var m manifest.Manifest
 			if json.Unmarshal(mData, &m) == nil && m.CLI != nil && m.CLI.Binary != "" {
-				binDir := filepath.Join(filepath.Dir(i.DataDir), "bin")
+				binDir := config.BinDir()
 				binLink := filepath.Join(binDir, m.CLI.Binary)
 				// Only remove if the symlink points into this package
 				if linkTarget, err := os.Readlink(binLink); err == nil && strings.HasPrefix(linkTarget, pkgDir) {

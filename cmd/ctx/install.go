@@ -139,8 +139,8 @@ Examples:
 				hint = fmt.Sprintf("Added %s to PATH in %s — %s", binDir, strings.Join(pathResult.Modified, ", "), pathResult.ReloadHint())
 			case pathResult.AlreadyInRC:
 				hint = fmt.Sprintf("%s is configured in your shell profile but not in current PATH. Restart your terminal.", binDir)
-			case pathResult.Skipped == "ci":
-				// Silent in CI
+			case pathResult.Skipped == "ci", pathResult.Skipped == "windows":
+				// Silent in CI and on Windows (install.ps1 handles PATH)
 			case pathResult.Skipped == "opt-out":
 				hint = fmt.Sprintf("Add %s to your PATH: export PATH=\"%s:$PATH\"", binDir, binDir)
 			}

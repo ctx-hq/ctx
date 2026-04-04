@@ -60,6 +60,17 @@ func TestAlreadyInPATH_CleanedPath(t *testing.T) {
 	}
 }
 
+func TestWindowsSkipped(t *testing.T) {
+	home := setupHome(t)
+	t.Setenv("PATH", "/usr/bin")
+	t.Setenv("SHELL", "/bin/bash")
+
+	r := ensurePathWith(filepath.Join(home, ".ctx", "bin"), "windows")
+	if r.Skipped != "windows" {
+		t.Fatalf("expected Skipped=windows, got %q", r.Skipped)
+	}
+}
+
 func TestOptOut(t *testing.T) {
 	home := setupHome(t)
 	t.Setenv("PATH", "/usr/bin")
@@ -159,6 +170,50 @@ func TestBash_Darwin(t *testing.T) {
 	expected := filepath.Join(home, ".bash_profile")
 	if r.ModifiedFile() != expected {
 		t.Fatalf("expected Modified=%s, got %s", expected, r.ModifiedFile())
+	}
+}
+
+func TestBash_Darwin_OnlyBashrc(t *testing.T) {
+	home := setupHome(t)
+	// Only .bashrc exists — should write to it, NOT create .bash_profile
+	writeFile(t, filepath.Join(home, ".bashrc"), "# existing\n")
+	t.Setenv("PATH", "/usr/bin")
+	t.Setenv("SHELL", "/bin/bash")
+
+	binDir := filepath.Join(home, ".ctx", "bin")
+	r := ensurePathWith(binDir, "darwin")
+
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	// Should only write to .bashrc
+	if len(r.Modified) != 1 || r.Modified[0] != filepath.Join(home, ".bashrc") {
+		t.Fatalf("expected only .bashrc modified, got %v", r.Modified)
+	}
+	// .bash_profile should NOT be created
+	if fileExists(filepath.Join(home, ".bash_profile")) {
+		t.Fatal(".bash_profile should not be created when only .bashrc exists")
+	}
+}
+
+func TestBash_Linux_OnlyBashProfile(t *testing.T) {
+	home := setupHome(t)
+	// Only .bash_profile exists — should write to it, NOT create .bashrc
+	writeFile(t, filepath.Join(home, ".bash_profile"), "# existing\n")
+	t.Setenv("PATH", "/usr/bin")
+	t.Setenv("SHELL", "/bin/bash")
+
+	binDir := filepath.Join(home, ".ctx", "bin")
+	r := ensurePathWith(binDir, "linux")
+
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	if len(r.Modified) != 1 || r.Modified[0] != filepath.Join(home, ".bash_profile") {
+		t.Fatalf("expected only .bash_profile modified, got %v", r.Modified)
+	}
+	if fileExists(filepath.Join(home, ".bashrc")) {
+		t.Fatal(".bashrc should not be created when only .bash_profile exists")
 	}
 }
 
