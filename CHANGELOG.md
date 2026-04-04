@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.0](https://github.com/ctx-hq/ctx/compare/v0.31.0...v0.32.0) (2026-04-04)
+
+
+### Features
+
+* **install:** auto-configure shell PATH after CLI package install ([83b2602](https://github.com/ctx-hq/ctx/commit/83b26022d0082d3289cd19c50ccb0675abb46f0e))
+
+
+### Bug Fixes
+
+* **shellpath:** fix Windows rc write, bash profile creation, and uninstall BinDir mismatch ([fcf965d](https://github.com/ctx-hq/ctx/commit/fcf965df47c2df27c2310a22e5732a3aa47ebe96))
+
 ## [0.31.0](https://github.com/ctx-hq/ctx/compare/v0.30.1...v0.31.0) (2026-04-04)
 
 
