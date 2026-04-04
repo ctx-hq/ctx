@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/ctx-hq/ctx/compare/v0.30.0...v0.30.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* **init:** exclude source dirs from import and deduplicate same-name skills ([dfe880b](https://github.com/ctx-hq/ctx/commit/dfe880bfb4f7559296d83560f743bad79037620b))
+
 ## [0.30.0](https://github.com/ctx-hq/ctx/compare/v0.29.0...v0.30.0) (2026-04-04)
 
 
