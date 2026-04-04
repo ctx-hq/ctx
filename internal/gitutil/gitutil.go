@@ -41,6 +41,45 @@ func LatestTag(dir string) string {
 	return tag
 }
 
+// ChangedDirs returns which of the given memberDirs contain files changed
+// between ref and HEAD. A changed file "a/b/c.txt" matches memberDir "a/b".
+// If memberDirs is empty, all changed directories (first path component) are returned.
+// Returns nil on any git error (e.g., not a git repo).
+func ChangedDirs(dir, ref string, memberDirs []string) []string {
+	// Use member dirs as path prefixes for git diff to limit scope
+	args := []string{"diff", "--name-only", ref, "HEAD"}
+	if len(memberDirs) > 0 {
+		args = append(args, "--")
+		for _, d := range memberDirs {
+			args = append(args, d+"/")
+		}
+	}
+	raw := gitCmd(dir, args...)
+	if raw == "" {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var dirs []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Match changed file against known member dirs
+		for _, md := range memberDirs {
+			if strings.HasPrefix(line, md+"/") || line == md {
+				if !seen[md] {
+					seen[md] = true
+					dirs = append(dirs, md)
+				}
+				break
+			}
+		}
+	}
+	return dirs
+}
+
 // gitCmd runs a git command with a timeout and returns trimmed stdout.
 func gitCmd(dir string, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)

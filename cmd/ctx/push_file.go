@@ -25,6 +25,8 @@ var (
 	flagPublishAll           bool
 	flagPublishFilter        string
 	flagPublishContinueOnErr bool
+	flagPublishChanged       string // --changed [ref]: only publish members with changes since ref
+	flagPublishTag           string // --tag canary|beta|rc: publish with prerelease suffix
 )
 
 func init() {
@@ -35,6 +37,9 @@ func init() {
 	publishCmd.Flags().BoolVar(&flagPublishAll, "all", false, "Publish all workspace members")
 	publishCmd.Flags().StringVar(&flagPublishFilter, "filter", "", "Glob filter for workspace members to publish")
 	publishCmd.Flags().BoolVar(&flagPublishContinueOnErr, "continue-on-error", false, "Continue publishing on member failure")
+	publishCmd.Flags().StringVar(&flagPublishChanged, "changed", "", "Only publish members changed since ref (default: HEAD~1 if flag set without value)")
+	publishCmd.Flags().Lookup("changed").NoOptDefVal = "HEAD~1"
+	publishCmd.Flags().StringVar(&flagPublishTag, "tag", "", "Publish with prerelease tag (e.g., canary, beta, rc)")
 }
 
 // singleFileOpts configures push vs publish behavior for single-file skills.

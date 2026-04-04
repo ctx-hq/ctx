@@ -69,9 +69,10 @@ type initMeta struct {
 }
 
 var (
-	flagInitType string // --type skill|mcp|cli
-	flagInitName string // --name @scope/name
-	flagInitFrom string // --from npm:pkg|github:owner/repo|docker:image|/path
+	flagInitType   string // --type skill|mcp|cli
+	flagInitName   string // --name @scope/name
+	flagInitFrom   string // --from npm:pkg|github:owner/repo|docker:image|/path
+	flagInitImport bool   // --import: auto-detect and import existing skill repo
 )
 
 var initCmd = &cobra.Command{
@@ -98,6 +99,11 @@ Examples:
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
+
+		// --import mode: auto-detect and import existing skill repo
+		if flagInitImport {
+			return runInitImport(cmd, w)
+		}
 
 		// --from mode: auto-detect from upstream source
 		if flagInitFrom != "" {
@@ -885,6 +891,7 @@ func init() {
 	initCmd.Flags().StringVar(&flagInitType, "type", "", "Package type: skill, mcp, or cli")
 	initCmd.Flags().StringVar(&flagInitName, "name", "", "Full package name (@scope/name)")
 	initCmd.Flags().StringVar(&flagInitFrom, "from", "", "Auto-detect from upstream (npm:pkg, github:owner/repo, docker:image, /path)")
+	initCmd.Flags().BoolVar(&flagInitImport, "import", false, "Auto-detect and import existing skill repo formats into ctx.yaml")
 }
 
 // runInitFrom handles the --from flag: auto-detect from upstream source and generate ctx.yaml.

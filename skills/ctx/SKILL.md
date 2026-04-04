@@ -37,6 +37,14 @@ triggers:
   - publish all skills
   - install collection
   - multi-skill repo
+  - ctx init import
+  - import skill repo
+  - convert marketplace.json
+  - publish changed skills
+  - canary publish
+  - prerelease publish
+  - github actions publish
+  - ci cd publish
   - ctx token
   - api token
   - create token
@@ -116,8 +124,12 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx link [agent]` | `ctx ln` | Link packages to a specific agent |
 | `ctx validate` | `ctx val` | Validate a ctx.yaml manifest |
 | `ctx init` | | Scaffold a new package (interactive) |
+| `ctx init --import` | | Auto-detect existing skill repo format → generate ctx.yaml |
+| `ctx init --import --name @scope` | | Import with explicit scope |
 | `ctx publish` | | Publish to registry (public) |
 | `ctx publish <file.md>` | | Scaffold + publish a single .md skill |
+| `ctx publish --all --changed` | | Publish only workspace members with git changes |
+| `ctx publish --tag canary` | | Publish as prerelease (does not modify ctx.yaml) |
 | `ctx push` | | Push as private package (zero friction) |
 | `ctx push <file.md>` | | Scaffold + push a single .md skill |
 | `ctx push --bump patch` | | Bump version and push |
@@ -354,6 +366,23 @@ ctx mcp env set MY_KEY val         # Set env variable
 ctx dr                        # Check agents, registry, links
 ```
 
+### Import Existing Skill Repo
+```bash
+# Auto-detect format and generate ctx.yaml (supports 6 formats)
+cd baoyu-skills/
+ctx init --import --name @baoyu
+# → Detects marketplace.json → generates workspace ctx.yaml + per-skill ctx.yaml
+# → Also generates release-please-config.json for auto-versioning
+
+# Supported formats:
+# - marketplace.json (.claude-plugin/)
+# - Codex format (skills/.curated/, skills/.system/)
+# - Single SKILL.md (root level)
+# - Flat skill dirs (*/SKILL.md)
+# - Nested skill dirs (*/*/SKILL.md)
+# - Bare markdown (*.md without frontmatter)
+```
+
 ### Workspace (Monorepo) Management
 ```bash
 # Initialize workspace from existing multi-skill repo
@@ -367,12 +396,40 @@ ctx workspace validate                    # Check all members
 # Publish all skills + auto-create collections
 ctx publish --all                         # Publish all members
 ctx publish --filter "baoyu-trans*"       # Publish matching only
+ctx publish --all --changed               # Publish only skills with git changes
+ctx publish --all --changed HEAD~3        # Compare against specific ref
 ctx publish --all --continue-on-error     # Skip failures
+
+# Canary / prerelease publishing
+ctx publish --tag canary                  # 1.2.0 → 1.2.0-canary.20260404120000
+ctx publish --tag beta                    # Does NOT modify ctx.yaml
+ctx install @scope/pkg@canary             # Install canary version
 
 # Consumer: install individual or collection
 ctx install @myname/translate             # Single skill
 ctx install @myname/skills                # All skills in collection
 ctx install @myname/skills --pick         # Choose interactively
+```
+
+### CI/CD with GitHub Actions
+```bash
+# 1. Import your repo
+ctx init --import --name @yourscope
+
+# 2. Create a deploy token
+ctx token create --name github-ci --scope publish --package "@yourscope/*"
+# → Add as CTX_TOKEN secret in GitHub repo settings
+
+# 3. Add workflow (.github/workflows/ctx-publish.yml)
+# Uses: ctx-hq/setup-ctx@v1 — official GitHub Action
+# See: https://github.com/ctx-hq/setup-ctx for workflow templates
+
+# Workflow example (publish changed skills on push to main):
+#   - uses: actions/checkout@v4
+#     with: { fetch-depth: 2 }
+#   - uses: ctx-hq/setup-ctx@v1
+#   - run: ctx publish --yes --all --changed
+#     env: { CTX_TOKEN: "${{ secrets.CTX_TOKEN }}" }
 ```
 
 ## Package Types

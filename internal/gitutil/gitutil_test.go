@@ -95,6 +95,103 @@ func TestAuthor_Configured(t *testing.T) {
 	}
 }
 
+func TestChangedDirs_WithChanges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	// Create initial commit with a skill
+	skillDir := filepath.Join(dir, "skills", "translate")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "add translate skill")
+
+	// Modify the skill in a new commit
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "update translate")
+
+	got := ChangedDirs(dir, "HEAD~1", []string{"skills/translate"})
+	if len(got) != 1 {
+		t.Fatalf("ChangedDirs = %v, want 1 entry", got)
+	}
+	if got[0] != "skills/translate" {
+		t.Errorf("ChangedDirs[0] = %q, want %q", got[0], "skills/translate")
+	}
+}
+
+func TestChangedDirs_NoChanges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	got := ChangedDirs(dir, "HEAD~1", nil)
+	if len(got) != 0 {
+		t.Errorf("ChangedDirs = %v, want empty", got)
+	}
+}
+
+func TestChangedDirs_NotGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	got := ChangedDirs(dir, "HEAD~1", nil)
+	if got != nil {
+		t.Errorf("ChangedDirs(non-git) = %v, want nil", got)
+	}
+}
+
+func TestChangedDirs_PrefixFilter(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	// Create files in skills/ and docs/
+	for _, p := range []string{"skills/a/SKILL.md", "docs/readme.md"} {
+		full := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("content"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "add files")
+
+	// Modify both
+	for _, p := range []string{"skills/a/SKILL.md", "docs/readme.md"} {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte("updated"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "update both")
+
+	// Only skills/a member dir
+	got := ChangedDirs(dir, "HEAD~1", []string{"skills/a"})
+	if len(got) != 1 {
+		t.Fatalf("ChangedDirs(skills/a) = %v, want 1 entry", got)
+	}
+	if got[0] != "skills/a" {
+		t.Errorf("got %q, want %q", got[0], "skills/a")
+	}
+}
+
 // initGitRepo creates a bare-minimum git repo in dir.
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()

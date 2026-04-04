@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/gitutil"
@@ -93,6 +95,12 @@ Examples:
 			}
 		}
 
+		// Apply --tag: append prerelease suffix (temporary, does not modify ctx.yaml)
+		if flagPublishTag != "" {
+			m.Version = appendPrerelease(m.Version, flagPublishTag)
+			w.Info("Publishing as prerelease: %s", m.Version)
+		}
+
 		// Apply --private flag
 		if flagPrivate {
 			m.Visibility = "private"
@@ -100,6 +108,9 @@ Examples:
 
 		// Auto-enrich missing metadata from git/filesystem
 		autoEnrichManifest(m, dir, w)
+
+		// Auto-fill description/keywords from SKILL.md frontmatter
+		enrichFromSkillMD(m, dir, w)
 
 		errs := manifest.Validate(m)
 		if len(errs) > 0 {
@@ -267,8 +278,38 @@ func publishWorkspace(cmd *cobra.Command, dir string, w *output.Writer) error {
 	}
 	reg := registry.New(cfg.RegistryURL(), token)
 
-	// Apply filter if specified.
+	// Apply --changed filter: only publish members with git changes.
 	members := ws.Members
+	if cmd.Flags().Changed("changed") {
+		ref := flagPublishChanged
+		if ref == "" {
+			ref = "HEAD~1"
+		}
+		// Collect member relative dirs for git diff
+		var memberDirs []string
+		for _, m := range members {
+			memberDirs = append(memberDirs, m.RelDir)
+		}
+		changedDirs := gitutil.ChangedDirs(dir, ref, memberDirs)
+		changedSet := make(map[string]bool, len(changedDirs))
+		for _, d := range changedDirs {
+			changedSet[d] = true
+		}
+		var changed []*manifest.WorkspaceMember
+		for _, m := range members {
+			if changedSet[m.RelDir] {
+				changed = append(changed, m)
+			}
+		}
+		if len(changed) == 0 {
+			w.Info("No changed skills to publish (compared to %s)", ref)
+			return nil
+		}
+		w.Info("Detected %d changed member(s) (compared to %s)", len(changed), ref)
+		members = changed
+	}
+
+	// Apply filter if specified.
 	if flagPublishFilter != "" {
 		var filtered []*manifest.WorkspaceMember
 		for _, m := range members {
@@ -327,6 +368,14 @@ func publishSingleMember(cmd *cobra.Command, member *manifest.WorkspaceMember, r
 
 	// Auto-enrich (quiet mode: skip warnings already shown or redundant in batch)
 	autoEnrichManifestQuiet(m, dir)
+
+	// Auto-fill description/keywords from SKILL.md frontmatter (quiet)
+	enrichFromSkillMD(m, dir, nil)
+
+	// Apply --tag prerelease suffix
+	if flagPublishTag != "" {
+		m.Version = appendPrerelease(m.Version, flagPublishTag)
+	}
 
 	errs := manifest.Validate(m)
 	if len(errs) > 0 {
@@ -467,6 +516,49 @@ func maybeUpgradeVisibility(ctx context.Context, reg *registry.Client, w *output
 	return nil
 }
 
+// enrichFromSkillMD reads the SKILL.md frontmatter and fills in missing
+// manifest fields (description, keywords). This allows ctx.yaml to be minimal
+// — authors don't need to duplicate what SKILL.md already declares.
+// Fields that already have values are never overwritten.
+func enrichFromSkillMD(m *manifest.Manifest, dir string, w *output.Writer) {
+	if m.Type != manifest.TypeSkill {
+		return
+	}
+	if m.Skill == nil || m.Skill.Entry == "" {
+		return
+	}
+
+	skillPath := filepath.Join(dir, m.Skill.Entry)
+	f, err := os.Open(skillPath)
+	if err != nil {
+		return // SKILL.md not found is not an error here
+	}
+	defer func() { _ = f.Close() }()
+
+	fm, _, parseErr := manifest.ParseSkillMD(f)
+	if parseErr != nil || fm == nil {
+		return
+	}
+
+	if m.Description == "" && fm.Description != "" {
+		desc := fm.Description
+		if runes := []rune(desc); len(runes) > 1024 {
+			desc = string(runes[:1021]) + "..."
+		}
+		m.Description = desc
+		if w != nil {
+			w.Info("Auto-filled description from SKILL.md frontmatter")
+		}
+	}
+
+	if len(m.Keywords) == 0 && len(fm.Triggers) > 0 {
+		m.Keywords = fm.Triggers
+		if w != nil {
+			w.Info("Auto-filled keywords from SKILL.md triggers")
+		}
+	}
+}
+
 // autoEnrichManifest fills in missing optional metadata fields from
 // git configuration and filesystem detection. It modifies m in place.
 // Fields that already have values are never overwritten.
@@ -521,4 +613,17 @@ func enrichManifest(m *manifest.Manifest, dir string, quiet bool, w *output.Writ
 	if _, err := os.Stat(filepath.Join(dir, "README.md")); os.IsNotExist(err) {
 		w.Warn("No README.md found (recommended for package documentation)")
 	}
+}
+
+// appendPrerelease appends a prerelease tag with a timestamp to a semver version.
+// e.g., appendPrerelease("1.2.0", "canary") → "1.2.0-canary.20260404120000"
+// If the version already has a prerelease suffix, it is replaced.
+// The ctx.yaml file is NOT modified — this is a temporary in-memory override.
+func appendPrerelease(version, tag string) string {
+	ts := time.Now().UTC().Format("20060102150405")
+	// Strip existing prerelease/metadata: take only "major.minor.patch"
+	if idx := strings.IndexAny(version, "-+"); idx != -1 {
+		version = version[:idx]
+	}
+	return fmt.Sprintf("%s-%s.%s", version, tag, ts)
 }
