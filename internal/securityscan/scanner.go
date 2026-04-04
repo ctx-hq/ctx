@@ -104,9 +104,20 @@ var scannableExts = map[string]bool{
 }
 
 // skipDirs are directory names to skip during traversal.
+// These contain build tooling, CI config, or third-party code
+// that is never included in the published package archive.
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true,
 	".venv": true, "vendor": true, ".next": true,
+	".github": true, // CI workflows (curl|sh in install steps is normal)
+	"scripts": true, // build/install scripts (not packaged)
+	"cmd":     true, // Go source (not packaged)
+	"internal": true, // Go source (not packaged)
+	"pkg":      true, // Go source (not packaged)
+	"dist":     true, // build output
+	"build":    true, // build output
+	"test":     true, "tests": true, // test fixtures
+	"testdata": true, "fixtures": true,
 }
 
 // skipFiles are documentation file names (compared case-insensitively) that
@@ -116,6 +127,10 @@ var skipFiles = map[string]bool{
 	"readme.md": true, "changelog.md": true, "contributing.md": true,
 	"code_of_conduct.md": true, "security.md": true, "history.md": true,
 	"license.md": true,
+	".goreleaser.yaml": true, ".goreleaser.yml": true, // release config (not packaged)
+	"makefile":         true, // build scripts (not packaged)
+	"dockerfile":       true, // container config (not packaged)
+	"docker-compose.yml": true, "docker-compose.yaml": true,
 }
 
 // maxFileSize is the maximum file size to scan (1MB).
