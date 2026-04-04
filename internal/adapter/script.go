@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -14,10 +15,13 @@ import (
 
 const scriptMaxBytes = 10 * 1024 * 1024 // 10 MB
 
+// ScriptAdapterName is the canonical name for the script adapter.
+const ScriptAdapterName = "script"
+
 // ScriptAdapter installs CLI tools via shell scripts (curl|sh pattern).
 type ScriptAdapter struct{}
 
-func (a *ScriptAdapter) Name() string { return "script" }
+func (a *ScriptAdapter) Name() string { return ScriptAdapterName }
 
 func (a *ScriptAdapter) Available() bool {
 	return runtime.GOOS != "windows"
@@ -81,6 +85,36 @@ func (a *ScriptAdapter) Install(ctx context.Context, scriptURL string) error {
 	return nil
 }
 
-func (a *ScriptAdapter) Uninstall(_ context.Context, _ string) error {
-	return fmt.Errorf("script-installed packages must be removed manually")
+// Uninstall removes the binary at the given absolute path.
+// The path is expected to be state.CLI.BinaryPath (resolved during install).
+// It refuses to remove binaries in system-protected directories.
+func (a *ScriptAdapter) Uninstall(_ context.Context, binaryPath string) error {
+	if binaryPath == "" {
+		return fmt.Errorf("no binary path recorded; cannot clean up script-installed binary")
+	}
+
+	if !filepath.IsAbs(binaryPath) {
+		return fmt.Errorf("binary path must be absolute, got %q", binaryPath)
+	}
+
+	// Refuse to touch system-protected directories (Unix-only;
+	// ScriptAdapter.Available() already excludes Windows).
+	for _, prefix := range []string{"/usr/bin/", "/bin/", "/sbin/", "/usr/sbin/"} {
+		if strings.HasPrefix(binaryPath, prefix) {
+			return fmt.Errorf("refusing to remove %s: system-protected directory", binaryPath)
+		}
+	}
+
+	info, err := os.Lstat(binaryPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone — idempotent
+		}
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("refusing to remove %s: is a directory", binaryPath)
+	}
+
+	return os.Remove(binaryPath)
 }

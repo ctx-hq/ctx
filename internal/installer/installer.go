@@ -275,10 +275,23 @@ func (i *Installer) Remove(ctx context.Context, fullName string) error {
 	// 1. Use state.json to uninstall CLI via the original adapter
 	state, _ := installstate.Load(pkgDir)
 	if state != nil && state.CLI != nil && state.CLI.Adapter != "" {
+		if err := ctx.Err(); err != nil {
+			return err // cancelled
+		}
 		a, aErr := adapter.FindByName(state.CLI.Adapter)
 		if aErr == nil {
-			_ = a.Uninstall(ctx, state.CLI.AdapterPkg) // best effort
+			// Script adapter needs the binary path (not the script URL)
+			// to know which file to remove.
+			pkg := state.CLI.AdapterPkg
+			if state.CLI.Adapter == adapter.ScriptAdapterName && state.CLI.BinaryPath != "" {
+				pkg = state.CLI.BinaryPath
+			}
+			_ = a.Uninstall(ctx, pkg) // best effort
 		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// 2. Clean up binary symlink in ~/.ctx/bin/
