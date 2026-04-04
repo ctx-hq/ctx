@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.31.0](https://github.com/ctx-hq/ctx/compare/v0.30.1...v0.31.0) (2026-04-04)
+
+
+### Features
+
+* **init:** auto-detect CLI projects and fix skill entry paths ([205f7a1](https://github.com/ctx-hq/ctx/commit/205f7a11992b60737f383eea52b864491f6a0aed))
+* **init:** support --type flag in --import mode to override auto-detection ([024164e](https://github.com/ctx-hq/ctx/commit/024164e5e1e2cf920c41e38f8c9b0f4712d990b4))
+
+
+### Bug Fixes
+
+* **securityscan:** skip build/CI dirs and files that are never packaged ([c7d4f03](https://github.com/ctx-hq/ctx/commit/c7d4f03ccba562bbe3f07923c0049373f13b3f21))
+
 ## [0.30.1](https://github.com/ctx-hq/ctx/compare/v0.30.0...v0.30.1) (2026-04-04)
 
 
