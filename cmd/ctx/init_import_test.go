@@ -174,6 +174,69 @@ func TestDetectImportFormat_SkillMDNoName(t *testing.T) {
 	}
 }
 
+func TestDetectImportFormat_SkipInternalDir(t *testing.T) {
+	// Simulates fastmail-cli: internal/skills/SKILL.md + skills/fastmail/SKILL.md
+	// internal/ should be excluded, and the duplicate name should be deduped → single skill
+	dir := t.TempDir()
+	writeFixture(t, dir, "internal/skills/SKILL.md", "---\nname: fastmail\ndescription: CLI tool\n---\n")
+	writeFixture(t, dir, "skills/fastmail/SKILL.md", "---\nname: fastmail\ndescription: CLI tool\n---\n")
+
+	det, err := detectImportFormat(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if det.format != importFormatSingleSkill {
+		t.Errorf("format = %v, want single-skill (internal/ excluded + dedup)", det.format)
+	}
+	if len(det.skills) != 1 {
+		t.Errorf("skills = %d, want 1 (deduped)", len(det.skills))
+	}
+	if len(det.skills) > 0 && det.skills[0].name != "fastmail" {
+		t.Errorf("skill name = %q, want fastmail", det.skills[0].name)
+	}
+}
+
+func TestDetectImportFormat_DedupSameName(t *testing.T) {
+	// Two directories with the same skill name → deduplicated to 1
+	dir := t.TempDir()
+	writeFixture(t, dir, "a/SKILL.md", "---\nname: my-skill\n---\n")
+	writeFixture(t, dir, "b/SKILL.md", "---\nname: my-skill\n---\n")
+
+	det, err := detectImportFormat(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Two dirs with same name → dedup to 1 → single-skill
+	if det.format != importFormatSingleSkill {
+		t.Errorf("format = %v, want single-skill (deduped)", det.format)
+	}
+	if len(det.skills) != 1 {
+		t.Errorf("skills = %d, want 1", len(det.skills))
+	}
+}
+
+func TestContainsExcludedDir(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"skills/translate", false},
+		{"internal/skills", true},
+		{"cmd/main", true},
+		{"vendor/pkg", true},
+		{"node_modules/foo", true},
+		{".github/workflows", true},
+		{"engineering/gc", false},
+		{"pkg/util", true},
+	}
+	for _, tt := range tests {
+		got := containsExcludedDir(tt.path)
+		if got != tt.want {
+			t.Errorf("containsExcludedDir(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestDetectImportFormat_FlatSkipsHiddenDirs(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "gc/SKILL.md", "---\nname: gc\n---\n")

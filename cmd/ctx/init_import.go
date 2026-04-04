@@ -126,8 +126,14 @@ func detectImportFormat(dir string) (*importDetection, error) {
 	}
 
 	// Priority 4: Flat */SKILL.md (one level)
-	flatSkills := scanSkillGlob(absDir, "*/SKILL.md")
+	flatSkills := deduplicateSkills(scanSkillGlob(absDir, "*/SKILL.md"))
 	if len(flatSkills) > 0 {
+		if len(flatSkills) == 1 {
+			// Single unique skill — treat as single-skill, not workspace
+			det.format = importFormatSingleSkill
+			det.skills = flatSkills
+			return det, nil
+		}
 		det.format = importFormatFlatSkills
 		det.skills = flatSkills
 		det.memberGlobs = inferMemberGlobs(flatSkills)
@@ -135,8 +141,14 @@ func detectImportFormat(dir string) (*importDetection, error) {
 	}
 
 	// Priority 5: Nested */*/SKILL.md (two levels)
-	nestedSkills := scanSkillGlob(absDir, "*/*/SKILL.md")
+	nestedSkills := deduplicateSkills(scanSkillGlob(absDir, "*/*/SKILL.md"))
 	if len(nestedSkills) > 0 {
+		if len(nestedSkills) == 1 {
+			// Single unique skill — treat as single-skill, not workspace
+			det.format = importFormatSingleSkill
+			det.skills = nestedSkills
+			return det, nil
+		}
 		det.format = importFormatNestedSkills
 		det.skills = nestedSkills
 		det.memberGlobs = inferMemberGlobs(nestedSkills)
@@ -502,12 +514,15 @@ func scanSkillGlob(rootDir, pattern string) []importedSkill {
 	var skills []importedSkill
 	for _, match := range matches {
 		skillDir := filepath.Dir(match)
-		base := filepath.Base(skillDir)
-		// Skip hidden and common non-skill directories
-		if strings.HasPrefix(base, ".") || base == "node_modules" || base == "docs" || base == "scripts" || base == "test" || base == "tests" {
+		relDir, _ := filepath.Rel(rootDir, skillDir)
+
+		// Skip directories that are clearly source code, not skill packages.
+		// Check every component of the path, not just the leaf.
+		if containsExcludedDir(relDir) {
 			continue
 		}
-		relDir, _ := filepath.Rel(rootDir, skillDir)
+
+		base := filepath.Base(skillDir)
 		skill, _ := parseSkillAt(rootDir, relDir, "SKILL.md")
 		if skill.name == "" {
 			skill.name = slugify(base)
@@ -688,4 +703,54 @@ func fileExistsAt(path string) bool {
 func dirExistsAt(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// excludedDirs are directories that should never be treated as skill packages.
+// These are source code, build artifacts, or infrastructure directories.
+var excludedDirs = map[string]bool{
+	"internal":     true,
+	"cmd":          true,
+	"pkg":          true,
+	"vendor":       true,
+	"node_modules": true,
+	"dist":         true,
+	"build":        true,
+	"out":          true,
+	"target":       true, // Rust/Java
+	"__pycache__":  true,
+	"docs":         true,
+	"test":         true,
+	"tests":        true,
+	"fixtures":     true,
+	"testdata":     true,
+	"examples":     true,
+	".github":      true,
+	".claude":      true,
+	".vscode":      true,
+}
+
+// containsExcludedDir checks if any path component is an excluded directory.
+func containsExcludedDir(relPath string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(relPath), "/") {
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+		if excludedDirs[part] {
+			return true
+		}
+	}
+	return false
+}
+
+// deduplicateSkills removes skills with the same name, keeping the first occurrence.
+func deduplicateSkills(skills []importedSkill) []importedSkill {
+	seen := make(map[string]bool)
+	var unique []importedSkill
+	for _, s := range skills {
+		if !seen[s.name] {
+			seen[s.name] = true
+			unique = append(unique, s)
+		}
+	}
+	return unique
 }
