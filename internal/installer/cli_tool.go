@@ -55,6 +55,15 @@ func InstallCLI(ctx context.Context, m *manifest.Manifest) (*installstate.CLISta
 		Status:     "failed",
 	}
 
+	// Pass package metadata to script adapters via environment variables
+	// so install scripts can download the correct version.
+	if a.Name() == adapter.ScriptAdapterName {
+		ctx = adapter.WithScriptEnv(ctx, []string{
+			"CTX_PACKAGE_VERSION=" + m.Version,
+			"CTX_PACKAGE_NAME=" + m.Name,
+		})
+	}
+
 	output.FromContext(ctx).Info("Installing via %s: %s", a.Name(), pkg)
 	if err := a.Install(ctx, pkg); err != nil {
 		return state, fmt.Errorf("install via %s: %w", a.Name(), err)

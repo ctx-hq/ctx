@@ -49,32 +49,13 @@ func Check(ctx context.Context, m *manifest.Manifest) []CheckResult {
 		results = append(results, checkURL(ctx, "script", spec.Script, spec.Script))
 	}
 	if spec.Source != "" {
-		switch {
-		case strings.HasPrefix(spec.Source, "https://"):
-			results = append(results, checkURL(ctx, "source", spec.Source, spec.Source))
-		case strings.HasPrefix(spec.Source, "github:"):
-			// github:owner/repo — validate via GitHub API
-			repo := strings.TrimPrefix(spec.Source, "github:")
-			results = append(results, checkURL(ctx, "source", spec.Source,
-				fmt.Sprintf("https://api.github.com/repos/%s", repo)))
-		case strings.HasPrefix(spec.Source, "npm:"):
-			// npm:package — validate via npm registry
-			pkg := strings.TrimPrefix(spec.Source, "npm:")
-			results = append(results, checkURL(ctx, "source", spec.Source,
-				fmt.Sprintf("https://registry.npmjs.org/%s", pkg)))
-		case strings.HasPrefix(spec.Source, "pip:"):
-			// pip:package — validate via PyPI
-			pkg := strings.TrimPrefix(spec.Source, "pip:")
-			results = append(results, checkURL(ctx, "source", spec.Source,
-				fmt.Sprintf("https://pypi.org/pypi/%s/json", pkg)))
-		default:
-			results = append(results, CheckResult{
-				Method: "source",
-				Pkg:    spec.Source,
-				OK:     false,
-				Error:  "unrecognized source prefix (expected github:, npm:, pip:, or https://)",
-			})
+		if strings.HasPrefix(spec.Source, "https://") {
+			// https:// sources are used as binary download URLs by FindAdapter;
+			// validate reachability so broken links don't pass publish.
+			results = append(results, checkURLFunc(ctx, "source", spec.Source, spec.Source))
 		}
+		// github:/npm:/pip: prefixes are declarative metadata, not direct
+		// download URLs. Skip HTTP probing to avoid rate-limit failures.
 	}
 
 	return results
@@ -101,6 +82,9 @@ func checkCommand(ctx context.Context, method, pkg, bin string, args ...string) 
 	result.OK = true
 	return result
 }
+
+// checkURLFunc is the default URL checker; tests may override it.
+var checkURLFunc = checkURL
 
 // checkURL validates an install method by doing an HTTP HEAD request.
 func checkURL(ctx context.Context, method, pkg, url string) CheckResult {

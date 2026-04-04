@@ -131,6 +131,30 @@ func TestScriptAdapterUninstall_RefusesDirectory(t *testing.T) {
 	}
 }
 
+func TestWithScriptEnv_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	// No env set — should return nil
+	if got := envFromContext(ctx); got != nil {
+		t.Errorf("expected nil from empty context, got %v", got)
+	}
+
+	// Set env and verify round-trip
+	env := []string{"CTX_PACKAGE_VERSION=1.2.3", "CTX_PACKAGE_NAME=my-tool"}
+	ctx = WithScriptEnv(ctx, env)
+
+	got := envFromContext(ctx)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 env vars, got %d", len(got))
+	}
+	if got[0] != "CTX_PACKAGE_VERSION=1.2.3" {
+		t.Errorf("env[0] = %q, want CTX_PACKAGE_VERSION=1.2.3", got[0])
+	}
+	if got[1] != "CTX_PACKAGE_NAME=my-tool" {
+		t.Errorf("env[1] = %q, want CTX_PACKAGE_NAME=my-tool", got[1])
+	}
+}
+
 func TestScriptAdapterUninstall_UserBinDir(t *testing.T) {
 	// Simulate ~/.local/bin/myapp — the common case for script-installed binaries
 	dir := t.TempDir()

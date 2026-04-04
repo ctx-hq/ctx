@@ -15,6 +15,21 @@ import (
 
 const scriptMaxBytes = 10 * 1024 * 1024 // 10 MB
 
+type scriptEnvKey struct{}
+
+// WithScriptEnv attaches key=value environment variables to the context.
+// These are passed to install scripts executed by the ScriptAdapter.
+func WithScriptEnv(ctx context.Context, env []string) context.Context {
+	return context.WithValue(ctx, scriptEnvKey{}, env)
+}
+
+func envFromContext(ctx context.Context) []string {
+	if v, ok := ctx.Value(scriptEnvKey{}).([]string); ok {
+		return v
+	}
+	return nil
+}
+
 // ScriptAdapterName is the canonical name for the script adapter.
 const ScriptAdapterName = "script"
 
@@ -76,6 +91,9 @@ func (a *ScriptAdapter) Install(ctx context.Context, scriptURL string) error {
 	}
 
 	cmd := exec.CommandContext(ctx, "sh", tmp.Name())
+	if extra := envFromContext(ctx); len(extra) > 0 {
+		cmd.Env = append(os.Environ(), extra...)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
