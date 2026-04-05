@@ -37,9 +37,9 @@ triggers:
   - publish all skills
   - install collection
   - multi-skill repo
-  - ctx init import
-  - import skill repo
-  - convert marketplace.json
+  - ctx init
+  - init skill repo
+  - detect skill repo
   - publish changed skills
   - canary publish
   - prerelease publish
@@ -123,9 +123,8 @@ Choose the command matching the current platform. Both are zero-interaction — 
 | `ctx doctor` | `ctx dr` | Diagnose environment and connectivity |
 | `ctx link [agent]` | `ctx ln` | Link packages to a specific agent |
 | `ctx validate` | `ctx val` | Validate a ctx.yaml manifest |
-| `ctx init` | | Scaffold a new package (interactive) |
-| `ctx init --import` | | Auto-detect existing skill repo format → generate ctx.yaml |
-| `ctx init --import --name @scope` | | Import with explicit scope |
+| `ctx init` | | Initialize package (auto-detects existing skills) |
+| `ctx init --name @scope` | | Initialize with explicit scope |
 | `ctx publish` | | Publish to registry (public) |
 | `ctx publish <file.md>` | | Scaffold + publish a single .md skill |
 | `ctx publish --all --changed` | | Publish only workspace members with git changes |
@@ -362,15 +361,15 @@ ctx mcp env set MY_KEY val         # Set env variable
 ctx dr                        # Check agents, registry, links
 ```
 
-### Import Existing Skill Repo
+### Initialize Existing Skill Repo
 ```bash
-# Auto-detect format and generate ctx.yaml (supports 6 formats)
+# ctx init auto-detects existing skills — no flags needed
 cd baoyu-skills/
-ctx init --import --name @baoyu
-# → Detects marketplace.json → generates workspace ctx.yaml + per-skill ctx.yaml
+ctx init --name @baoyu
+# → Detects skills layout → generates workspace ctx.yaml + per-skill ctx.yaml
 # → Also generates release-please-config.json for auto-versioning
 
-# Supported formats:
+# Auto-detected formats:
 # - marketplace.json (.claude-plugin/)
 # - Codex format (skills/.curated/, skills/.system/)
 # - Single SKILL.md (root level)
@@ -409,8 +408,8 @@ ctx install @myname/skills --pick         # Choose interactively
 
 ### CI/CD with GitHub Actions
 ```bash
-# 1. Import your repo
-ctx init --import --name @yourscope
+# 1. Initialize your repo
+ctx init --name @yourscope
 
 # 2. Create a deploy token
 ctx token create --name github-ci --scope publish --package "@yourscope/*"

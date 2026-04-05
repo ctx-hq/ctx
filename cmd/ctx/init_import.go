@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
@@ -18,157 +18,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
-
-// importFormat describes which repo layout was detected.
-type importFormat int
-
-const (
-	importFormatMarketplace  importFormat = iota // .claude-plugin/marketplace.json
-	importFormatCodex                            // skills/.curated/ or skills/.system/
-	importFormatSingleSkill                      // root SKILL.md with frontmatter
-	importFormatFlatSkills                       // */SKILL.md one level deep
-	importFormatNestedSkills                     // */*/SKILL.md two levels deep
-	importFormatBareMarkdown                     // *.md without frontmatter (non-README)
-	importFormatUnknown                          // not a skill repo
-)
-
-func (f importFormat) String() string {
-	switch f {
-	case importFormatMarketplace:
-		return "marketplace.json"
-	case importFormatCodex:
-		return "codex (.curated/.system)"
-	case importFormatSingleSkill:
-		return "single skill"
-	case importFormatFlatSkills:
-		return "flat skill directories"
-	case importFormatNestedSkills:
-		return "nested skill directories"
-	case importFormatBareMarkdown:
-		return "bare markdown"
-	default:
-		return "unknown"
-	}
-}
-
-// importDetection holds the result of scanning a directory.
-type importDetection struct {
-	format     importFormat
-	skills     []importedSkill
-	rootDir    string // absolute path
-	memberGlobs []string // workspace member patterns (e.g., ["skills/*"])
-}
-
-// importedSkill represents a single detected skill.
-type importedSkill struct {
-	name           string // from frontmatter or directory name
-	description    string
-	dir            string // relative path from root
-	entry          string // relative to skill dir, default "SKILL.md"
-	version        string
-	tags           []string
-	hasFrontmatter bool
-}
-
-// detectImportFormat scans a directory and identifies the skill repo format.
-func detectImportFormat(dir string) (*importDetection, error) {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	det := &importDetection{rootDir: absDir}
-
-	// Priority 1: marketplace.json
-	mpPath := filepath.Join(absDir, ".claude-plugin", "marketplace.json")
-	if fileExistsAt(mpPath) {
-		skills, globs, err := detectFromMarketplace(absDir, mpPath)
-		if err != nil {
-			return nil, fmt.Errorf("parse marketplace.json: %w", err)
-		}
-		det.format = importFormatMarketplace
-		det.skills = skills
-		det.memberGlobs = globs
-		return det, nil
-	}
-
-	// Priority 2: Codex format
-	curatedDir := filepath.Join(absDir, "skills", ".curated")
-	systemDir := filepath.Join(absDir, "skills", ".system")
-	if dirExistsAt(curatedDir) || dirExistsAt(systemDir) {
-		skills := scanSkillDirs(absDir, "skills/.curated")
-		skills = append(skills, scanSkillDirs(absDir, "skills/.system")...)
-		det.format = importFormatCodex
-		det.skills = skills
-		// Include both .curated and .system in member globs
-		var memberGlobs []string
-		if dirExistsAt(curatedDir) {
-			memberGlobs = append(memberGlobs, "skills/.curated/*")
-		}
-		if dirExistsAt(systemDir) {
-			memberGlobs = append(memberGlobs, "skills/.system/*")
-		}
-		det.memberGlobs = memberGlobs
-		return det, nil
-	}
-
-	// Priority 3: Root SKILL.md with frontmatter
-	rootSkill := filepath.Join(absDir, "SKILL.md")
-	if fileExistsAt(rootSkill) {
-		skill, hasFM := parseSkillAt(absDir, ".", "SKILL.md")
-		if hasFM {
-			// For root-level skills, use the repo directory name if name is empty
-			if skill.name == "" || skill.name == "." {
-				skill.name = slugify(filepath.Base(absDir))
-			}
-			det.format = importFormatSingleSkill
-			det.skills = []importedSkill{skill}
-			return det, nil
-		}
-	}
-
-	// Priority 4: Flat */SKILL.md (one level)
-	flatSkills := deduplicateSkills(scanSkillGlob(absDir, "*/SKILL.md"))
-	if len(flatSkills) > 0 {
-		if len(flatSkills) == 1 {
-			// Single unique skill — treat as single-skill, not workspace
-			det.format = importFormatSingleSkill
-			det.skills = flatSkills
-			return det, nil
-		}
-		det.format = importFormatFlatSkills
-		det.skills = flatSkills
-		det.memberGlobs = inferMemberGlobs(flatSkills)
-		return det, nil
-	}
-
-	// Priority 5: Nested */*/SKILL.md (two levels)
-	nestedSkills := deduplicateSkills(scanSkillGlob(absDir, "*/*/SKILL.md"))
-	if len(nestedSkills) > 0 {
-		if len(nestedSkills) == 1 {
-			// Single unique skill — treat as single-skill, not workspace
-			det.format = importFormatSingleSkill
-			det.skills = nestedSkills
-			return det, nil
-		}
-		det.format = importFormatNestedSkills
-		det.skills = nestedSkills
-		det.memberGlobs = inferMemberGlobs(nestedSkills)
-		return det, nil
-	}
-
-	// Priority 6: Bare markdown (non-README *.md without frontmatter)
-	bareSkills := scanBareMarkdown(absDir)
-	if len(bareSkills) > 0 {
-		det.format = importFormatBareMarkdown
-		det.skills = bareSkills
-		return det, nil
-	}
-
-	// Priority 7: Unknown
-	det.format = importFormatUnknown
-	return det, nil
-}
 
 // runInitImport is the entry point for `ctx init --import`.
 func runInitImport(cmd *cobra.Command, w *output.Writer) error {
@@ -178,19 +27,19 @@ func runInitImport(cmd *cobra.Command, w *output.Writer) error {
 		dir = args[0]
 	}
 
-	det, err := detectImportFormat(dir)
+	det, err := importer.DetectLayout(dir)
 	if err != nil {
 		return err
 	}
 
-	if det.format == importFormatUnknown {
+	if det.Format == importer.FormatUnknown {
 		return output.ErrUsageHint(
 			"could not detect a skill repo format in this directory",
 			"Ensure the directory contains SKILL.md files or .claude-plugin/marketplace.json",
 		)
 	}
 
-	w.Info("Detected format: %s (%d skill(s))", det.format, len(det.skills))
+	w.Info("Detected format: %s (%d skill(s))", det.Format, len(det.Skills))
 
 	// Resolve scope
 	scope := ""
@@ -229,30 +78,30 @@ func runInitImport(cmd *cobra.Command, w *output.Writer) error {
 
 	var filesWritten int
 
-	switch det.format {
-	case importFormatSingleSkill:
-		skill := det.skills[0]
+	switch det.Format {
+	case importer.FormatSingleSkill:
+		skill := det.Skills[0]
 		n, writeErr := writeSingleSkillCtxYaml(absDir, skill, scope, author, lic, repo, w)
 		if writeErr != nil {
 			return writeErr
 		}
 		filesWritten = n
 
-	case importFormatBareMarkdown:
-		skill := det.skills[0]
-		if skill.name == "" {
+	case importer.FormatBareMarkdown:
+		skill := det.Skills[0]
+		if skill.Name == "" {
 			if term.IsTerminal(int(os.Stdin.Fd())) && !flagYes {
 				p := prompt.DefaultPrompter()
-				skill.name, err = p.Text("Skill name", slugify(filepath.Base(absDir)))
+				skill.Name, err = p.Text("Skill name", importer.Slugify(filepath.Base(absDir)))
 				if err != nil {
 					return err
 				}
-				skill.description, err = p.Text("Description", "")
+				skill.Description, err = p.Text("Description", "")
 				if err != nil {
 					return err
 				}
 			} else {
-				skill.name = slugify(filepath.Base(absDir))
+				skill.Name = importer.Slugify(filepath.Base(absDir))
 			}
 		}
 		n, writeErr := writeSingleSkillCtxYaml(absDir, skill, scope, author, lic, repo, w)
@@ -276,11 +125,11 @@ func runInitImport(cmd *cobra.Command, w *output.Writer) error {
 	}
 
 	w.Info("")
-	w.Success("Imported %d skill(s) as @%s — wrote %d file(s)", len(det.skills), scope, filesWritten)
+	w.Success("Imported %d skill(s) as @%s — wrote %d file(s)", len(det.Skills), scope, filesWritten)
 	w.PrintDim("")
 	w.PrintDim("  Next steps:")
 	w.PrintDim("    1. Review the generated ctx.yaml files")
-	if len(det.skills) > 1 {
+	if len(det.Skills) > 1 {
 		w.PrintDim("    2. ctx publish --all --yes     Publish all skills")
 	} else {
 		w.PrintDim("    2. ctx publish --yes           Publish the skill")
@@ -291,9 +140,9 @@ func runInitImport(cmd *cobra.Command, w *output.Writer) error {
 }
 
 // writeSingleSkillCtxYaml writes a single ctx.yaml for a standalone skill repo.
-func writeSingleSkillCtxYaml(rootDir string, skill importedSkill, scope, author, lic, repo string, w *output.Writer) (int, error) {
+func writeSingleSkillCtxYaml(rootDir string, skill importer.Skill, scope, author, lic, repo string, w *output.Writer) (int, error) {
 	ctxPath := filepath.Join(rootDir, manifest.FileName)
-	if fileExistsAt(ctxPath) {
+	if importer.FileExistsAt(ctxPath) {
 		w.Warn("Skipping %s (ctx.yaml already exists)", manifest.FileName)
 		return 0, nil
 	}
@@ -309,22 +158,22 @@ func writeSingleSkillCtxYaml(rootDir string, skill importedSkill, scope, author,
 
 // writeWorkspaceImport writes workspace root ctx.yaml + per-skill ctx.yaml files,
 // plus release-please config files.
-func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, lic, repo string, w *output.Writer) (int, error) {
+func writeWorkspaceImport(rootDir string, det *importer.Detection, scope, author, lic, repo string, w *output.Writer) (int, error) {
 	var total int
 
 	// 1. Write workspace root ctx.yaml
 	rootCtxPath := filepath.Join(rootDir, manifest.FileName)
-	if fileExistsAt(rootCtxPath) {
+	if importer.FileExistsAt(rootCtxPath) {
 		w.Warn("Skipping root ctx.yaml (already exists)")
 	} else {
-		wsName := slugify(filepath.Base(rootDir))
+		wsName := importer.Slugify(filepath.Base(rootDir))
 		desc := fmt.Sprintf("Workspace for @%s skills", scope)
 		m := &manifest.Manifest{
 			Name:        manifest.FormatFullName(scope, wsName),
 			Type:        manifest.TypeWorkspace,
 			Description: desc,
 			Workspace: &manifest.WorkspaceSpec{
-				Members: det.memberGlobs,
+				Members: det.MemberGlobs,
 				Defaults: &manifest.WorkspaceDefaults{
 					Scope:      scope,
 					Author:     author,
@@ -341,25 +190,21 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 	}
 
 	// 2. Write per-skill ctx.yaml
-	for _, skill := range det.skills {
-		skillCtxPath := filepath.Join(rootDir, skill.dir, manifest.FileName)
-		if fileExistsAt(skillCtxPath) {
-			w.PrintDim("  Skipping %s (ctx.yaml already exists)", skill.dir)
+	for _, skill := range det.Skills {
+		skillCtxPath := filepath.Join(rootDir, skill.Dir, manifest.FileName)
+		if importer.FileExistsAt(skillCtxPath) {
+			w.PrintDim("  Skipping %s (ctx.yaml already exists)", skill.Dir)
 			continue
 		}
 
-		// For workspace members, ctx.yaml lives alongside SKILL.md,
-		// so entry stays relative to skill dir (not root).
 		memberSkill := skill
-		memberSkill.dir = "." // prevent buildManifest from prepending dir to entry
-		m := buildManifest(memberSkill, "", filepath.Join(rootDir, skill.dir), repo, skill.dir)
-		// Scope will be applied by workspace defaults at load time.
-		// Set the bare name so ApplyDefaults can prepend scope.
-		m.Name = skill.name
+		memberSkill.Dir = "."
+		m := buildManifest(memberSkill, "", filepath.Join(rootDir, skill.Dir), repo, skill.Dir)
+		m.Name = skill.Name
 
 		n, err := writeManifest(skillCtxPath, m, w)
 		if err != nil {
-			return total, fmt.Errorf("write %s/ctx.yaml: %w", skill.dir, err)
+			return total, fmt.Errorf("write %s/ctx.yaml: %w", skill.Dir, err)
 		}
 		total += n
 	}
@@ -376,44 +221,36 @@ func writeWorkspaceImport(rootDir string, det *importDetection, scope, author, l
 }
 
 // buildManifest creates a Manifest for a detected skill, auto-detecting CLI projects.
-// repo is the git remote URL (e.g. "https://github.com/owner/repo") used
-// to construct install.source and install.script for CLI packages.
-// repoRelDir is the directory of the skill relative to the repo root (empty for root-level skills).
-func buildManifest(skill importedSkill, scope string, rootDir string, repo string, repoRelDir string) *manifest.Manifest {
-	name := skill.name
+func buildManifest(skill importer.Skill, scope string, rootDir string, repo string, repoRelDir string) *manifest.Manifest {
+	name := skill.Name
 	if scope != "" {
-		name = manifest.FormatFullName(scope, skill.name)
+		name = manifest.FormatFullName(scope, skill.Name)
 	}
-	version := skill.version
+	version := skill.Version
 	if version == "" {
 		version = "0.1.0"
 	}
 
-	// Determine the correct skill entry path relative to where ctx.yaml will be written.
-	// For single-skill repos, ctx.yaml is at root, so entry must include the skill dir.
-	entry := skill.entry
+	entry := skill.Entry
 	if entry == "" {
 		entry = "SKILL.md"
 	}
-	if skill.dir != "" && skill.dir != "." {
-		entry = filepath.Join(skill.dir, entry)
+	if skill.Dir != "" && skill.Dir != "." {
+		entry = filepath.Join(skill.Dir, entry)
 	}
 
-	// Detect package type: CLI projects get type=cli, others get type=skill.
 	pkgType := detectProjectType(rootDir)
 
 	m := &manifest.Manifest{
 		Name:        name,
 		Version:     version,
 		Type:        pkgType,
-		Description: skill.description,
+		Description: skill.Description,
 		Skill:       &manifest.SkillSpec{Entry: entry},
 	}
 
-	// CLI-specific fields
 	if pkgType == manifest.TypeCLI {
-		// Try to extract precise binary name from goreleaser config
-		binary := skill.name
+		binary := skill.Name
 		if grBinary, ok := detectCLIFromGoreleaser(rootDir); ok {
 			binary = grBinary
 		}
@@ -422,21 +259,16 @@ func buildManifest(skill importedSkill, scope string, rootDir string, repo strin
 			Verify: binary + " --version",
 		}
 
-		// Auto-detect install methods from project files
 		if spec := detectInstallSpec(rootDir, repo, repoRelDir); spec != nil {
 			m.Install = spec
 		}
 	}
 
-	// Triggers go to both skill.tags (semantic) and keywords (discovery).
-	// skill.tags is the canonical home, but keywords is still needed for
-	// search until skill.tags has end-to-end consumer support.
-	// Cap to 10 to avoid noise.
-	if len(skill.tags) > 0 {
+	if len(skill.Tags) > 0 {
 		if m.Skill == nil {
 			m.Skill = &manifest.SkillSpec{}
 		}
-		tags := skill.tags
+		tags := skill.Tags
 		if len(tags) > 10 {
 			tags = tags[:10]
 		}
@@ -446,14 +278,12 @@ func buildManifest(skill importedSkill, scope string, rootDir string, repo strin
 	return m
 }
 
-// applyTypeOverride applies --type flag if the user explicitly set it,
-// overriding auto-detection. Also adds type-specific sections (e.g., cli.binary).
+// applyTypeOverride applies --type flag if the user explicitly set it.
 func applyTypeOverride(m *manifest.Manifest) {
 	if flagInitType == "" {
 		return
 	}
 	m.Type = manifest.PackageType(flagInitType)
-	// Ensure CLI section exists when type is forced to cli
 	if m.Type == manifest.TypeCLI && m.CLI == nil {
 		binary := m.ShortName()
 		m.CLI = &manifest.CLISpec{
@@ -465,24 +295,19 @@ func applyTypeOverride(m *manifest.Manifest) {
 
 // detectProjectType checks if the directory is a CLI project or a plain skill.
 func detectProjectType(dir string) manifest.PackageType {
-	// Go CLI: go.mod + cmd/ directory
-	if fileExistsAt(filepath.Join(dir, "go.mod")) && dirExistsAt(filepath.Join(dir, "cmd")) {
+	if importer.FileExistsAt(filepath.Join(dir, "go.mod")) && importer.DirExistsAt(filepath.Join(dir, "cmd")) {
 		return manifest.TypeCLI
 	}
-	// Rust CLI: Cargo.toml + src/main.rs
-	if fileExistsAt(filepath.Join(dir, "Cargo.toml")) && fileExistsAt(filepath.Join(dir, "src", "main.rs")) {
+	if importer.FileExistsAt(filepath.Join(dir, "Cargo.toml")) && importer.FileExistsAt(filepath.Join(dir, "src", "main.rs")) {
 		return manifest.TypeCLI
 	}
-	// Python CLI: setup.py or pyproject.toml with [tool.poetry.scripts] or console_scripts
-	if fileExistsAt(filepath.Join(dir, "setup.py")) {
+	if importer.FileExistsAt(filepath.Join(dir, "setup.py")) {
 		return manifest.TypeCLI
 	}
-	// goreleaser config → CLI
-	if fileExistsAt(filepath.Join(dir, ".goreleaser.yaml")) || fileExistsAt(filepath.Join(dir, ".goreleaser.yml")) {
+	if importer.FileExistsAt(filepath.Join(dir, ".goreleaser.yaml")) || importer.FileExistsAt(filepath.Join(dir, ".goreleaser.yml")) {
 		return manifest.TypeCLI
 	}
-	// Makefile with "build" target + binary output indicators
-	if fileExistsAt(filepath.Join(dir, "Makefile")) && fileExistsAt(filepath.Join(dir, "go.mod")) {
+	if importer.FileExistsAt(filepath.Join(dir, "Makefile")) && importer.FileExistsAt(filepath.Join(dir, "go.mod")) {
 		return manifest.TypeCLI
 	}
 	return manifest.TypeSkill
@@ -490,15 +315,14 @@ func detectProjectType(dir string) manifest.PackageType {
 
 // writeReleasePleaseConfig generates release-please-config.json and
 // .release-please-manifest.json for monorepo versioning.
-func writeReleasePleaseConfig(rootDir string, det *importDetection, w *output.Writer) (int, error) {
+func writeReleasePleaseConfig(rootDir string, det *importer.Detection, w *output.Writer) (int, error) {
 	var written int
 
-	// Config
 	configPath := filepath.Join(rootDir, "release-please-config.json")
-	if !fileExistsAt(configPath) {
+	if !importer.FileExistsAt(configPath) {
 		packages := make(map[string]interface{})
-		for _, skill := range det.skills {
-			packages[skill.dir] = map[string]interface{}{
+		for _, skill := range det.Skills {
+			packages[skill.Dir] = map[string]interface{}{
 				"release-type": "simple",
 				"changelog-sections": []map[string]interface{}{
 					{"type": "feat", "section": "Features"},
@@ -524,16 +348,15 @@ func writeReleasePleaseConfig(rootDir string, det *importDetection, w *output.Wr
 		written++
 	}
 
-	// Manifest
 	manifestPath := filepath.Join(rootDir, ".release-please-manifest.json")
-	if !fileExistsAt(manifestPath) {
+	if !importer.FileExistsAt(manifestPath) {
 		versions := make(map[string]string)
-		for _, skill := range det.skills {
-			v := skill.version
+		for _, skill := range det.Skills {
+			v := skill.Version
 			if v == "" {
 				v = "0.1.0"
 			}
-			versions[skill.dir] = v
+			versions[skill.Dir] = v
 		}
 		data, err := json.MarshalIndent(versions, "", "  ")
 		if err != nil {
@@ -547,227 +370,6 @@ func writeReleasePleaseConfig(rootDir string, det *importDetection, w *output.Wr
 	}
 
 	return written, nil
-}
-
-// --- detection helpers ---
-
-func detectFromMarketplace(rootDir, mpPath string) ([]importedSkill, []string, error) {
-	f, err := os.Open(mpPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	mf, err := manifest.ParseMarketplaceJSON(f)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	paths := manifest.MarketplaceSkillPaths(mf)
-	var skills []importedSkill
-	for _, relPath := range paths {
-		absPath := filepath.Join(rootDir, relPath)
-		if !dirExistsAt(absPath) {
-			continue // skip non-existent directories
-		}
-		skill, _ := parseSkillAt(rootDir, relPath, "SKILL.md")
-		if skill.name == "" {
-			skill.name = slugify(filepath.Base(relPath))
-		}
-		skill.dir = relPath
-		skills = append(skills, skill)
-	}
-
-	globs := inferMemberGlobs(skills)
-	return skills, globs, nil
-}
-
-func scanSkillDirs(rootDir, prefix string) []importedSkill {
-	pattern := filepath.Join(rootDir, prefix, "*", "SKILL.md")
-	matches, _ := filepath.Glob(pattern)
-
-	var skills []importedSkill
-	for _, match := range matches {
-		skillDir := filepath.Dir(match)
-		relDir, _ := filepath.Rel(rootDir, skillDir)
-		skill, _ := parseSkillAt(rootDir, relDir, "SKILL.md")
-		if skill.name == "" {
-			skill.name = slugify(filepath.Base(skillDir))
-		}
-		skill.dir = relDir
-		skills = append(skills, skill)
-	}
-	return skills
-}
-
-func scanSkillGlob(rootDir, pattern string) []importedSkill {
-	matches, _ := filepath.Glob(filepath.Join(rootDir, pattern))
-
-	var skills []importedSkill
-	for _, match := range matches {
-		skillDir := filepath.Dir(match)
-		relDir, _ := filepath.Rel(rootDir, skillDir)
-
-		// Skip directories that are clearly source code, not skill packages.
-		// Check every component of the path, not just the leaf.
-		if containsExcludedDir(relDir) {
-			continue
-		}
-
-		base := filepath.Base(skillDir)
-		skill, _ := parseSkillAt(rootDir, relDir, "SKILL.md")
-		if skill.name == "" {
-			skill.name = slugify(base)
-		}
-		skill.dir = relDir
-		skills = append(skills, skill)
-	}
-	return skills
-}
-
-func scanBareMarkdown(rootDir string) []importedSkill {
-	entries, err := os.ReadDir(rootDir)
-	if err != nil {
-		return nil
-	}
-
-	var skills []importedSkill
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(name), ".md") {
-			continue
-		}
-		// Skip common non-skill markdown files
-		lower := strings.ToLower(name)
-		if lower == "readme.md" || lower == "changelog.md" || lower == "contributing.md" ||
-			lower == "license.md" || lower == "claude.md" || lower == "spec.md" ||
-			lower == "tasks.md" || lower == "description.md" {
-			continue
-		}
-
-		// Check if it has frontmatter — if so, it would've been caught by Format 3
-		f, err := os.Open(filepath.Join(rootDir, name))
-		if err != nil {
-			continue
-		}
-		fm, _, _ := manifest.ParseSkillMD(f)
-		_ = f.Close()
-
-		if fm != nil {
-			continue // has frontmatter, not "bare"
-		}
-
-		baseName := strings.TrimSuffix(name, filepath.Ext(name))
-		skills = append(skills, importedSkill{
-			name:  slugify(baseName),
-			dir:   ".",
-			entry: name,
-		})
-		// Only take the first bare markdown to avoid false positives
-		break
-	}
-	return skills
-}
-
-// parseSkillAt reads a SKILL.md at rootDir/relDir/entry and extracts metadata.
-func parseSkillAt(rootDir, relDir, entry string) (importedSkill, bool) {
-	fullPath := filepath.Join(rootDir, relDir, entry)
-	f, err := os.Open(fullPath)
-	if err != nil {
-		return importedSkill{dir: relDir, entry: entry}, false
-	}
-	defer func() { _ = f.Close() }()
-
-	fm, _, err := manifest.ParseSkillMD(f)
-	if err != nil || fm == nil {
-		return importedSkill{
-			name:  slugify(filepath.Base(relDir)),
-			dir:   relDir,
-			entry: entry,
-		}, false
-	}
-
-	name := fm.Name
-	if name == "" {
-		name = slugify(filepath.Base(relDir))
-	} else {
-		name = slugify(name)
-	}
-
-	return importedSkill{
-		name:           name,
-		description:    fm.Description,
-		dir:            relDir,
-		entry:          entry,
-		tags:           fm.Triggers,
-		hasFrontmatter: true,
-	}, true
-}
-
-// inferMemberGlobs determines the workspace member glob patterns from detected skills.
-// Returns one glob per unique top-level prefix (e.g., ["engineering/*", "writing/*"]).
-func inferMemberGlobs(skills []importedSkill) []string {
-	if len(skills) == 0 {
-		return []string{"*"}
-	}
-
-	// Group skills by their top-level prefix directory
-	type prefixInfo struct {
-		prefix    string
-		twoLevel  int
-		total     int
-		order     int // insertion order for stable output
-	}
-	prefixes := make(map[string]*prefixInfo)
-	insertOrder := 0
-
-	for _, s := range skills {
-		parts := strings.SplitN(s.dir, "/", 2)
-		var key string
-		if len(parts) >= 2 {
-			key = parts[0]
-		}
-		info, ok := prefixes[key]
-		if !ok {
-			info = &prefixInfo{prefix: key, order: insertOrder}
-			insertOrder++
-			prefixes[key] = info
-		}
-		info.total++
-		if strings.Count(s.dir, "/") >= 2 {
-			info.twoLevel++
-		}
-	}
-
-	// If all skills are at root level (no parent directory), return single "*"
-	if len(prefixes) == 1 {
-		for k := range prefixes {
-			if k == "" || k == "." {
-				return []string{"*"}
-			}
-		}
-	}
-
-	// Sort by insertion order for stable output
-	sorted := make([]*prefixInfo, 0, len(prefixes))
-	for _, info := range prefixes {
-		sorted = append(sorted, info)
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].order < sorted[j].order
-	})
-
-	var globs []string
-	for _, info := range sorted {
-		if info.prefix == "" || info.prefix == "." {
-			globs = append(globs, "*")
-		} else if info.twoLevel > info.total/2 {
-			globs = append(globs, info.prefix+"/*/*")
-		} else {
-			globs = append(globs, info.prefix+"/*")
-		}
-	}
-	return globs
 }
 
 // writeManifest marshals and writes a manifest to path.
@@ -787,78 +389,14 @@ func writeManifest(path string, m *manifest.Manifest, w *output.Writer) (int, er
 	return 1, nil
 }
 
-func fileExistsAt(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
-func dirExistsAt(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
-// excludedDirs are directories that should never be treated as skill packages.
-// These are source code, build artifacts, or infrastructure directories.
-var excludedDirs = map[string]bool{
-	"internal":     true,
-	"cmd":          true,
-	"pkg":          true,
-	"vendor":       true,
-	"node_modules": true,
-	"dist":         true,
-	"build":        true,
-	"out":          true,
-	"target":       true, // Rust/Java
-	"__pycache__":  true,
-	"docs":         true,
-	"test":         true,
-	"tests":        true,
-	"fixtures":     true,
-	"testdata":     true,
-	"examples":     true,
-	".github":      true,
-	".claude":      true,
-	".vscode":      true,
-}
-
-// containsExcludedDir checks if any path component is an excluded directory.
-func containsExcludedDir(relPath string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(relPath), "/") {
-		if strings.HasPrefix(part, ".") {
-			return true
-		}
-		if excludedDirs[part] {
-			return true
-		}
-	}
-	return false
-}
-
-// deduplicateSkills removes skills with the same name, keeping the first occurrence.
-func deduplicateSkills(skills []importedSkill) []importedSkill {
-	seen := make(map[string]bool)
-	var unique []importedSkill
-	for _, s := range skills {
-		if !seen[s.name] {
-			seen[s.name] = true
-			unique = append(unique, s)
-		}
-	}
-	return unique
-}
-
 // --- CLI install detection ---
 
-// goreleaserConfig is a minimal representation of .goreleaser.yaml,
-// only extracting the fields we need.
 type goreleaserConfig struct {
 	Builds []struct {
 		Binary string `yaml:"binary"`
 	} `yaml:"builds"`
 }
 
-// detectCLIFromGoreleaser parses .goreleaser.yaml/.yml to extract the
-// primary binary name from builds[0].binary.
 func detectCLIFromGoreleaser(dir string) (string, bool) {
 	for _, name := range []string{".goreleaser.yaml", ".goreleaser.yml"} {
 		path := filepath.Join(dir, name)
@@ -877,11 +415,6 @@ func detectCLIFromGoreleaser(dir string) (string, bool) {
 	return "", false
 }
 
-// detectInstallSpec auto-detects install methods from project files and git remote.
-// It checks for scripts/install.sh and constructs install.source from the repo URL.
-// repoRelDir is the directory of the package relative to the repo root (empty for root-level).
-// Returns nil if no concrete install method (script, brew, etc.) is detected —
-// source alone is not sufficient for installation.
 func detectInstallSpec(dir, repo, repoRelDir string) *manifest.InstallSpec {
 	spec := &manifest.InstallSpec{}
 	hasMethod := false
@@ -890,8 +423,7 @@ func detectInstallSpec(dir, repo, repoRelDir string) *manifest.InstallSpec {
 	if ownerRepo != "" {
 		spec.Source = "github:" + ownerRepo
 
-		// Check for scripts/install.sh → construct raw.githubusercontent URL
-		if fileExistsAt(filepath.Join(dir, "scripts", "install.sh")) {
+		if importer.FileExistsAt(filepath.Join(dir, "scripts", "install.sh")) {
 			branch := gitutil.DefaultBranch(dir)
 			if branch == "" {
 				branch = "main"
@@ -911,10 +443,7 @@ func detectInstallSpec(dir, repo, repoRelDir string) *manifest.InstallSpec {
 	return spec
 }
 
-// githubOwnerRepo extracts "owner/repo" from a GitHub HTTPS URL.
-// Returns "" if the URL is not a GitHub URL.
 func githubOwnerRepo(repoURL string) string {
-	// Handle https://github.com/owner/repo or https://github.com/owner/repo.git
 	const prefix = "https://github.com/"
 	if !strings.HasPrefix(repoURL, prefix) {
 		return ""
@@ -922,7 +451,6 @@ func githubOwnerRepo(repoURL string) string {
 	path := strings.TrimPrefix(repoURL, prefix)
 	path = strings.TrimSuffix(path, ".git")
 	path = strings.TrimSuffix(path, "/")
-	// Must be exactly owner/repo
 	parts := strings.Split(path, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return ""

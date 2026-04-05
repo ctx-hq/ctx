@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 )
 
@@ -63,9 +64,9 @@ func TestSlugify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := slugify(tt.input)
+			got := importer.Slugify(tt.input)
 			if got != tt.want {
-				t.Errorf("slugify(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("importer.Slugify(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

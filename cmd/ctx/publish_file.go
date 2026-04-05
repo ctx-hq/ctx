@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/config"
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 	"github.com/ctx-hq/ctx/internal/prompt"
@@ -102,7 +103,7 @@ func publishSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, op
 	}
 
 	// 5. Derive and fill metadata
-	defaultName := slugify(strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath)))
+	defaultName := importer.Slugify(strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath)))
 
 	skillName := defaultName
 	if fm != nil && fm.Name != "" {
@@ -112,7 +113,7 @@ func publishSingleFile(cmd *cobra.Command, filePath string, w *output.Writer, op
 	if err != nil {
 		return err
 	}
-	skillName = slugify(skillName)
+	skillName = importer.Slugify(skillName)
 
 	// Resolve base version from existing local package (if any)
 	scope := username

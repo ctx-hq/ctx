@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/ctx-hq/ctx/internal/config"
 	"github.com/ctx-hq/ctx/internal/installer"
@@ -78,24 +76,6 @@ func linkToOriginal(originalPath, targetPath, fullName string) error {
 	_ = links.Save() // non-fatal
 
 	return nil
-}
-
-// slugify converts a string to a lowercase, hyphen-separated slug.
-var slugMultiDash = regexp.MustCompile(`-{2,}`)
-
-func slugify(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsUpper(r) {
-			return unicode.ToLower(r)
-		}
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
-			return r
-		}
-		return '-'
-	}, s)
-	s = slugMultiDash.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	return s
 }
 
 // extractDescription extracts a description from skill body content.

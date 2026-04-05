@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/prompt"
 )
@@ -442,7 +443,7 @@ Generate commit messages in both Chinese and English.
 
 	// Build manifest — skill type from file defaults to skill
 	scope := "local"
-	skillName := slugify(meta.name)
+	skillName := importer.Slugify(meta.name)
 	fullName := manifest.FormatFullName(scope, skillName)
 
 	m := manifest.Scaffold(manifest.TypeSkill, scope, skillName)
@@ -909,5 +910,132 @@ func TestFindAllSkillMD_None(t *testing.T) {
 	found := findAllSkillMD(dir)
 	if len(found) != 0 {
 		t.Errorf("expected 0 results, got %d: %v", len(found), found)
+	}
+}
+
+// --- auto-detect on ctx init (no --import needed) ---
+
+func TestInitAutoDetect_SkillRepoTriggersImport(t *testing.T) {
+	// When a directory has SKILL.md files, DetectLayout should find them,
+	// and ctx init should automatically enter import mode.
+	dir := t.TempDir()
+	writeFixture(t, dir, "gc/SKILL.md", "---\nname: gc\ndescription: Git commit\n---\n")
+	writeFixture(t, dir, "review/SKILL.md", "---\nname: review\ndescription: Code review\n---\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	if det.Format == importer.FormatUnknown {
+		t.Fatal("expected auto-detection to find skills, got FormatUnknown")
+	}
+	if det.Format != importer.FormatFlatSkills {
+		t.Errorf("format = %v, want FormatFlatSkills", det.Format)
+	}
+	if len(det.Skills) != 2 {
+		t.Errorf("skills = %d, want 2", len(det.Skills))
+	}
+}
+
+func TestInitAutoDetect_EmptyDirNoDetection(t *testing.T) {
+	// An empty dir (or only README) should NOT trigger auto-detection.
+	dir := t.TempDir()
+	writeFixture(t, dir, "README.md", "# My project\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	if det.Format != importer.FormatUnknown {
+		t.Errorf("expected FormatUnknown for empty dir, got %v", det.Format)
+	}
+}
+
+func TestInitAutoDetect_SingleSkillAtRoot(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "SKILL.md", "---\nname: my-tool\ndescription: Does things\n---\n# Content\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	if det.Format != importer.FormatSingleSkill {
+		t.Errorf("format = %v, want FormatSingleSkill", det.Format)
+	}
+	if len(det.Skills) != 1 {
+		t.Errorf("skills = %d, want 1", len(det.Skills))
+	}
+	if det.Skills[0].Name != "my-tool" {
+		t.Errorf("name = %q, want my-tool", det.Skills[0].Name)
+	}
+}
+
+func TestInitAutoDetect_MonorepoLayout(t *testing.T) {
+	dir := t.TempDir()
+	// skills/*/SKILL.md is two levels deep → FormatNestedSkills
+	writeFixture(t, dir, "skills/translate/SKILL.md", "---\nname: translate\n---\n")
+	writeFixture(t, dir, "skills/imagine/SKILL.md", "---\nname: imagine\n---\n")
+	writeFixture(t, dir, "skills/comic/SKILL.md", "---\nname: comic\n---\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	if det.Format != importer.FormatNestedSkills {
+		t.Errorf("format = %v, want FormatNestedSkills", det.Format)
+	}
+	if len(det.Skills) != 3 {
+		t.Errorf("skills = %d, want 3", len(det.Skills))
+	}
+	if len(det.MemberGlobs) == 0 {
+		t.Error("expected MemberGlobs to be set for workspace")
+	}
+}
+
+func TestInitAutoDetect_BareMarkdownDoesNotTrigger(t *testing.T) {
+	// A directory with only notes.md / design.md should NOT auto-enter import mode.
+	// FormatBareMarkdown is too heuristic for auto-detection.
+	dir := t.TempDir()
+	writeFixture(t, dir, "notes.md", "# Notes\nSome random notes\n")
+	writeFixture(t, dir, "design.md", "# Design\nArchitecture overview\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	// DetectLayout returns FormatBareMarkdown, but init should NOT auto-import it.
+	if det.Format != importer.FormatBareMarkdown {
+		t.Errorf("format = %v, want FormatBareMarkdown", det.Format)
+	}
+}
+
+func TestInitAutoDetect_WithNameFlag(t *testing.T) {
+	// ctx init --name @scope should still trigger auto-detection
+	// when the directory has real skills.
+	dir := t.TempDir()
+	writeFixture(t, dir, "gc/SKILL.md", "---\nname: gc\n---\n")
+	writeFixture(t, dir, "review/SKILL.md", "---\nname: review\n---\n")
+
+	det, err := importer.DetectLayout(dir)
+	if err != nil {
+		t.Fatalf("DetectLayout: %v", err)
+	}
+	// Should detect as FlatSkills regardless of --name flag
+	if det.Format != importer.FormatFlatSkills {
+		t.Errorf("format = %v, want FormatFlatSkills", det.Format)
+	}
+	if len(det.Skills) != 2 {
+		t.Errorf("skills = %d, want 2", len(det.Skills))
+	}
+}
+
+func TestInitAutoDetect_BrokenMarketplaceReturnsError(t *testing.T) {
+	// A corrupted marketplace.json should return an error, not be silently ignored.
+	dir := t.TempDir()
+	writeFixture(t, dir, ".claude-plugin/marketplace.json", "THIS IS NOT JSON{{{")
+
+	_, err := importer.DetectLayout(dir)
+	if err == nil {
+		t.Error("expected error for broken marketplace.json, got nil")
 	}
 }

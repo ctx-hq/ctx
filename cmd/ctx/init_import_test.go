@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/manifest"
 	"github.com/ctx-hq/ctx/internal/output"
 )
@@ -24,243 +25,12 @@ func writeFixture(t *testing.T, dir, relPath, content string) {
 	}
 }
 
-func TestDetectImportFormat(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(dir string)
-		wantFmt importFormat
-		wantN   int // expected number of detected skills
-	}{
-		{
-			name: "marketplace_json",
-			setup: func(dir string) {
-				writeFixture(t, dir, ".claude-plugin/marketplace.json", `{
-					"name": "test", "plugins": [{
-						"name": "p1", "skills": ["./skills/a", "./skills/b"]
-					}]
-				}`)
-				writeFixture(t, dir, "skills/a/SKILL.md", "---\nname: a\ndescription: Skill A\n---\n")
-				writeFixture(t, dir, "skills/b/SKILL.md", "---\nname: b\ndescription: Skill B\n---\n")
-			},
-			wantFmt: importFormatMarketplace,
-			wantN:   2,
-		},
-		{
-			name: "codex_curated",
-			setup: func(dir string) {
-				writeFixture(t, dir, "skills/.curated/gc/SKILL.md", "---\nname: gc\ndescription: Git commit\n---\n")
-				writeFixture(t, dir, "skills/.curated/review/SKILL.md", "---\nname: review\ndescription: Review\n---\n")
-			},
-			wantFmt: importFormatCodex,
-			wantN:   2,
-		},
-		{
-			name: "codex_system",
-			setup: func(dir string) {
-				writeFixture(t, dir, "skills/.system/creator/SKILL.md", "---\nname: creator\n---\n")
-			},
-			wantFmt: importFormatCodex,
-			wantN:   1,
-		},
-		{
-			name: "single_skill_with_frontmatter",
-			setup: func(dir string) {
-				writeFixture(t, dir, "SKILL.md", "---\nname: my-skill\ndescription: A skill\n---\n# Content\n")
-			},
-			wantFmt: importFormatSingleSkill,
-			wantN:   1,
-		},
-		{
-			name: "flat_skill_dirs",
-			setup: func(dir string) {
-				writeFixture(t, dir, "gc/SKILL.md", "---\nname: gc\n---\n")
-				writeFixture(t, dir, "review/SKILL.md", "---\nname: review\n---\n")
-			},
-			wantFmt: importFormatFlatSkills,
-			wantN:   2,
-		},
-		{
-			name: "nested_skill_dirs",
-			setup: func(dir string) {
-				writeFixture(t, dir, "engineering/gc/SKILL.md", "---\nname: gc\n---\n")
-				writeFixture(t, dir, "writing/translate/SKILL.md", "---\nname: translate\n---\n")
-			},
-			wantFmt: importFormatNestedSkills,
-			wantN:   2,
-		},
-		{
-			name: "bare_markdown",
-			setup: func(dir string) {
-				writeFixture(t, dir, "minutes.md", "# Minutes\nNo frontmatter here.\n")
-			},
-			wantFmt: importFormatBareMarkdown,
-			wantN:   1,
-		},
-		{
-			name: "unknown_empty_repo",
-			setup: func(dir string) {
-				writeFixture(t, dir, "README.md", "# Just a readme\n")
-			},
-			wantFmt: importFormatUnknown,
-			wantN:   0,
-		},
-		{
-			name: "readme_only_not_bare",
-			setup: func(dir string) {
-				// README.md alone should NOT be detected as bare markdown
-				writeFixture(t, dir, "README.md", "# Project\nSome content\n")
-				writeFixture(t, dir, "CHANGELOG.md", "# Changelog\n")
-			},
-			wantFmt: importFormatUnknown,
-			wantN:   0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			tt.setup(dir)
-
-			det, err := detectImportFormat(dir)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if det.format != tt.wantFmt {
-				t.Errorf("format = %v, want %v", det.format, tt.wantFmt)
-			}
-			if len(det.skills) != tt.wantN {
-				t.Errorf("skills count = %d, want %d", len(det.skills), tt.wantN)
-			}
-		})
-	}
-}
-
-func TestDetectImportFormat_MarketplaceNonexistentDir(t *testing.T) {
-	dir := t.TempDir()
-	writeFixture(t, dir, ".claude-plugin/marketplace.json", `{
-		"name": "test", "plugins": [{
-			"name": "p1", "skills": ["./skills/exists", "./skills/missing"]
-		}]
-	}`)
-	writeFixture(t, dir, "skills/exists/SKILL.md", "---\nname: exists\n---\n")
-	// skills/missing does NOT exist
-
-	det, err := detectImportFormat(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if det.format != importFormatMarketplace {
-		t.Errorf("format = %v, want marketplace", det.format)
-	}
-	if len(det.skills) != 1 {
-		t.Errorf("skills = %d, want 1 (missing dir skipped)", len(det.skills))
-	}
-}
-
-func TestDetectImportFormat_SkillMDNoName(t *testing.T) {
-	dir := t.TempDir()
-	writeFixture(t, dir, "SKILL.md", "---\ndescription: A skill without name\n---\n# Content\n")
-
-	det, err := detectImportFormat(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if det.format != importFormatSingleSkill {
-		t.Errorf("format = %v, want single-skill", det.format)
-	}
-	if len(det.skills) != 1 {
-		t.Fatalf("skills = %d, want 1", len(det.skills))
-	}
-	// Name should fall back to directory basename
-	if det.skills[0].name == "" {
-		t.Error("skill name should not be empty (should fall back to dir basename)")
-	}
-}
-
-func TestDetectImportFormat_SkipInternalDir(t *testing.T) {
-	// Simulates fastmail-cli: internal/skills/SKILL.md + skills/fastmail/SKILL.md
-	// internal/ should be excluded, and the duplicate name should be deduped → single skill
-	dir := t.TempDir()
-	writeFixture(t, dir, "internal/skills/SKILL.md", "---\nname: fastmail\ndescription: CLI tool\n---\n")
-	writeFixture(t, dir, "skills/fastmail/SKILL.md", "---\nname: fastmail\ndescription: CLI tool\n---\n")
-
-	det, err := detectImportFormat(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if det.format != importFormatSingleSkill {
-		t.Errorf("format = %v, want single-skill (internal/ excluded + dedup)", det.format)
-	}
-	if len(det.skills) != 1 {
-		t.Errorf("skills = %d, want 1 (deduped)", len(det.skills))
-	}
-	if len(det.skills) > 0 && det.skills[0].name != "fastmail" {
-		t.Errorf("skill name = %q, want fastmail", det.skills[0].name)
-	}
-}
-
-func TestDetectImportFormat_DedupSameName(t *testing.T) {
-	// Two directories with the same skill name → deduplicated to 1
-	dir := t.TempDir()
-	writeFixture(t, dir, "a/SKILL.md", "---\nname: my-skill\n---\n")
-	writeFixture(t, dir, "b/SKILL.md", "---\nname: my-skill\n---\n")
-
-	det, err := detectImportFormat(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// Two dirs with same name → dedup to 1 → single-skill
-	if det.format != importFormatSingleSkill {
-		t.Errorf("format = %v, want single-skill (deduped)", det.format)
-	}
-	if len(det.skills) != 1 {
-		t.Errorf("skills = %d, want 1", len(det.skills))
-	}
-}
-
-func TestContainsExcludedDir(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{"skills/translate", false},
-		{"internal/skills", true},
-		{"cmd/main", true},
-		{"vendor/pkg", true},
-		{"node_modules/foo", true},
-		{".github/workflows", true},
-		{"engineering/gc", false},
-		{"pkg/util", true},
-	}
-	for _, tt := range tests {
-		got := containsExcludedDir(tt.path)
-		if got != tt.want {
-			t.Errorf("containsExcludedDir(%q) = %v, want %v", tt.path, got, tt.want)
-		}
-	}
-}
-
-func TestDetectImportFormat_FlatSkipsHiddenDirs(t *testing.T) {
-	dir := t.TempDir()
-	writeFixture(t, dir, "gc/SKILL.md", "---\nname: gc\n---\n")
-	writeFixture(t, dir, ".hidden/SKILL.md", "---\nname: hidden\n---\n")
-	writeFixture(t, dir, "node_modules/SKILL.md", "---\nname: nm\n---\n")
-
-	det, err := detectImportFormat(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(det.skills) != 1 {
-		t.Errorf("skills = %d, want 1 (hidden and node_modules skipped)", len(det.skills))
-	}
-}
-
 func TestBuildSkillManifest(t *testing.T) {
-	skill := importedSkill{
-		name:        "translate",
-		description: "Translate text",
-		version:     "1.2.0",
-		tags:        []string{"i18n", "translate"},
+	skill := importer.Skill{
+		Name:        "translate",
+		Description: "Translate text",
+		Version:     "1.2.0",
+		Tags:        []string{"i18n", "translate"},
 	}
 	m := buildManifest(skill, "baoyu", t.TempDir(), "", "")
 	if m.Name != "@baoyu/translate" {
@@ -272,7 +42,6 @@ func TestBuildSkillManifest(t *testing.T) {
 	if m.Description != "Translate text" {
 		t.Errorf("description = %q", m.Description)
 	}
-	// Triggers go to both skill.tags and keywords
 	if len(m.Keywords) != 2 {
 		t.Errorf("keywords = %v, want 2", m.Keywords)
 	}
@@ -286,7 +55,7 @@ func TestBuildSkillManifest(t *testing.T) {
 }
 
 func TestBuildManifest_Defaults(t *testing.T) {
-	skill := importedSkill{name: "test"}
+	skill := importer.Skill{Name: "test"}
 	m := buildManifest(skill, "", t.TempDir(), "", "")
 	if m.Name != "test" {
 		t.Errorf("name = %q, want 'test' (no scope)", m.Name)
@@ -297,14 +66,13 @@ func TestBuildManifest_Defaults(t *testing.T) {
 }
 
 func TestBuildManifest_CLIDetection(t *testing.T) {
-	// Simulate a Go CLI project
 	dir := t.TempDir()
 	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
 	if err := os.MkdirAll(filepath.Join(dir, "cmd", "myapp"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	skill := importedSkill{name: "myapp", description: "A CLI tool"}
+	skill := importer.Skill{Name: "myapp", Description: "A CLI tool"}
 	m := buildManifest(skill, "user", dir, "", "")
 
 	if m.Type != manifest.TypeCLI {
@@ -319,12 +87,10 @@ func TestBuildManifest_CLIDetection(t *testing.T) {
 }
 
 func TestBuildManifest_SkillEntryPath(t *testing.T) {
-	// When skill is in a subdirectory and ctx.yaml is at root,
-	// entry should include the relative path
-	skill := importedSkill{
-		name:  "fastmail",
-		dir:   "skills/fastmail",
-		entry: "SKILL.md",
+	skill := importer.Skill{
+		Name:  "fastmail",
+		Dir:   "skills/fastmail",
+		Entry: "SKILL.md",
 	}
 	m := buildManifest(skill, "user", t.TempDir(), "", "")
 	want := filepath.Join("skills/fastmail", "SKILL.md")
@@ -338,9 +104,8 @@ func TestBuildManifest_TriggersGoToSkillTags(t *testing.T) {
 	for i := range tags {
 		tags[i] = fmt.Sprintf("tag-%d", i)
 	}
-	skill := importedSkill{name: "test", tags: tags}
+	skill := importer.Skill{Name: "test", Tags: tags}
 	m := buildManifest(skill, "", t.TempDir(), "", "")
-	// Triggers go to both skill.tags and keywords (capped at 10)
 	if len(m.Keywords) == 0 {
 		t.Error("keywords should be populated with triggers for search")
 	}
@@ -396,65 +161,12 @@ func TestDetectProjectType(t *testing.T) {
 	}
 }
 
-func TestInferMemberGlobs(t *testing.T) {
-	tests := []struct {
-		name   string
-		skills []importedSkill
-		want   []string
-	}{
-		{
-			name:   "common_prefix",
-			skills: []importedSkill{{dir: "skills/a"}, {dir: "skills/b"}, {dir: "skills/c"}},
-			want:   []string{"skills/*"},
-		},
-		{
-			name:   "root_level",
-			skills: []importedSkill{{dir: "a"}, {dir: "b"}},
-			want:   []string{"*"},
-		},
-		{
-			name:   "two_levels",
-			skills: []importedSkill{{dir: "eng/gc/sub"}, {dir: "eng/review/sub"}},
-			want:   []string{"eng/*/*"},
-		},
-		{
-			name:   "empty",
-			skills: nil,
-			want:   []string{"*"},
-		},
-		{
-			name:   "multi_prefix",
-			skills: []importedSkill{{dir: "engineering/gc"}, {dir: "writing/translate"}},
-			want:   []string{"engineering/*", "writing/*"},
-		},
-		{
-			name:   "multi_prefix_with_counts",
-			skills: []importedSkill{{dir: "eng/gc"}, {dir: "eng/review"}, {dir: "writing/translate"}},
-			want:   []string{"eng/*", "writing/*"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := inferMemberGlobs(tt.skills)
-			if len(got) != len(tt.want) {
-				t.Fatalf("inferMemberGlobs = %v, want %v", got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("inferMemberGlobs[%d] = %q, want %q", i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
-}
-
 func TestWriteReleasePleaseConfig(t *testing.T) {
 	dir := t.TempDir()
-	det := &importDetection{
-		skills: []importedSkill{
-			{dir: "skills/a", version: "1.0.0"},
-			{dir: "skills/b", version: "2.1.0"},
+	det := &importer.Detection{
+		Skills: []importer.Skill{
+			{Dir: "skills/a", Version: "1.0.0"},
+			{Dir: "skills/b", Version: "2.1.0"},
 		},
 	}
 	w := output.NewWriter()
@@ -467,7 +179,6 @@ func TestWriteReleasePleaseConfig(t *testing.T) {
 		t.Errorf("files written = %d, want 2", n)
 	}
 
-	// Verify config
 	configData, err := os.ReadFile(filepath.Join(dir, "release-please-config.json"))
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -487,7 +198,6 @@ func TestWriteReleasePleaseConfig(t *testing.T) {
 		t.Error("skills/b not in config packages")
 	}
 
-	// Verify manifest
 	manifestData, err := os.ReadFile(filepath.Join(dir, ".release-please-manifest.json"))
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
@@ -503,8 +213,6 @@ func TestWriteReleasePleaseConfig(t *testing.T) {
 		t.Errorf("skills/b version = %q, want 2.1.0", versions["skills/b"])
 	}
 }
-
-// --- applyTypeOverride tests ---
 
 func TestApplyTypeOverride_NoFlag(t *testing.T) {
 	m := &manifest.Manifest{Type: manifest.TypeSkill, Name: "@test/pkg"}
@@ -543,7 +251,6 @@ func TestApplyTypeOverride_ForceCLI(t *testing.T) {
 }
 
 func TestApplyTypeOverride_ForceSkill(t *testing.T) {
-	// Force a CLI-detected project back to skill
 	m := &manifest.Manifest{
 		Type: manifest.TypeCLI,
 		Name: "@test/pkg",
@@ -557,11 +264,9 @@ func TestApplyTypeOverride_ForceSkill(t *testing.T) {
 	if m.Type != manifest.TypeSkill {
 		t.Errorf("type = %q, want skill (forced)", m.Type)
 	}
-	// CLI section still present (override only changes type, doesn't remove sections)
 }
 
 func TestApplyTypeOverride_CLIPreservesExisting(t *testing.T) {
-	// If CLI section already exists, don't overwrite it
 	m := &manifest.Manifest{
 		Type: manifest.TypeSkill,
 		Name: "@test/myapp",
@@ -576,8 +281,6 @@ func TestApplyTypeOverride_CLIPreservesExisting(t *testing.T) {
 		t.Errorf("cli.binary = %q, want custom-bin (should preserve existing)", m.CLI.Binary)
 	}
 }
-
-// --- detectProjectType extended tests ---
 
 func TestDetectProjectType_Extended(t *testing.T) {
 	tests := []struct {
@@ -597,7 +300,6 @@ func TestDetectProjectType_Extended(t *testing.T) {
 			name: "go_library_no_cmd",
 			setup: func(dir string) {
 				writeFixture(t, dir, "go.mod", "module test\n")
-				// No cmd/ directory → not a CLI
 			},
 			want: manifest.TypeSkill,
 		},
@@ -614,7 +316,6 @@ func TestDetectProjectType_Extended(t *testing.T) {
 			setup: func(dir string) {
 				writeFixture(t, dir, "Cargo.toml", "[package]\nname = \"mylib\"\n")
 				writeFixture(t, dir, "src/lib.rs", "pub fn hello() {}\n")
-				// No src/main.rs → not a CLI
 			},
 			want: manifest.TypeSkill,
 		},
@@ -673,76 +374,35 @@ func TestDetectProjectType_Extended(t *testing.T) {
 	}
 }
 
-// --- deduplicateSkills tests ---
-
-func TestDeduplicateSkills(t *testing.T) {
-	skills := []importedSkill{
-		{name: "a", dir: "dir1"},
-		{name: "b", dir: "dir2"},
-		{name: "a", dir: "dir3"}, // duplicate name
-		{name: "c", dir: "dir4"},
-		{name: "b", dir: "dir5"}, // duplicate name
-	}
-	got := deduplicateSkills(skills)
-	if len(got) != 3 {
-		t.Fatalf("dedup count = %d, want 3", len(got))
-	}
-	// First occurrence wins
-	if got[0].dir != "dir1" || got[1].dir != "dir2" || got[2].dir != "dir4" {
-		t.Errorf("dedup = %v, want dirs [dir1 dir2 dir4]", got)
-	}
-}
-
-func TestDeduplicateSkills_Empty(t *testing.T) {
-	got := deduplicateSkills(nil)
-	if len(got) != 0 {
-		t.Errorf("dedup(nil) = %v, want empty", got)
-	}
-}
-
-func TestDeduplicateSkills_AllUnique(t *testing.T) {
-	skills := []importedSkill{{name: "a"}, {name: "b"}, {name: "c"}}
-	got := deduplicateSkills(skills)
-	if len(got) != 3 {
-		t.Errorf("dedup(all unique) = %d, want 3", len(got))
-	}
-}
-
-// --- end-to-end: CLI project import shape ---
-
 func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
 	dir := t.TempDir()
-	// Simulate a Go CLI project with SKILL.md in subdirectory
 	writeFixture(t, dir, "go.mod", "module github.com/example/mycli\n\ngo 1.24\n")
 	os.MkdirAll(filepath.Join(dir, "cmd", "mycli"), 0o755)
 	writeFixture(t, dir, "skills/mycli/SKILL.md", "---\nname: mycli\ndescription: My CLI tool\ntriggers:\n  - /mycli\n  - run mycli\n---\n# Usage\n")
 
-	det, err := detectImportFormat(dir)
+	det, err := importer.DetectLayout(dir)
 	if err != nil {
-		t.Fatalf("detectImportFormat: %v", err)
+		t.Fatalf("DetectLayout: %v", err)
 	}
-	if det.format != importFormatSingleSkill {
-		t.Fatalf("format = %v, want single-skill", det.format)
+	if det.Format != importer.FormatSingleSkill {
+		t.Fatalf("format = %v, want single-skill", det.Format)
 	}
-	if len(det.skills) != 1 {
-		t.Fatalf("skills = %d, want 1", len(det.skills))
+	if len(det.Skills) != 1 {
+		t.Fatalf("skills = %d, want 1", len(det.Skills))
 	}
 
-	skill := det.skills[0]
+	skill := det.Skills[0]
 	m := buildManifest(skill, "user", dir, "", "")
 
-	// Should be CLI type
 	if m.Type != manifest.TypeCLI {
 		t.Errorf("type = %q, want cli", m.Type)
 	}
-	// CLI section should exist
 	if m.CLI == nil {
 		t.Fatal("cli section is nil")
 	}
 	if m.CLI.Binary != "mycli" {
 		t.Errorf("cli.binary = %q, want mycli", m.CLI.Binary)
 	}
-	// Skill entry should include subdirectory path
 	if m.Skill == nil || m.Skill.Entry != filepath.Join("skills/mycli", "SKILL.md") {
 		entry := ""
 		if m.Skill != nil {
@@ -750,11 +410,9 @@ func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
 		}
 		t.Errorf("skill.entry = %q, want skills/mycli/SKILL.md", entry)
 	}
-	// Description from SKILL.md
 	if m.Description != "My CLI tool" {
 		t.Errorf("description = %q, want 'My CLI tool'", m.Description)
 	}
-	// Triggers go to both skill.tags and keywords
 	if len(m.Keywords) != 2 {
 		t.Errorf("keywords = %v, want 2", m.Keywords)
 	}
@@ -769,15 +427,14 @@ func TestImport_CLIProject_GeneratesCorrectShape(t *testing.T) {
 
 func TestImport_PureSkillProject_NoCliSection(t *testing.T) {
 	dir := t.TempDir()
-	// Pure skill — no go.mod, no cmd/
 	writeFixture(t, dir, "SKILL.md", "---\nname: my-skill\ndescription: A pure skill\n---\n# Content\n")
 
-	det, err := detectImportFormat(dir)
+	det, err := importer.DetectLayout(dir)
 	if err != nil {
-		t.Fatalf("detectImportFormat: %v", err)
+		t.Fatalf("DetectLayout: %v", err)
 	}
 
-	skill := det.skills[0]
+	skill := det.Skills[0]
 	m := buildManifest(skill, "user", dir, "", "")
 
 	if m.Type != manifest.TypeSkill {
@@ -793,8 +450,8 @@ func TestWriteReleasePleaseConfig_SkipsExisting(t *testing.T) {
 	writeFixture(t, dir, "release-please-config.json", `{"existing": true}`)
 	writeFixture(t, dir, ".release-please-manifest.json", `{"existing": "1.0.0"}`)
 
-	det := &importDetection{
-		skills: []importedSkill{{dir: "skills/a"}},
+	det := &importer.Detection{
+		Skills: []importer.Skill{{Dir: "skills/a"}},
 	}
 	w := output.NewWriter()
 
@@ -806,8 +463,6 @@ func TestWriteReleasePleaseConfig_SkipsExisting(t *testing.T) {
 		t.Errorf("files written = %d, want 0 (should skip existing)", n)
 	}
 }
-
-// --- detectCLIFromGoreleaser tests ---
 
 func TestDetectCLIFromGoreleaser_Yaml(t *testing.T) {
 	dir := t.TempDir()
@@ -875,8 +530,6 @@ func TestDetectCLIFromGoreleaser_EmptyBuilds(t *testing.T) {
 	}
 }
 
-// --- detectInstallSpec tests ---
-
 func TestDetectInstallSpec_WithScriptAndRepo(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\necho install")
@@ -904,7 +557,6 @@ func TestDetectInstallSpec_WithScriptAndRepoRelDir(t *testing.T) {
 	if spec == nil {
 		t.Fatal("expected non-nil install spec")
 	}
-	// Script URL should include the repo-relative subdir
 	want := "packages/mycli/scripts/install.sh"
 	if !strings.Contains(spec.Script, want) {
 		t.Errorf("script = %q, should contain %q for workspace member", spec.Script, want)
@@ -913,8 +565,6 @@ func TestDetectInstallSpec_WithScriptAndRepoRelDir(t *testing.T) {
 
 func TestDetectInstallSpec_NoScript(t *testing.T) {
 	dir := t.TempDir()
-
-	// No scripts/install.sh → no install method → nil
 	spec := detectInstallSpec(dir, "https://github.com/owner/repo", "")
 	if spec != nil {
 		t.Errorf("expected nil install spec when no install method, got %+v", spec)
@@ -924,7 +574,6 @@ func TestDetectInstallSpec_NoScript(t *testing.T) {
 func TestDetectInstallSpec_NoRepo(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\n")
-
 	spec := detectInstallSpec(dir, "", "")
 	if spec != nil {
 		t.Errorf("expected nil install spec when no repo URL, got %+v", spec)
@@ -933,14 +582,11 @@ func TestDetectInstallSpec_NoRepo(t *testing.T) {
 
 func TestDetectInstallSpec_NonGitHub(t *testing.T) {
 	dir := t.TempDir()
-
 	spec := detectInstallSpec(dir, "https://gitlab.com/owner/repo", "")
 	if spec != nil {
 		t.Errorf("expected nil install spec for non-GitHub repo, got %+v", spec)
 	}
 }
-
-// --- githubOwnerRepo tests ---
 
 func TestGithubOwnerRepo(t *testing.T) {
 	tests := []struct {
@@ -965,8 +611,6 @@ func TestGithubOwnerRepo(t *testing.T) {
 	}
 }
 
-// --- buildManifest CLI + goreleaser integration ---
-
 func TestBuildManifest_CLIWithGoreleaser(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "go.mod", "module github.com/example/cli\n\ngo 1.24\n")
@@ -981,7 +625,7 @@ builds:
 	writeFixture(t, dir, "scripts/install.sh", "#!/bin/sh\necho install")
 
 	repo := "https://github.com/user/myapp-cli"
-	skill := importedSkill{name: "myapp", description: "A CLI tool"}
+	skill := importer.Skill{Name: "myapp", Description: "A CLI tool"}
 	m := buildManifest(skill, "user", dir, repo, "")
 
 	if m.Type != manifest.TypeCLI {
@@ -990,11 +634,9 @@ builds:
 	if m.CLI == nil {
 		t.Fatal("cli section is nil")
 	}
-	// Binary should come from goreleaser, not directory name
 	if m.CLI.Binary != "myapp" {
 		t.Errorf("cli.binary = %q, want myapp (from goreleaser)", m.CLI.Binary)
 	}
-	// Install should be auto-populated
 	if m.Install == nil {
 		t.Fatal("install section should be auto-populated")
 	}
@@ -1012,13 +654,12 @@ func TestBuildManifest_CLIGoreleaserOverridesName(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "cmd", "app"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Binary name differs from directory/skill name
 	writeFixture(t, dir, ".goreleaser.yaml", `
 builds:
   - binary: different-name
 `)
 
-	skill := importedSkill{name: "myskill", description: "A CLI"}
+	skill := importer.Skill{Name: "myskill", Description: "A CLI"}
 	m := buildManifest(skill, "user", dir, "", "")
 
 	if m.CLI == nil {

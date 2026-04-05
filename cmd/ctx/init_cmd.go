@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ctx-hq/ctx/internal/gitutil"
+	"github.com/ctx-hq/ctx/internal/importer"
 	"github.com/ctx-hq/ctx/internal/initdetect"
 	"github.com/ctx-hq/ctx/internal/license"
 	"github.com/ctx-hq/ctx/internal/manifest"
@@ -72,7 +73,6 @@ var (
 	flagInitType   string // --type skill|mcp|cli
 	flagInitName   string // --name @scope/name
 	flagInitFrom   string // --from npm:pkg|github:owner/repo|docker:image|/path
-	flagInitImport bool   // --import: auto-detect and import existing skill repo
 )
 
 var initCmd = &cobra.Command{
@@ -83,14 +83,19 @@ var initCmd = &cobra.Command{
 Generates ctx.yaml and SKILL.md in the project directory.
 No files are copied elsewhere — authoring happens locally.
 
-Supports four input modes:
-  1. From scratch       ctx init
-  2. From .md file      ctx init gc.md
-  3. From directory     ctx init ./my-skill/
-  4. From upstream      ctx init --from npm:@playwright/mcp
+If the directory already contains SKILL.md files, ctx init automatically
+detects the repo layout and generates the appropriate ctx.yaml (single
+skill, workspace, etc.) — no flags needed.
+
+Supports multiple input modes:
+  1. Auto-detect        ctx init                   (detects existing skills)
+  2. From scratch       ctx init                   (interactive, if no skills found)
+  3. From .md file      ctx init gc.md
+  4. From directory     ctx init ./my-skill/
+  5. From upstream      ctx init --from npm:@playwright/mcp
 
 Examples:
-  ctx init                                    Create a new package interactively
+  ctx init                                    Auto-detect or create interactively
   ctx init gc.md                              Adopt an existing .md file as a skill
   ctx init ./my-skill/                        Initialize from an existing directory
   ctx init --from npm:@playwright/mcp         Auto-detect from npm package
@@ -100,14 +105,25 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		w := getWriter(cmd)
 
-		// --import mode: auto-detect and import existing skill repo
-		if flagInitImport {
-			return runInitImport(cmd, w)
-		}
-
 		// --from mode: auto-detect from upstream source
 		if flagInitFrom != "" {
 			return runInitFrom(cmd, w)
+		}
+
+		// Auto-detect: if the directory already has SKILL.md files,
+		// enter import mode instead of the interactive "from scratch" flow.
+		// This runs regardless of --name/--type so that
+		// `ctx init --name @scope` works on existing skill repos.
+		if len(args) == 0 {
+			det, detectErr := importer.DetectLayout(".")
+			if detectErr != nil {
+				return fmt.Errorf("detect layout: %w", detectErr)
+			}
+			// Only auto-import for formats that indicate real skills
+			// (not FormatBareMarkdown which is too heuristic for auto mode).
+			if det != nil && det.Format != importer.FormatUnknown && det.Format != importer.FormatBareMarkdown {
+				return runInitImport(cmd, w)
+			}
 		}
 
 		// 1. Resolve scope
@@ -175,7 +191,7 @@ Examples:
 		}
 
 		// 7. Check if ctx.yaml already exists
-		skillName := slugify(meta.name)
+		skillName := importer.Slugify(meta.name)
 		fullName := manifest.FormatFullName(scope, skillName)
 
 		ctxYamlPath := filepath.Join(outDir, "ctx.yaml")
@@ -453,7 +469,7 @@ func parseInitSource(input initInput) (initMeta, error) {
 		}
 
 		meta := initMeta{
-			name:        slugify(dirName),
+			name:        importer.Slugify(dirName),
 			description: fmt.Sprintf("A %s package", dirName),
 			version:     "0.1.0",
 			invocable:   true,
@@ -477,7 +493,7 @@ func parseInitSource(input initInput) (initMeta, error) {
 // using fallbackName when frontmatter fields are missing.
 func metaFromFrontmatter(fm *manifest.SkillFrontmatter, body, fallbackName string) initMeta {
 	meta := initMeta{
-		name:      slugify(fallbackName),
+		name:      importer.Slugify(fallbackName),
 		version:   "0.1.0",
 		invocable: true,
 		body:      body,
@@ -502,7 +518,7 @@ func metaFromFrontmatter(fm *manifest.SkillFrontmatter, body, fallbackName strin
 		meta.description = extractDescription(body)
 	}
 	if len(meta.triggers) == 0 {
-		meta.triggers = []string{"/" + slugify(meta.name)}
+		meta.triggers = []string{"/" + importer.Slugify(meta.name)}
 	}
 
 	return meta
@@ -616,7 +632,7 @@ func parseDirSource(dirPath string) (initMeta, error) {
 		autoDetectMeta(&meta, dirPath)
 
 		if len(meta.triggers) == 0 {
-			meta.triggers = []string{"/" + slugify(meta.name)}
+			meta.triggers = []string{"/" + importer.Slugify(meta.name)}
 		}
 		return meta, nil
 	}
@@ -708,7 +724,7 @@ func promptMetadata(p prompt.Prompter, meta initMeta) (initMeta, error) {
 	if err != nil {
 		return meta, err
 	}
-	meta.name = slugify(meta.name)
+	meta.name = importer.Slugify(meta.name)
 
 	meta.description, err = p.Text("Description", meta.description)
 	if err != nil {
@@ -890,7 +906,6 @@ func init() {
 	initCmd.Flags().StringVar(&flagInitType, "type", "", "Package type: skill, mcp, or cli")
 	initCmd.Flags().StringVar(&flagInitName, "name", "", "Full package name (@scope/name)")
 	initCmd.Flags().StringVar(&flagInitFrom, "from", "", "Auto-detect from upstream (npm:pkg, github:owner/repo, docker:image, /path)")
-	initCmd.Flags().BoolVar(&flagInitImport, "import", false, "Auto-detect and import existing skill repo formats into ctx.yaml")
 }
 
 // runInitFrom handles the --from flag: auto-detect from upstream source and generate ctx.yaml.
