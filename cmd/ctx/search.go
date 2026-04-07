@@ -67,7 +67,7 @@ Examples:
 
 func init() {
 	searchCmd.Flags().StringVarP(&searchType, "type", "t", "", "Filter by type (skill, mcp, cli)")
-	searchCmd.Flags().StringVarP(&searchPlatform, "platform", "p", "", "Filter by platform")
+	searchCmd.Flags().StringVar(&searchPlatform, "platform", "", "Filter by platform")
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", 20, "Max results")
 	searchCmd.Flags().IntVar(&searchOffset, "offset", 0, "Offset for pagination")
 }
