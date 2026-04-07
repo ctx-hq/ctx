@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.2](https://github.com/ctx-hq/ctx/compare/v0.35.1...v0.35.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* **search:** remove the short flag alias for platform ([1b1ad88](https://github.com/ctx-hq/ctx/commit/1b1ad88545d1787d0d9d8bef254801a8fd0ecab2))
+
 ## [0.35.1](https://github.com/ctx-hq/ctx/compare/v0.35.0...v0.35.1) (2026-04-04)
 
 
